@@ -41,7 +41,7 @@ export interface TagInfo {
 export interface TimeRange {
   startTime: Date;
   endTime: Date;
-  relativeRange?: 'last1h' | 'last24h' | 'last7d' | 'last30d';
+  relativeRange?: 'last1h' | 'last24h' | 'last7d' | 'last30d' | undefined;
 }
 
 // Data filter options
@@ -121,8 +121,8 @@ export enum RetrievalMode {
 // Query options for AVEVA Historian
 export interface HistorianQueryOptions {
   mode: RetrievalMode;
-  interval?: number;        // For Cyclic mode (seconds)
-  tolerance?: number;       // For Delta mode (percentage)
-  maxPoints?: number;       // Maximum points to return
-  includeQuality?: boolean; // Include quality information
+  interval?: number | undefined;        // For Cyclic mode (seconds)
+  tolerance?: number | undefined;       // For Delta mode (percentage)
+  maxPoints?: number | undefined;       // Maximum points to return
+  includeQuality?: boolean | undefined; // Include quality information
 }

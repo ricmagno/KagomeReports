@@ -18,7 +18,9 @@ import {
 } from '@/types/historian';
 
 export class DataRetrievalService {
-  private connection = getHistorianConnection();
+  private getConnection() {
+    return getHistorianConnection();
+  }
 
   /**
    * Get time-series data for a specific tag within a time range
@@ -39,7 +41,7 @@ export class DataRetrievalService {
       const query = this.buildTimeSeriesQuery(tagName, timeRange, options);
       const params = this.buildQueryParams(tagName, timeRange, options);
 
-      const result = await this.connection.executeQuery<any>(query, params);
+      const result = await this.getConnection().executeQuery<any>(query, params);
       
       // Transform raw data to TimeSeriesData format
       const timeSeriesData = result.recordset.map(row => this.transformToTimeSeriesData(row, tagName));
@@ -137,7 +139,7 @@ export class DataRetrievalService {
 
       query += ` ORDER BY TagName`;
 
-      const result = await this.connection.executeQuery<TagInfo>(query, params);
+      const result = await this.getConnection().executeQuery<TagInfo>(query, params);
       
       dbLogger.info(`Retrieved ${result.recordset.length} tags`);
       return result.recordset;
@@ -168,7 +170,7 @@ export class DataRetrievalService {
       const query = this.buildFilteredQuery(timeRange, filter, pageSize, cursor);
       const params = this.buildFilteredQueryParams(timeRange, filter, cursor);
 
-      const result = await this.connection.executeQuery<any>(query, params);
+      const result = await this.getConnection().executeQuery<any>(query, params);
       
       // Transform and paginate results
       const data = result.recordset.map(row => this.transformToTimeSeriesData(row));
@@ -177,7 +179,7 @@ export class DataRetrievalService {
 
       // Get total count for pagination info
       const countQuery = this.buildCountQuery(timeRange, filter);
-      const countResult = await this.connection.executeQuery<{ total: number }>(countQuery, params);
+      const countResult = await this.getConnection().executeQuery<{ total: number }>(countQuery, params);
       const totalCount = countResult.recordset[0]?.total || 0;
 
       return {

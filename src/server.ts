@@ -36,10 +36,9 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API routes (will be added in subsequent tasks)
-app.use('/api', (req, res) => {
-  res.json({ message: 'Kagome Reports API - Coming Soon' });
-});
+// API routes
+import apiRoutes from '@/routes';
+app.use('/api', apiRoutes);
 
 // Error handling middleware
 app.use(errorHandler);
@@ -57,12 +56,25 @@ app.use('*', (req, res) => {
  */
 async function startServer(): Promise<void> {
   try {
-    // Initialize database connection
-    await initializeDatabase();
+    // Try to initialize database connection (non-blocking for development)
+    try {
+      await initializeDatabase();
+      logger.info('Database connection initialized successfully');
+    } catch (error) {
+      logger.warn('Database connection failed, continuing without database:', error);
+      logger.info('API endpoints will return appropriate errors when database is needed');
+    }
     
     // Start HTTP server
     const server = app.listen(env.PORT, () => {
       logger.info(`Server started on port ${env.PORT} in ${env.NODE_ENV} mode`);
+      logger.info('Available endpoints:');
+      logger.info('  GET  /health - Health check');
+      logger.info('  GET  /api - API information');
+      logger.info('  GET  /api/health - Detailed health check');
+      logger.info('  GET  /api/data/tags - Get available tags');
+      logger.info('  GET  /api/data/:tagName - Get time-series data');
+      logger.info('  POST /api/data/query - Custom data queries');
     });
 
     // Graceful shutdown handling
