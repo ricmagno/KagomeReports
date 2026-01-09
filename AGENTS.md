@@ -21,13 +21,13 @@ kagome-reports/
 │   │   ├── logger.ts      # Logging configuration
 │   │   └── retryHandler.ts# Retry logic for database operations
 │   ├── services/          # Business logic services
-│   │   ├── dataFiltering.ts # Data filtering and transformation
-│   │   ├── dataRetrieval.ts # Time-series data retrieval from historian
-│   │   ├── historianConnection.ts # Database connection management
-│   │   └── statisticalAnalysis.ts # Statistical analysis and trend detection
-│   └── middleware/        # Express middleware
-│       ├── errorHandler.ts # Error handling
-│       └── requestLogger.ts # Request logging
+│   ├── dataFiltering.ts # Data filtering and transformation
+│   ├── dataRetrieval.ts # Time-series data retrieval from historian
+│   ├── historianConnection.ts # Database connection management
+│   └── statisticalAnalysis.ts # Statistical analysis and trend detection
+├── middleware/        # Express middleware
+│   ├── errorHandler.ts # Error handling
+│   └── requestLogger.ts # Request logging
 ├── tests/                 # Test files
 │   └── properties/        # Property-based tests
 ├── .gitignore             # Git ignore patterns
@@ -93,6 +93,11 @@ The project follows a modular architecture with services, configuration, and uti
 - **HistorianConnection**: Manages database connections with retry logic and connection pooling
 - **StatisticalAnalysisService**: Provides mathematical functions for trend analysis, statistics, and anomaly detection
 
+### Middleware and Error Handling
+
+- **errorHandler.ts**: Contains centralized error handling middleware, `createError` function for operational errors, and `asyncHandler` wrapper for route handlers
+- **requestLogger.ts**: Provides request/response logging with timing information
+
 ### Data Flow
 1. Environment variables are validated using Zod schemas in `environment.ts`
 2. Database connections are managed through the `database.ts` configuration and connection pool
@@ -108,6 +113,10 @@ The project follows a modular architecture with services, configuration, and uti
 - Interfaces and types start with capital letters (e.g., `TimeSeriesData`, `TagInfo`)
 - Constants are in UPPER_SNAKE_CASE (e.g., `QualityCode.Good`)
 - Variables and functions use camelCase (e.g., `validateTimeRange`, `getTimeSeriesData`)
+
+### Import Aliasing
+- Use `@/` prefix for imports from the src directory (e.g., `@/config/environment`, `@/types/historian`)
+- Specific aliases are configured in tsconfig.json: `@/*`, `@/types/*`, `@/utils/*`, `@/services/*`, `@/middleware/*`
 
 ### Database and SQL Patterns
 - SQL queries use proper parameter binding to prevent injection attacks
@@ -125,12 +134,19 @@ The project follows a modular architecture with services, configuration, and uti
 
 ### Test Types
 1. **Unit Tests**: Individual function or service testing in `tests/`
-2. **Property-Based Tests**: Using FastCheck for comprehensive validation in `tests/properties/`
+2. **Property-Based Tests**: Using FastCheck for comprehensive validation in `tests/properties/`, including:
+   - `data-filtering.property.test.ts`: Testing data filtering operations
+   - `database-authentication.property.test.ts`: Testing database connection scenarios
+   - `environment.property.test.ts`: Testing environment validation
+   - `error-handling.property.test.ts`: Testing error handling scenarios
+   - `statistical-calculations.property.test.ts`: Testing statistical functions
+   - `time-range-retrieval.property.test.ts`: Testing time range queries
 
 ### Test Configuration
 - Uses Jest as the test framework
 - TypeScript support through ts-jest
 - Property-based testing with FastCheck for robust validation
+- Test setup in `tests/setup.ts` with environment configuration
 
 ### Test Coverage Strategy
 - Tests cover all major services and their methods
