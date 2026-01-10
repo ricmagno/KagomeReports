@@ -6,6 +6,8 @@
 import { getHistorianConnection } from './historianConnection';
 import { dbLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
+import { CacheService } from './cacheService';
+import { createHash } from 'crypto';
 import { 
   TimeSeriesData, 
   TagInfo, 
@@ -18,8 +20,19 @@ import {
 } from '@/types/historian';
 
 export class DataRetrievalService {
+  private cacheService: CacheService | undefined;
+
+  constructor(cacheService?: CacheService) {
+    this.cacheService = cacheService;
+  }
+
   private getConnection() {
     return getHistorianConnection();
+  }
+
+  private generateQueryHash(query: string, params: Record<string, any>): string {
+    const queryString = query + JSON.stringify(params);
+    return createHash('md5').update(queryString).digest('hex');
   }
 
   /**
@@ -37,6 +50,20 @@ export class DataRetrievalService {
       this.validateTimeRange(timeRange);
       this.validateTagName(tagName);
 
+      // Check cache first if caching is enabled
+      if (this.cacheService) {
+        const cachedData = await this.cacheService.getCachedTimeSeriesData(
+          tagName, 
+          timeRange.startTime, 
+          timeRange.endTime
+        );
+        
+        if (cachedData) {
+          dbLogger.debug(`Cache hit for time-series data: ${tagName}`);
+          return cachedData;
+        }
+      }
+
       // Build query based on retrieval mode
       const query = this.buildTimeSeriesQuery(tagName, timeRange, options);
       const params = this.buildQueryParams(tagName, timeRange, options);
@@ -45,6 +72,16 @@ export class DataRetrievalService {
       
       // Transform raw data to TimeSeriesData format
       const timeSeriesData = result.recordset.map(row => this.transformToTimeSeriesData(row, tagName));
+
+      // Cache the result if caching is enabled
+      if (this.cacheService && timeSeriesData.length > 0) {
+        await this.cacheService.cacheTimeSeriesData(
+          tagName, 
+          timeRange.startTime, 
+          timeRange.endTime, 
+          timeSeriesData
+        );
+      }
 
       dbLogger.info(`Retrieved ${timeSeriesData.length} data points for tag ${tagName}`);
       return timeSeriesData;
@@ -112,6 +149,18 @@ export class DataRetrievalService {
     try {
       dbLogger.info('Retrieving tag list', { filter });
 
+      // Check cache first if caching is enabled
+      if (this.cacheService) {
+        const cachedTags = filter 
+          ? await this.cacheService.getCachedFilteredTags(filter)
+          : await this.cacheService.getCachedTagList();
+        
+        if (cachedTags) {
+          dbLogger.debug(`Cache hit for tag list${filter ? ` with filter: ${filter}` : ''}`);
+          return cachedTags;
+        }
+      }
+
       let query = `
         SELECT 
           TagName as name,
@@ -141,6 +190,15 @@ export class DataRetrievalService {
 
       const result = await this.getConnection().executeQuery<TagInfo>(query, params);
       
+      // Cache the result if caching is enabled
+      if (this.cacheService && result.recordset.length > 0) {
+        if (filter) {
+          await this.cacheService.cacheFilteredTags(filter, result.recordset);
+        } else {
+          await this.cacheService.cacheTagList(result.recordset);
+        }
+      }
+
       dbLogger.info(`Retrieved ${result.recordset.length} tags`);
       return result.recordset;
 

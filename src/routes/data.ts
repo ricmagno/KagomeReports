@@ -6,9 +6,8 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { dataRetrievalService } from '@/services/dataRetrieval';
+import { cacheManager } from '@/services/cacheManager';
 import { dataFilteringService } from '@/services/dataFiltering';
-import { statisticalAnalysisService } from '@/services/statisticalAnalysis';
 import { apiLogger } from '@/utils/logger';
 import { asyncHandler, createError } from '@/middleware/errorHandler';
 import { TimeRange, DataFilter, HistorianQueryOptions, RetrievalMode } from '@/types/historian';
@@ -54,6 +53,7 @@ router.get('/tags', asyncHandler(async (req: Request, res: Response) => {
   
   apiLogger.info('Retrieving tag list', { filter });
   
+  const dataRetrievalService = cacheManager.getDataRetrievalService();
   const tags = await dataRetrievalService.getTagList(filter as string);
   
   res.json({
@@ -94,13 +94,15 @@ router.get('/:tagName', asyncHandler(async (req: Request, res: Response) => {
   
   apiLogger.info('Retrieving time-series data', { tagName, timeRange, options });
   
+  const dataRetrievalService = cacheManager.getDataRetrievalService();
+  const statisticalAnalysisService = cacheManager.getStatisticalAnalysisService();
   const data = await dataRetrievalService.getTimeSeriesData(tagName, timeRange, options);
   
   // Calculate basic statistics if requested
   const includeStats = req.query.includeStats === 'true';
   let statistics;
   if (includeStats && data.length > 0) {
-    statistics = statisticalAnalysisService.calculateStatistics(data);
+    statistics = await statisticalAnalysisService.calculateStatistics(tagName, timeRange.startTime, timeRange.endTime, data);
   }
   
   res.json({
@@ -138,6 +140,8 @@ router.post('/query', asyncHandler(async (req: Request, res: Response) => {
   apiLogger.info('Executing custom data query', { timeRange, filter, options, pagination });
   
   // Execute filtered data query
+  const dataRetrievalService = cacheManager.getDataRetrievalService();
+  const statisticalAnalysisService = cacheManager.getStatisticalAnalysisService();
   const result = await dataRetrievalService.getFilteredData(
     timeRange,
     filter,
@@ -157,7 +161,9 @@ router.post('/query', asyncHandler(async (req: Request, res: Response) => {
   // Calculate statistics if requested
   let statistics;
   if (includeStatistics && processedData.length > 0) {
-    statistics = statisticalAnalysisService.calculateStatistics(processedData);
+    // Use first tag name for caching key, or generate a hash for multiple tags
+    const tagName = filter.tagNames?.[0] || 'filtered-query';
+    statistics = await statisticalAnalysisService.calculateStatistics(tagName, timeRange.startTime, timeRange.endTime, processedData);
   }
   
   res.json({
@@ -200,6 +206,8 @@ router.get('/:tagName/statistics', asyncHandler(async (req: Request, res: Respon
   apiLogger.info('Calculating statistics for tag', { tagName, timeRange });
   
   // Get data
+  const dataRetrievalService = cacheManager.getDataRetrievalService();
+  const statisticalAnalysisService = cacheManager.getStatisticalAnalysisService();
   const data = await dataRetrievalService.getTimeSeriesData(tagName, timeRange);
   
   if (data.length === 0) {
@@ -207,7 +215,7 @@ router.get('/:tagName/statistics', asyncHandler(async (req: Request, res: Respon
   }
   
   // Calculate comprehensive statistics
-  const basicStats = statisticalAnalysisService.calculateStatistics(data);
+  const basicStats = await statisticalAnalysisService.calculateStatistics(tagName, timeRange.startTime, timeRange.endTime, data);
   const qualityMetrics = statisticalAnalysisService.calculateDataQuality(data);
   
   // Calculate trend if enough data points
@@ -265,6 +273,8 @@ router.post('/multiple', asyncHandler(async (req: Request, res: Response) => {
   apiLogger.info('Retrieving multiple time-series data', { tagNames, timeRange: properTimeRange });
   
   // Get data for all tags
+  const dataRetrievalService = cacheManager.getDataRetrievalService();
+  const statisticalAnalysisService = cacheManager.getStatisticalAnalysisService();
   const results = await dataRetrievalService.getMultipleTimeSeriesData(tagNames, properTimeRange, options);
   
   // Calculate statistics for each tag if requested
@@ -280,7 +290,7 @@ router.post('/multiple', asyncHandler(async (req: Request, res: Response) => {
     const statistics: Record<string, any> = {};
     for (const [tagName, data] of Object.entries(results)) {
       if (data.length > 0) {
-        statistics[tagName] = statisticalAnalysisService.calculateStatistics(data);
+        statistics[tagName] = await statisticalAnalysisService.calculateStatistics(tagName, properTimeRange.startTime, properTimeRange.endTime, data);
       }
     }
     response.statistics = statistics;
@@ -316,6 +326,8 @@ router.get('/:tagName/trend', asyncHandler(async (req: Request, res: Response) =
   apiLogger.info('Calculating trend analysis for tag', { tagName, timeRange, windowSize });
   
   // Get data
+  const dataRetrievalService = cacheManager.getDataRetrievalService();
+  const statisticalAnalysisService = cacheManager.getStatisticalAnalysisService();
   const data = await dataRetrievalService.getTimeSeriesData(tagName, timeRange);
   
   if (data.length < 2) {

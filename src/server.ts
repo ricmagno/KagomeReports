@@ -7,6 +7,7 @@ import { initializeDatabase, closeDatabase } from '@/config/database';
 import { logger } from '@/utils/logger';
 import { errorHandler } from '@/middleware/errorHandler';
 import { requestLogger } from '@/middleware/requestLogger';
+import { cacheManager } from '@/services/cacheManager';
 
 // Create Express application
 const app = express();
@@ -27,12 +28,15 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(requestLogger);
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
+  const cacheHealth = await cacheManager.healthCheck();
+  
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version || '1.0.0',
     environment: env.NODE_ENV,
+    cache: cacheHealth,
   });
 });
 
@@ -56,6 +60,14 @@ app.use('*', (req, res) => {
  */
 async function startServer(): Promise<void> {
   try {
+    // Initialize cache manager first
+    try {
+      await cacheManager.initialize();
+      logger.info('Cache manager initialized successfully');
+    } catch (error) {
+      logger.warn('Cache manager initialization failed, continuing without cache:', error);
+    }
+
     // Try to initialize database connection (non-blocking for development)
     try {
       await initializeDatabase();
@@ -85,6 +97,9 @@ async function startServer(): Promise<void> {
         logger.info('HTTP server closed');
         
         try {
+          await cacheManager.shutdown();
+          logger.info('Cache manager shut down');
+          
           await closeDatabase();
           logger.info('Database connections closed');
           process.exit(0);

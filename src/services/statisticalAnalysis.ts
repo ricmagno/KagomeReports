@@ -6,13 +6,58 @@
 import { TimeSeriesData, StatisticsResult, TrendResult, AnomalyResult } from '@/types/historian';
 import { dbLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
+import { CacheService } from './cacheService';
+import { createHash } from 'crypto';
 
 export class StatisticalAnalysisService {
+  private cacheService: CacheService | undefined;
+
+  constructor(cacheService?: CacheService) {
+    this.cacheService = cacheService;
+  }
+
+  private generateDataHash(data: TimeSeriesData[]): string {
+    const dataString = JSON.stringify(data.map(d => ({ timestamp: d.timestamp, value: d.value })));
+    return createHash('md5').update(dataString).digest('hex');
+  }
   
   /**
-   * Calculate basic statistics for time-series data
+   * Calculate basic statistics for time-series data with caching
    */
-  calculateStatistics(data: TimeSeriesData[]): StatisticsResult {
+  async calculateStatistics(
+    tagName: string,
+    startTime: Date,
+    endTime: Date,
+    data: TimeSeriesData[]
+  ): Promise<StatisticsResult> {
+    try {
+      // Check cache first if caching is enabled
+      if (this.cacheService) {
+        const cachedStats = await this.cacheService.getCachedStatistics(tagName, startTime, endTime);
+        if (cachedStats) {
+          dbLogger.debug(`Cache hit for statistics: ${tagName}`);
+          return cachedStats;
+        }
+      }
+
+      const stats = this.calculateStatisticsSync(data);
+
+      // Cache the result if caching is enabled
+      if (this.cacheService) {
+        await this.cacheService.cacheStatistics(tagName, startTime, endTime, stats);
+      }
+
+      return stats;
+    } catch (error) {
+      dbLogger.error('Failed to calculate statistics:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Calculate basic statistics for time-series data (synchronous version)
+   */
+  calculateStatisticsSync(data: TimeSeriesData[]): StatisticsResult {
     if (data.length === 0) {
       throw createError('Cannot calculate statistics for empty dataset', 400);
     }
@@ -171,8 +216,8 @@ export class StatisticalAnalysisService {
       throw createError('Both datasets must contain data points', 400);
     }
 
-    const startStats = this.calculateStatistics(startData);
-    const endStats = this.calculateStatistics(endData);
+    const startStats = this.calculateStatisticsSync(startData);
+    const endStats = this.calculateStatisticsSync(endData);
 
     if (startStats.average === 0) {
       throw createError('Cannot calculate percentage change with zero starting value', 400);
@@ -201,7 +246,7 @@ export class StatisticalAnalysisService {
       throw createError('Threshold must be positive', 400);
     }
 
-    const stats = this.calculateStatistics(data);
+    const stats = this.calculateStatisticsSync(data);
     const anomalies: AnomalyResult[] = [];
 
     for (const point of data) {
@@ -255,8 +300,8 @@ export class StatisticalAnalysisService {
       const previousWindow = movingAverages.slice(i - windowSize * 2, i - windowSize);
 
       if (currentWindow.length === windowSize && previousWindow.length === windowSize) {
-        const currentStats = this.calculateStatistics(currentWindow);
-        const previousStats = this.calculateStatistics(previousWindow);
+        const currentStats = this.calculateStatisticsSync(currentWindow);
+        const previousStats = this.calculateStatisticsSync(previousWindow);
 
         // Detect significant changes in mean or variance
         const meanChange = Math.abs(currentStats.average - previousStats.average);

@@ -6,10 +6,19 @@
 
 import { createCanvas } from 'canvas';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
-import 'chartjs-adapter-date-fns';
 import { TimeSeriesData, StatisticsResult, TrendResult } from '@/types/historian';
 import { reportLogger } from '@/utils/logger';
 import { env } from '@/config/environment';
+
+// Register Chart.js components
+Chart.register(...registerables);
+
+// Try to register date adapter, but don't fail if it's not available
+try {
+  require('chartjs-adapter-date-fns');
+} catch (error) {
+  reportLogger.warn('Chart.js date adapter not available, date scaling may not work properly');
+}
 
 // Register Chart.js components
 Chart.register(...registerables);

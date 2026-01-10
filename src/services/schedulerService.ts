@@ -628,7 +628,7 @@ export class SchedulerService {
 
         // Calculate statistics if data exists
         if (tagData.length > 0) {
-          statistics[tagName] = statisticalAnalysisService.calculateStatistics(tagData);
+          statistics[tagName] = statisticalAnalysisService.calculateStatisticsSync(tagData);
           
           // Calculate trends if enough data points
           if (tagData.length >= 3) {

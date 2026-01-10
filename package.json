@@ -27,6 +27,7 @@
   "author": "Ricardo A",
   "license": "MIT",
   "dependencies": {
+    "@types/redis": "^4.0.10",
     "bcrypt": "^5.1.1",
     "canvas": "^3.2.0",
     "chart.js": "^4.5.1",
@@ -44,6 +45,7 @@
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.7",
     "pdfkit": "^0.14.0",
+    "redis": "^5.10.0",
     "sqlite3": "^5.1.6",
     "winston": "^3.11.0",
     "zod": "^3.22.4"

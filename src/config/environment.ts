@@ -35,6 +35,15 @@ const envSchema = z.object({
   CHART_WIDTH: z.coerce.number().int().min(400).max(2000).default(800),
   CHART_HEIGHT: z.coerce.number().int().min(300).max(1500).default(400),
 
+  // Performance and Caching Configuration
+  CACHE_ENABLED: z.string().default('false').transform(val => val.toLowerCase() === 'true'),
+  REDIS_HOST: z.string().default('localhost'),
+  REDIS_PORT: z.string().default('6379').transform(val => parseInt(val, 10)),
+  REDIS_PASSWORD: z.string().optional(),
+  REDIS_DB: z.string().default('0').transform(val => parseInt(val, 10)),
+  CACHE_KEY_PREFIX: z.string().default('historian-reports'),
+  CACHE_DEFAULT_TTL: z.string().default('300').transform(val => parseInt(val, 10)), // 5 minutes
+
   // Performance Configuration
   DB_POOL_MIN: z.coerce.number().int().min(1).max(50).default(2),
   DB_POOL_MAX: z.coerce.number().int().min(2).max(100).default(10),

@@ -10,6 +10,7 @@ import reportRoutes from './reports';
 import scheduleRoutes from './schedules';
 import authRoutes from './auth';
 import systemRoutes from './system';
+import cacheRoutes from './cache';
 
 const router = Router();
 
@@ -20,6 +21,7 @@ router.use('/reports', reportRoutes);
 router.use('/schedules', scheduleRoutes);
 router.use('/auth', authRoutes);
 router.use('/system', systemRoutes);
+router.use('/cache', cacheRoutes);
 
 // API info endpoint
 router.get('/', (req, res) => {
@@ -33,7 +35,8 @@ router.get('/', (req, res) => {
       reports: '/api/reports',
       schedules: '/api/schedules',
       auth: '/api/auth',
-      system: '/api/system'
+      system: '/api/system',
+      cache: '/api/cache'
     }
   });
 });

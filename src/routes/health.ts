@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { getHistorianConnection } from '@/services/historianConnection';
 import { testDatabaseConnection } from '@/config/database';
+import { cacheManager } from '@/services/cacheManager';
 import { apiLogger } from '@/utils/logger';
 import { asyncHandler } from '@/middleware/errorHandler';
 import { env } from '@/config/environment';
@@ -27,7 +28,8 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     memory: process.memoryUsage(),
     services: {
       database: 'unknown',
-      historian: 'unknown'
+      historian: 'unknown',
+      cache: 'unknown'
     }
   };
 
@@ -48,6 +50,15 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   } catch (error) {
     healthStatus.services.historian = 'unhealthy';
     apiLogger.warn('Historian connection health check failed:', error);
+  }
+
+  // Test cache connection
+  try {
+    const cacheHealth = await cacheManager.healthCheck();
+    healthStatus.services.cache = cacheHealth.cacheHealthy ? 'healthy' : 'unhealthy';
+  } catch (error) {
+    healthStatus.services.cache = 'unhealthy';
+    apiLogger.warn('Cache health check failed:', error);
   }
 
   // Determine overall status
@@ -86,6 +97,13 @@ router.get('/detailed', asyncHandler(async (req: Request, res: Response) => {
       historian: {
         status: 'unknown',
         connectionStatus: null as any,
+        lastCheck: null as string | null
+      },
+      cache: {
+        status: 'unknown',
+        enabled: false,
+        connected: false,
+        stats: null as any,
         lastCheck: null as string | null
       }
     }
@@ -127,6 +145,24 @@ router.get('/detailed', asyncHandler(async (req: Request, res: Response) => {
     detailedHealth.services.historian.status = 'unhealthy';
     detailedHealth.services.historian.lastCheck = new Date().toISOString();
     apiLogger.warn('Detailed historian health check failed:', error);
+  }
+
+  // Detailed cache check
+  try {
+    const cacheHealth = await cacheManager.healthCheck();
+    const cacheStats = await cacheManager.getCacheStats();
+    
+    detailedHealth.services.cache = {
+      status: cacheHealth.cacheHealthy ? 'healthy' : 'unhealthy',
+      enabled: cacheHealth.cacheEnabled,
+      connected: cacheHealth.cacheHealthy,
+      stats: cacheStats,
+      lastCheck: new Date().toISOString()
+    };
+  } catch (error) {
+    detailedHealth.services.cache.status = 'unhealthy';
+    detailedHealth.services.cache.lastCheck = new Date().toISOString();
+    apiLogger.warn('Detailed cache health check failed:', error);
   }
 
   // Determine overall status
@@ -238,6 +274,59 @@ router.get('/historian', asyncHandler(async (req: Request, res: Response) => {
 
   const statusCode = historianHealth.status === 'healthy' ? 200 : 503;
   res.status(statusCode).json(historianHealth);
+}));
+
+/**
+ * GET /api/health/cache
+ * Cache-specific health check
+ */
+router.get('/cache', asyncHandler(async (req: Request, res: Response) => {
+  const cacheHealth = {
+    status: 'unknown',
+    timestamp: new Date().toISOString(),
+    enabled: env.CACHE_ENABLED,
+    configuration: {
+      host: env.REDIS_HOST,
+      port: env.REDIS_PORT,
+      database: env.REDIS_DB,
+      keyPrefix: env.CACHE_KEY_PREFIX,
+      defaultTTL: env.CACHE_DEFAULT_TTL
+    },
+    test: {
+      successful: false,
+      duration: 0,
+      error: null as string | null
+    },
+    stats: null as any
+  };
+
+  const startTime = Date.now();
+  
+  try {
+    const healthCheck = await cacheManager.healthCheck();
+    const stats = await cacheManager.getCacheStats();
+    const duration = Date.now() - startTime;
+    
+    cacheHealth.status = healthCheck.cacheHealthy ? 'healthy' : 'unhealthy';
+    cacheHealth.test = {
+      successful: healthCheck.cacheHealthy,
+      duration,
+      error: null
+    };
+    cacheHealth.stats = stats;
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    
+    cacheHealth.status = 'unhealthy';
+    cacheHealth.test = {
+      successful: false,
+      duration,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+
+  const statusCode = cacheHealth.status === 'healthy' ? 200 : 503;
+  res.status(statusCode).json(cacheHealth);
 }));
 
 export default router;
