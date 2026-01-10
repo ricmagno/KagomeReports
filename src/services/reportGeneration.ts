@@ -17,7 +17,7 @@ import { chartGenerationService } from './chartGeneration';
 export interface ReportConfig {
   id: string;
   name: string;
-  description?: string;
+  description?: string | undefined;
   tags: string[];
   timeRange: {
     startTime: Date;
@@ -27,18 +27,18 @@ export interface ReportConfig {
   template: string;
   format: 'pdf' | 'docx';
   branding?: {
-    companyName?: string;
-    logo?: string;
+    companyName?: string | undefined;
+    logo?: string | undefined;
     colors?: {
-      primary?: string;
-      secondary?: string;
-    };
-  };
+      primary?: string | undefined;
+      secondary?: string | undefined;
+    } | undefined;
+  } | undefined;
   metadata?: {
-    author?: string;
-    subject?: string;
-    keywords?: string[];
-  };
+    author?: string | undefined;
+    subject?: string | undefined;
+    keywords?: string[] | undefined;
+  } | undefined;
 }
 
 export interface ReportData {

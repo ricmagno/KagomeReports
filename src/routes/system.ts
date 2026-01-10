@@ -6,7 +6,7 @@
 
 import { Router, Request, Response } from 'express';
 import { apiLogger } from '@/utils/logger';
-import { asyncHandler } from '@/middleware/errorHandler';
+import { asyncHandler, createError } from '@/middleware/errorHandler';
 import { env } from '@/config/environment';
 
 const router = Router();
@@ -337,4 +337,138 @@ function formatUptime(seconds: number): string {
   return parts.join(' ') || '0s';
 }
 
+/**
+ * GET /api/system/scheduler/health
+ * Get scheduler system health status
+ */
+router.get('/scheduler/health', asyncHandler(async (req: Request, res: Response) => {
+  apiLogger.info('Retrieving scheduler health status');
+
+  try {
+    const { schedulerService } = await import('@/services/schedulerService');
+    const healthStatus = await schedulerService.getSystemHealth();
+
+    res.json({
+      success: true,
+      data: healthStatus,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    apiLogger.error('Failed to retrieve scheduler health', { error });
+    throw createError('Failed to retrieve scheduler health', 500);
+  }
+}));
+
+/**
+ * GET /api/system/scheduler/metrics
+ * Get scheduler execution metrics
+ */
+router.get('/scheduler/metrics', asyncHandler(async (req: Request, res: Response) => {
+  const { scheduleId, timeRange } = req.query;
+  
+  apiLogger.info('Retrieving scheduler metrics', { scheduleId, timeRange });
+
+  try {
+    const { schedulerService } = await import('@/services/schedulerService');
+    
+    let timeRangeFilter;
+    if (timeRange) {
+      const range = timeRange as string;
+      const now = new Date();
+      
+      switch (range) {
+        case '1h':
+          timeRangeFilter = {
+            startTime: new Date(now.getTime() - 60 * 60 * 1000),
+            endTime: now
+          };
+          break;
+        case '24h':
+          timeRangeFilter = {
+            startTime: new Date(now.getTime() - 24 * 60 * 60 * 1000),
+            endTime: now
+          };
+          break;
+        case '7d':
+          timeRangeFilter = {
+            startTime: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+            endTime: now
+          };
+          break;
+        case '30d':
+          timeRangeFilter = {
+            startTime: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000),
+            endTime: now
+          };
+          break;
+      }
+    }
+
+    const [statistics, metrics] = await Promise.all([
+      schedulerService.getExecutionStatistics(timeRangeFilter),
+      scheduleId ? schedulerService.getExecutionMetrics(scheduleId as string) : null
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        statistics,
+        metrics: metrics || undefined,
+        timeRange: timeRange || 'all',
+        scheduleId: scheduleId || undefined
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    apiLogger.error('Failed to retrieve scheduler metrics', { error });
+    throw createError('Failed to retrieve scheduler metrics', 500);
+  }
+}));
+
+/**
+ * POST /api/system/scheduler/retry/:executionId
+ * Retry a failed execution
+ */
+router.post('/scheduler/retry/:executionId', asyncHandler(async (req: Request, res: Response) => {
+  const executionId = req.params.executionId as string;
+  
+  apiLogger.info('Retrying failed execution', { executionId });
+
+  try {
+    const { schedulerService } = await import('@/services/schedulerService');
+    await schedulerService.retryExecution(executionId);
+
+    res.json({
+      success: true,
+      message: 'Execution retry queued successfully',
+      executionId
+    });
+  } catch (error) {
+    apiLogger.error('Failed to retry execution', { error, executionId });
+    throw createError('Failed to retry execution', 500);
+  }
+}));
+
+/**
+ * POST /api/system/scheduler/cleanup
+ * Cleanup old execution records
+ */
+router.post('/scheduler/cleanup', asyncHandler(async (req: Request, res: Response) => {
+  const { olderThanDays = 30 } = req.body;
+  
+  apiLogger.info('Cleaning up old execution records', { olderThanDays });
+
+  try {
+    const { schedulerService } = await import('@/services/schedulerService');
+    await schedulerService.cleanupExecutions(Number(olderThanDays));
+
+    res.json({
+      success: true,
+      message: `Cleaned up execution records older than ${olderThanDays} days`
+    });
+  } catch (error) {
+    apiLogger.error('Failed to cleanup execution records', { error });
+    throw createError('Failed to cleanup execution records', 500);
+  }
+}));
 export default router;
