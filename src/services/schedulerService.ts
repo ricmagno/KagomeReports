@@ -13,6 +13,7 @@ import { ReportConfig, ReportData, reportGenerationService } from './reportGener
 import { dataRetrievalService } from './dataRetrieval';
 import { statisticalAnalysisService } from './statisticalAnalysis';
 import { emailService } from './emailService';
+import { dataFlowService } from './dataFlowService';
 
 export interface ScheduleConfig {
   id: string;
@@ -506,11 +507,20 @@ export class SchedulerService {
       // Update schedule status
       await this.updateScheduleStatus(scheduleId, 'running', startTime);
 
-      // Retrieve data for the report
-      const reportData = await this.prepareReportData(schedule.reportConfig);
+      // Execute end-to-end data flow for the report
+      const dataFlowResult = await dataFlowService.executeDataFlow({
+        reportConfig: schedule.reportConfig,
+        includeStatistics: true,
+        includeTrends: true,
+        includeAnomalies: false
+      });
 
-      // Generate the report
-      const reportResult = await reportGenerationService.generateReport(reportData);
+      if (!dataFlowResult.success) {
+        throw new Error(dataFlowResult.error || 'Data flow execution failed');
+      }
+
+      // Generate the report (already done in data flow)
+      const reportResult = dataFlowResult.reportResult!;
 
       if (!reportResult.success) {
         throw new Error(reportResult.error || 'Report generation failed');
@@ -620,48 +630,6 @@ export class SchedulerService {
         reportLogger.info('Execution queued for retry', { scheduleId, retryCount: queueItem.retryCount });
       }
     }
-  }
-
-  /**
-   * Prepare report data by retrieving from historian
-   */
-  private async prepareReportData(reportConfig: ReportConfig): Promise<ReportData> {
-    const data: Record<string, any[]> = {};
-    const statistics: Record<string, any> = {};
-    const trends: Record<string, any> = {};
-
-    // Retrieve data for each tag
-    for (const tagName of reportConfig.tags) {
-      try {
-        const tagData = await dataRetrievalService.getTimeSeriesData(
-          tagName,
-          { startTime: reportConfig.timeRange.startTime, endTime: reportConfig.timeRange.endTime }
-        );
-
-        data[tagName] = tagData;
-
-        // Calculate statistics if data exists
-        if (tagData.length > 0) {
-          statistics[tagName] = statisticalAnalysisService.calculateStatisticsSync(tagData);
-          
-          // Calculate trends if enough data points
-          if (tagData.length >= 3) {
-            trends[tagName] = statisticalAnalysisService.calculateMovingAverage(tagData, 3);
-          }
-        }
-      } catch (error) {
-        reportLogger.warn('Failed to retrieve data for tag', { tagName, error });
-        data[tagName] = [];
-      }
-    }
-
-    return {
-      config: reportConfig,
-      data,
-      statistics: Object.keys(statistics).length > 0 ? statistics : undefined,
-      trends: Object.keys(trends).length > 0 ? trends : undefined,
-      generatedAt: new Date()
-    } as ReportData;
   }
 
   /**

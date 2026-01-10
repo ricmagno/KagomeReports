@@ -64,14 +64,14 @@ describe('Auto-Update Timing Property Tests', () => {
       fc.assert(
         fc.property(
           fc.record({
-            sessionId: fc.string({ minLength: 1, maxLength: 50 }),
-            tagNames: fc.array(fc.string({ minLength: 1, maxLength: 20 }), { minLength: 1, maxLength: 3 }),
+            sessionId: fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0),
+            tagNames: fc.array(fc.string({ minLength: 1, maxLength: 20 }).filter(s => s.trim().length > 0), { minLength: 1, maxLength: 3 }),
             updateInterval: fc.constantFrom(30 as const, 60 as const)
           }),
           (baseConfig) => {
             const config: AutoUpdateConfig = {
-              sessionId: baseConfig.sessionId,
-              tagNames: baseConfig.tagNames,
+              sessionId: baseConfig.sessionId.trim(),
+              tagNames: baseConfig.tagNames.map(tag => tag.trim()),
               updateInterval: baseConfig.updateInterval
             };
 

@@ -55,7 +55,7 @@ describe('Property 4: Statistical Calculation Correctness', () => {
   test('should calculate basic statistics correctly', () => {
     fc.assert(
       fc.property(nonEmptyTimeSeriesDataGen, (data) => {
-        const stats = statisticalAnalysisService.calculateStatistics(data);
+        const stats = statisticalAnalysisService.calculateStatisticsSync(data);
         const values = data.map(point => point.value).filter(v => isFinite(v) && !isNaN(v));
 
         if (values.length === 0) return; // Skip if no valid values
@@ -209,8 +209,8 @@ describe('Property 4: Statistical Calculation Correctness', () => {
           );
 
           // Manual calculation for verification
-          const startStats = statisticalAnalysisService.calculateStatistics(filteredStartData);
-          const endStats = statisticalAnalysisService.calculateStatistics(filteredEndData);
+          const startStats = statisticalAnalysisService.calculateStatisticsSync(filteredStartData);
+          const endStats = statisticalAnalysisService.calculateStatisticsSync(filteredEndData);
           const expectedChange = ((endStats.average - startStats.average) / startStats.average) * 100;
 
           expect(Math.abs(percentageChange - expectedChange)).toBeLessThan(1e-10);
@@ -234,7 +234,7 @@ describe('Property 4: Statistical Calculation Correctness', () => {
         fc.float({ min: 0.5, max: 5.0 }),
         (data, threshold) => {
           const anomalies = statisticalAnalysisService.detectAnomalies(data, threshold);
-          const stats = statisticalAnalysisService.calculateStatistics(data);
+          const stats = statisticalAnalysisService.calculateStatisticsSync(data);
 
           // Verify each detected anomaly exceeds the threshold
           for (const anomaly of anomalies) {
@@ -356,7 +356,7 @@ describe('Property 4: Statistical Calculation Correctness', () => {
       fc.property(edgeCaseGen, (data) => {
         // Empty datasets should throw appropriate errors
         if (data.length === 0) {
-          expect(() => statisticalAnalysisService.calculateStatistics(data)).toThrow();
+          expect(() => statisticalAnalysisService.calculateStatisticsSync(data)).toThrow();
           expect(() => statisticalAnalysisService.calculateTrendLine(data)).toThrow();
           expect(() => statisticalAnalysisService.detectAnomalies(data)).toThrow();
           return;
@@ -371,12 +371,12 @@ describe('Property 4: Statistical Calculation Correctness', () => {
         // Datasets with only invalid values should throw appropriate errors
         const validValues = data.filter(point => isFinite(point.value) && !isNaN(point.value));
         if (validValues.length === 0) {
-          expect(() => statisticalAnalysisService.calculateStatistics(data)).toThrow();
+          expect(() => statisticalAnalysisService.calculateStatisticsSync(data)).toThrow();
           return;
         }
 
         // Valid datasets should not throw errors
-        expect(() => statisticalAnalysisService.calculateStatistics(data)).not.toThrow();
+        expect(() => statisticalAnalysisService.calculateStatisticsSync(data)).not.toThrow();
         
         if (validValues.length >= 2) {
           expect(() => statisticalAnalysisService.calculateTrendLine(data)).not.toThrow();
@@ -397,8 +397,8 @@ describe('Property 4: Statistical Calculation Correctness', () => {
     fc.assert(
       fc.property(nonEmptyTimeSeriesDataGen, (data) => {
         // Calculate statistics twice
-        const stats1 = statisticalAnalysisService.calculateStatistics(data);
-        const stats2 = statisticalAnalysisService.calculateStatistics(data);
+        const stats1 = statisticalAnalysisService.calculateStatisticsSync(data);
+        const stats2 = statisticalAnalysisService.calculateStatisticsSync(data);
 
         // Results should be identical
         expect(stats1.min).toBe(stats2.min);

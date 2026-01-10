@@ -9,6 +9,10 @@ import { z } from 'zod';
 import { apiLogger } from '@/utils/logger';
 import { asyncHandler, createError } from '@/middleware/errorHandler';
 import { authenticateToken, requirePermission } from '@/middleware/auth';
+import { dataFlowService } from '@/services/dataFlowService';
+import { ReportConfig } from '@/services/reportGeneration';
+import path from 'path';
+import fs from 'fs';
 
 const router = Router();
 
@@ -31,7 +35,23 @@ const reportConfigSchema = z.object({
       max: z.number().optional()
     }).optional()
   }).optional(),
-  format: z.enum(['pdf', 'docx']).default('pdf')
+  format: z.enum(['pdf', 'docx']).default('pdf'),
+  branding: z.object({
+    companyName: z.string().optional(),
+    logo: z.string().optional(),
+    colors: z.object({
+      primary: z.string().optional(),
+      secondary: z.string().optional()
+    }).optional()
+  }).optional(),
+  metadata: z.object({
+    author: z.string().optional(),
+    subject: z.string().optional(),
+    keywords: z.array(z.string()).optional()
+  }).optional(),
+  includeStatistics: z.boolean().default(true),
+  includeTrends: z.boolean().default(true),
+  includeAnomalies: z.boolean().default(false)
 });
 
 const scheduleConfigSchema = z.object({
@@ -45,36 +65,108 @@ const scheduleConfigSchema = z.object({
 
 /**
  * POST /api/reports/generate
- * Generate a report on-demand
+ * Generate a report on-demand using end-to-end data flow
  */
 router.post('/generate', authenticateToken, requirePermission('reports', 'write'), asyncHandler(async (req: Request, res: Response) => {
   const configResult = reportConfigSchema.safeParse(req.body);
   if (!configResult.success) {
+    apiLogger.error('Invalid report configuration', { errors: configResult.error.errors });
     throw createError('Invalid report configuration', 400);
   }
 
   const config = configResult.data;
+  const reportId = `report_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
-  apiLogger.info('Generating report on-demand', { config });
+  // Create full report config
+  const reportConfig: ReportConfig = {
+    id: reportId,
+    name: config.name,
+    description: config.description,
+    tags: config.tags,
+    timeRange: config.timeRange,
+    chartTypes: config.chartTypes as any[],
+    template: config.template,
+    format: config.format,
+    branding: config.branding,
+    metadata: config.metadata
+  };
 
-  // TODO: Implement actual report generation
-  // For now, return a mock response
-  const reportId = `report_${Date.now()}`;
-  
-  res.json({
-    success: true,
+  apiLogger.info('Starting end-to-end report generation', { 
     reportId,
-    status: 'generated',
-    message: 'Report generation completed successfully',
-    config,
-    generatedAt: new Date().toISOString(),
-    downloadUrl: `/api/reports/${reportId}/download`,
-    metadata: {
-      pages: 5,
-      fileSize: '2.3 MB',
-      format: config.format
-    }
+    tags: config.tags,
+    timeRange: config.timeRange
   });
+
+  try {
+    // Validate data flow configuration
+    const validation = dataFlowService.validateDataFlowConfig({
+      reportConfig,
+      includeStatistics: config.includeStatistics,
+      includeTrends: config.includeTrends,
+      includeAnomalies: config.includeAnomalies
+    });
+
+    if (!validation.valid) {
+      apiLogger.error('Data flow configuration validation failed', { 
+        reportId,
+        errors: validation.errors 
+      });
+      throw createError(`Configuration validation failed: ${validation.errors.join(', ')}`, 400);
+    }
+
+    // Execute end-to-end data flow
+    const result = await dataFlowService.executeDataFlow({
+      reportConfig,
+      includeStatistics: config.includeStatistics,
+      includeTrends: config.includeTrends,
+      includeAnomalies: config.includeAnomalies
+    });
+
+    if (!result.success) {
+      apiLogger.error('Report generation failed', { 
+        reportId,
+        error: result.error,
+        dataMetrics: result.dataMetrics
+      });
+      throw createError(result.error || 'Report generation failed', 500);
+    }
+
+    apiLogger.info('Report generation completed successfully', {
+      reportId,
+      dataMetrics: result.dataMetrics,
+      reportMetadata: result.reportResult?.metadata
+    });
+
+    res.json({
+      success: true,
+      reportId,
+      status: 'generated',
+      message: 'Report generation completed successfully',
+      config: reportConfig,
+      generatedAt: new Date().toISOString(),
+      downloadUrl: `/api/reports/${reportId}/download`,
+      metadata: result.reportResult?.metadata,
+      dataMetrics: result.dataMetrics
+    });
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    apiLogger.error('Report generation failed with exception', {
+      reportId,
+      error: errorMessage
+    });
+
+    // Return error response
+    res.status(500).json({
+      success: false,
+      reportId,
+      status: 'failed',
+      message: 'Report generation failed',
+      error: errorMessage,
+      generatedAt: new Date().toISOString()
+    });
+  }
 }));
 
 /**
@@ -294,13 +386,75 @@ router.get('/:id/download', asyncHandler(async (req: Request, res: Response) => 
   
   apiLogger.info('Downloading report', { id });
 
-  // TODO: Implement actual file download
-  // For now, return mock response
-  res.json({
-    success: false,
-    message: 'Report download not yet implemented',
-    reportId: id
-  });
+  try {
+    // Look for the report file in the reports directory
+    const reportsDir = process.env.REPORTS_DIR || './reports';
+    const files = fs.readdirSync(reportsDir);
+    
+    // Find file that starts with the report ID
+    const reportFile = files.find(file => file.startsWith(id));
+    
+    if (!reportFile) {
+      apiLogger.warn('Report file not found', { reportId: id });
+      throw createError('Report not found', 404);
+    }
+
+    const filePath = path.join(reportsDir, reportFile);
+    
+    // Check if file exists and is readable
+    if (!fs.existsSync(filePath)) {
+      apiLogger.warn('Report file does not exist', { reportId: id, filePath });
+      throw createError('Report file not found', 404);
+    }
+
+    const stats = fs.statSync(filePath);
+    const fileExtension = path.extname(reportFile).toLowerCase();
+    
+    // Set appropriate content type
+    let contentType = 'application/octet-stream';
+    if (fileExtension === '.pdf') {
+      contentType = 'application/pdf';
+    } else if (fileExtension === '.docx') {
+      contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    }
+
+    // Set response headers
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Length', stats.size);
+    res.setHeader('Content-Disposition', `attachment; filename="${reportFile}"`);
+    res.setHeader('Cache-Control', 'no-cache');
+
+    // Stream the file
+    const fileStream = fs.createReadStream(filePath);
+    
+    fileStream.on('error', (error) => {
+      apiLogger.error('Error streaming report file', { reportId: id, error });
+      if (!res.headersSent) {
+        res.status(500).json({
+          success: false,
+          message: 'Error downloading report',
+          reportId: id
+        });
+      }
+    });
+
+    fileStream.pipe(res);
+
+    apiLogger.info('Report download started', { 
+      reportId: id, 
+      fileName: reportFile,
+      fileSize: stats.size,
+      contentType
+    });
+
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('not found')) {
+      throw error;
+    }
+    
+    apiLogger.error('Failed to download report', { reportId: id, error });
+    throw createError('Failed to download report', 500);
+  }
 }));
 
 export default router;

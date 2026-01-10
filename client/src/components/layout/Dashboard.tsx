@@ -24,6 +24,8 @@ import { ReportManager } from '../reports/ReportManager';
 import { ReportCategories, Category, TagInfo } from '../reports/ReportCategories';
 import { useVersionControl } from '../../hooks/useVersionControl';
 import { apiService } from '../../services/api';
+import { useApi, usePaginatedApi } from '../../hooks/useApi';
+import { useRealTimeData, useDataRefresh } from '../../hooks/useRealTimeData';
 import { cn } from '../../utils/cn';
 
 interface DashboardProps {
@@ -52,6 +54,56 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<TagInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [realTimeEnabled, setRealTimeEnabled] = useState(false);
+
+  // API hooks for data management
+  const {
+    data: reportsData,
+    loading: reportsLoading,
+    error: reportsError,
+    execute: loadReportsData,
+  } = useApi(apiService.getReports);
+
+  const {
+    data: tagsData,
+    loading: tagsLoading,
+    execute: loadTagsData,
+  } = useApi(apiService.getTags);
+
+  const {
+    data: healthData,
+    loading: healthLoading,
+    execute: checkHealth,
+  } = useApi(apiService.checkHealth, {
+    immediate: true,
+    onError: (error) => {
+      console.warn('Health check failed:', error.message);
+    },
+  });
+
+  // Real-time data hook
+  const realTimeData = useRealTimeData({
+    tags: reportConfig.tags || [],
+    timeRange: reportConfig.timeRange || {
+      startTime: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      endTime: new Date(),
+    },
+    interval: 30, // 30 seconds
+    enabled: realTimeEnabled && (reportConfig.tags?.length || 0) > 0,
+  });
+
+  // Data refresh hook for periodic updates
+  const dataRefresh = useDataRefresh(
+    async () => {
+      await Promise.all([
+        loadReportsData(),
+        loadTagsData(),
+        checkHealth(),
+      ]);
+    },
+    60000, // 1 minute
+    { enabled: !realTimeEnabled }
+  );
 
   // Version control hook
   const versionControl = useVersionControl({
@@ -75,17 +127,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
   // Load initial data
   useEffect(() => {
-    loadReports();
+    loadReportsData();
     loadCategories();
-    loadTags();
-  }, []);
+    loadTagsData();
+  }, [loadReportsData, loadTagsData]);
+
+  // Update tags from API data
+  useEffect(() => {
+    if (tagsData?.data) {
+      // Map API TagInfo to component TagInfo format
+      const mappedTags = tagsData.data.map(tag => ({
+        name: tag.name,
+        count: 0, // Default count since API doesn't provide this
+        category: undefined, // API doesn't provide category
+      }));
+      setTags(mappedTags);
+    }
+  }, [tagsData]);
 
   const loadReports = async () => {
     try {
       setIsLoading(true);
-      // In a real implementation, this would load reports from the API
-      // const response = await apiService.getReports();
-      // setSavedReports(response.data);
+      await loadReportsData();
     } catch (error) {
       console.error('Failed to load reports:', error);
     } finally {
@@ -130,18 +193,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
   const loadTags = async () => {
     try {
-      // Mock tags for now - in real implementation, this would be an API call
-      const mockTags: TagInfo[] = [
-        { name: 'daily', count: 4, category: 'Production' },
-        { name: 'weekly', count: 3, category: 'Quality' },
-        { name: 'monthly', count: 2, category: 'Analysis' },
-        { name: 'production', count: 5 },
-        { name: 'quality', count: 3 },
-        { name: 'trends', count: 2 },
-        { name: 'metrics', count: 6 },
-        { name: 'analysis', count: 4 }
-      ];
-      setTags(mockTags);
+      await loadTagsData();
     } catch (error) {
       console.error('Failed to load tags:', error);
     }
@@ -214,12 +266,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
   const handleSaveReport = async (config: ReportConfig) => {
     try {
+      setIsLoading(true);
       await apiService.saveReport(config);
-      await loadReports();
+      await loadReportsData();
       alert('Report saved successfully!');
     } catch (error) {
       console.error('Failed to save report:', error);
       alert('Failed to save report. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -230,12 +285,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
   const handleDeleteReport = async (reportId: string) => {
     try {
+      setIsLoading(true);
       await apiService.deleteReport(reportId);
-      await loadReports();
+      await loadReportsData();
       alert('Report deleted successfully!');
     } catch (error) {
       console.error('Failed to delete report:', error);
       alert('Failed to delete report. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -345,6 +403,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 <Settings className="h-4 w-4 mr-2" />
                 Settings
               </Button>
+              
+              {/* System Health Indicator */}
+              <div className="flex items-center space-x-2">
+                <div className={cn(
+                  "w-2 h-2 rounded-full",
+                  healthData?.data?.status === 'healthy' ? "bg-green-500" : 
+                  healthLoading ? "bg-yellow-500" : "bg-red-500"
+                )} />
+                <span className="text-sm text-gray-600">
+                  {healthLoading ? 'Checking...' : 
+                   healthData?.data?.status === 'healthy' ? 'System Healthy' : 'System Issues'}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -392,6 +463,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               
               {/* Version control indicators */}
               <div className="flex items-center space-x-4">
+                {/* Real-time data indicator */}
+                {realTimeData.isActive && (
+                  <div className="flex items-center space-x-2 text-green-600">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                    <span className="text-sm">
+                      Live Data ({realTimeData.updateCount} updates)
+                    </span>
+                  </div>
+                )}
+                
+                {/* Data refresh indicator */}
+                {dataRefresh.isRefreshing && (
+                  <div className="flex items-center space-x-2 text-blue-600">
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-sm">Refreshing...</span>
+                  </div>
+                )}
+                
                 {versionControl.hasUnsavedChanges && (
                   <div className="flex items-center space-x-2 text-warning">
                     <AlertCircle className="h-4 w-4" />
@@ -535,6 +624,53 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                             ))}
                           </div>
                         </div>
+                        
+                        {/* Real-time data controls */}
+                        <div className="border-t pt-4">
+                          <div className="space-y-3">
+                            <label className="flex items-center">
+                              <input
+                                type="checkbox"
+                                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                checked={realTimeEnabled}
+                                onChange={(e) => setRealTimeEnabled(e.target.checked)}
+                                disabled={!reportConfig.tags?.length}
+                              />
+                              <span className="ml-2 text-sm text-gray-700">
+                                Enable Real-time Updates
+                              </span>
+                            </label>
+                            
+                            {realTimeEnabled && (
+                              <div className="ml-6 space-y-2 text-sm text-gray-600">
+                                <div className="flex items-center justify-between">
+                                  <span>Status:</span>
+                                  <span className={cn(
+                                    "font-medium",
+                                    realTimeData.connected ? "text-green-600" : 
+                                    realTimeData.loading ? "text-yellow-600" : "text-red-600"
+                                  )}>
+                                    {realTimeData.loading ? 'Connecting...' :
+                                     realTimeData.connected ? 'Connected' : 'Disconnected'}
+                                  </span>
+                                </div>
+                                
+                                {realTimeData.lastUpdate && (
+                                  <div className="flex items-center justify-between">
+                                    <span>Last Update:</span>
+                                    <span>{realTimeData.lastUpdate.toLocaleTimeString()}</span>
+                                  </div>
+                                )}
+                                
+                                {realTimeData.error && (
+                                  <div className="text-red-600 text-xs">
+                                    Error: {realTimeData.error}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </CardContent>
                     </Card>
                   </>
@@ -562,6 +698,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   Save Version
                 </Button>
               )}
+              
+              {/* Manual refresh button */}
+              <Button
+                variant="outline"
+                onClick={dataRefresh.forceRefresh}
+                disabled={dataRefresh.isRefreshing || realTimeEnabled}
+                loading={dataRefresh.isRefreshing}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Refresh Data
+              </Button>
+              
               <Button
                 onClick={handleGenerateReport}
                 disabled={!reportConfig.name || !reportConfig.tags?.length || isLoading}
@@ -605,11 +753,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   Manage your saved report configurations and generated reports.
                 </p>
               </div>
-              <Button onClick={() => setActiveTab('create')}>
-                <Plus className="h-4 w-4 mr-2" />
-                New Report
-              </Button>
+              <div className="flex items-center space-x-4">
+                {reportsLoading && (
+                  <div className="flex items-center space-x-2 text-blue-600">
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-sm">Loading reports...</span>
+                  </div>
+                )}
+                <Button onClick={() => setActiveTab('create')}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  New Report
+                </Button>
+              </div>
             </div>
+
+            {reportsError && (
+              <Card className="border-red-200 bg-red-50">
+                <CardContent className="p-4">
+                  <div className="flex items-center space-x-3">
+                    <AlertCircle className="h-5 w-5 text-red-500" />
+                    <div>
+                      <h4 className="font-medium text-red-800">Failed to load reports</h4>
+                      <p className="text-sm text-red-700">{reportsError.message}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <ReportManager
               currentConfig={reportConfig as ReportConfig}
@@ -646,6 +816,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   Organize your reports with categories and tags for better management.
                 </p>
               </div>
+              {tagsLoading && (
+                <div className="flex items-center space-x-2 text-blue-600">
+                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-sm">Loading tags...</span>
+                </div>
+              )}
             </div>
 
             <ReportCategories
