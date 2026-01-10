@@ -11,6 +11,7 @@ import scheduleRoutes from './schedules';
 import authRoutes from './auth';
 import systemRoutes from './system';
 import cacheRoutes from './cache';
+import progressRoutes from './progress';
 
 const router = Router();
 
@@ -22,6 +23,7 @@ router.use('/schedules', scheduleRoutes);
 router.use('/auth', authRoutes);
 router.use('/system', systemRoutes);
 router.use('/cache', cacheRoutes);
+router.use('/progress', progressRoutes);
 
 // API info endpoint
 router.get('/', (req, res) => {

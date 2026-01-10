@@ -78,7 +78,7 @@ export class HistorianConnection {
           await this.connect();
         }
 
-        dbLogger.debug('Executing query:', { query, params });
+        dbLogger.debug('Executing query:', { query: this.sanitizeQueryForLogging(query), params });
         
         const request = this.pool.request();
         
@@ -93,9 +93,13 @@ export class HistorianConnection {
         const result = await request.query<T>(query);
         const duration = Date.now() - startTime;
 
+        // Log performance metrics
+        this.logQueryPerformance(query, duration, result.recordset.length);
+
         dbLogger.info('Query executed successfully', {
           duration: `${duration}ms`,
-          recordCount: result.recordset.length
+          recordCount: result.recordset.length,
+          performanceCategory: this.categorizeQueryPerformance(duration)
         });
 
         return result;
@@ -103,7 +107,7 @@ export class HistorianConnection {
       RetryHandler.createDatabaseRetryOptions({ maxAttempts: 2 }),
       'database-query'
     ).catch(error => {
-      dbLogger.error('Query execution failed:', { query, error });
+      dbLogger.error('Query execution failed:', { query: this.sanitizeQueryForLogging(query), error });
       
       // Handle specific database errors
       if (error instanceof Error) {
@@ -148,6 +152,67 @@ export class HistorianConnection {
    */
   resetConnectionAttempts(): void {
     this.connectionAttempts = 0;
+  }
+
+  /**
+   * Sanitize query for logging (remove sensitive data)
+   */
+  private sanitizeQueryForLogging(query: string): string {
+    // Remove potential sensitive data from query for logging
+    return query.replace(/(@\w+\s*=\s*)'[^']*'/g, "$1'***'");
+  }
+
+  /**
+   * Log query performance metrics
+   */
+  private logQueryPerformance(query: string, duration: number, recordCount: number): void {
+    const queryType = this.getQueryType(query);
+    const performanceMetrics = {
+      queryType,
+      duration,
+      recordCount,
+      recordsPerSecond: recordCount > 0 ? Math.round(recordCount / (duration / 1000)) : 0,
+      timestamp: new Date().toISOString()
+    };
+
+    // Log slow queries for optimization
+    if (duration > 5000) { // Queries taking more than 5 seconds
+      dbLogger.warn('Slow query detected', {
+        ...performanceMetrics,
+        query: this.sanitizeQueryForLogging(query)
+      });
+    }
+
+    // Log performance metrics for analysis
+    dbLogger.debug('Query performance metrics', performanceMetrics);
+  }
+
+  /**
+   * Categorize query performance
+   */
+  private categorizeQueryPerformance(duration: number): string {
+    if (duration < 100) return 'excellent';
+    if (duration < 500) return 'good';
+    if (duration < 2000) return 'acceptable';
+    if (duration < 5000) return 'slow';
+    return 'very-slow';
+  }
+
+  /**
+   * Get query type for performance categorization
+   */
+  private getQueryType(query: string): string {
+    const normalizedQuery = query.trim().toLowerCase();
+    
+    if (normalizedQuery.startsWith('select count(')) return 'count';
+    if (normalizedQuery.startsWith('select') && normalizedQuery.includes('history')) return 'time-series';
+    if (normalizedQuery.startsWith('select') && normalizedQuery.includes('tag')) return 'metadata';
+    if (normalizedQuery.startsWith('select')) return 'select';
+    if (normalizedQuery.startsWith('insert')) return 'insert';
+    if (normalizedQuery.startsWith('update')) return 'update';
+    if (normalizedQuery.startsWith('delete')) return 'delete';
+    
+    return 'other';
   }
 }
 

@@ -7,7 +7,10 @@ import { getHistorianConnection } from './historianConnection';
 import { dbLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
 import { CacheService } from './cacheService';
+import { progressTracker } from '@/middleware/progressTracker';
 import { createHash } from 'crypto';
+import { Readable, Transform } from 'stream';
+import { pipeline } from 'stream/promises';
 import { 
   TimeSeriesData, 
   TagInfo, 
@@ -21,6 +24,8 @@ import {
 
 export class DataRetrievalService {
   private cacheService: CacheService | undefined;
+  private readonly STREAM_BATCH_SIZE = 1000;
+  private readonly LARGE_DATASET_THRESHOLD = 10000;
 
   constructor(cacheService?: CacheService) {
     this.cacheService = cacheService;
@@ -41,10 +46,16 @@ export class DataRetrievalService {
   async getTimeSeriesData(
     tagName: string, 
     timeRange: TimeRange, 
-    options?: HistorianQueryOptions
+    options?: HistorianQueryOptions,
+    operationId?: string
   ): Promise<TimeSeriesData[]> {
     try {
       dbLogger.info('Retrieving time-series data', { tagName, timeRange, options });
+
+      // Update progress if tracking
+      if (operationId) {
+        progressTracker.updateProgress(operationId, 'connecting', 5, 'Connecting to database');
+      }
 
       // Validate inputs
       this.validateTimeRange(timeRange);
@@ -60,21 +71,43 @@ export class DataRetrievalService {
         
         if (cachedData) {
           dbLogger.debug(`Cache hit for time-series data: ${tagName}`);
+          if (operationId) {
+            progressTracker.completeOperation(operationId, 'Data retrieved from cache');
+          }
           return cachedData;
         }
       }
 
-      // Build query based on retrieval mode
-      const query = this.buildTimeSeriesQuery(tagName, timeRange, options);
+      // Estimate data size and use streaming for large datasets
+      const estimatedSize = await this.estimateDataSize(tagName, timeRange);
+      
+      if (estimatedSize > this.LARGE_DATASET_THRESHOLD) {
+        dbLogger.info(`Large dataset detected (${estimatedSize} points), using streaming approach`);
+        return this.getTimeSeriesDataStreaming(tagName, timeRange, options, operationId);
+      }
+
+      if (operationId) {
+        progressTracker.updateProgress(operationId, 'querying', 20, 'Executing optimized query');
+      }
+
+      // Build optimized query
+      const query = this.buildOptimizedTimeSeriesQuery(tagName, timeRange, options);
       const params = this.buildQueryParams(tagName, timeRange, options);
 
       const result = await this.getConnection().executeQuery<any>(query, params);
       
+      if (operationId) {
+        progressTracker.updateProgress(operationId, 'processing', 70, 'Processing query results');
+      }
+
       // Transform raw data to TimeSeriesData format
       const timeSeriesData = result.recordset.map(row => this.transformToTimeSeriesData(row, tagName));
 
       // Cache the result if caching is enabled
       if (this.cacheService && timeSeriesData.length > 0) {
+        if (operationId) {
+          progressTracker.updateProgress(operationId, 'caching', 90, 'Caching results');
+        }
         await this.cacheService.cacheTimeSeriesData(
           tagName, 
           timeRange.startTime, 
@@ -83,22 +116,236 @@ export class DataRetrievalService {
         );
       }
 
+      if (operationId) {
+        progressTracker.completeOperation(operationId, `Retrieved ${timeSeriesData.length} data points`);
+      }
+
       dbLogger.info(`Retrieved ${timeSeriesData.length} data points for tag ${tagName}`);
       return timeSeriesData;
 
     } catch (error) {
+      if (operationId) {
+        progressTracker.failOperation(operationId, error instanceof Error ? error.message : 'Unknown error');
+      }
       dbLogger.error('Failed to retrieve time-series data:', { tagName, timeRange, error });
       throw error;
     }
   }
 
   /**
-   * Get multiple time-series data for multiple tags
+   * Get time-series data using streaming for large datasets
    */
+  private async getTimeSeriesDataStreaming(
+    tagName: string, 
+    timeRange: TimeRange, 
+    options?: HistorianQueryOptions,
+    operationId?: string
+  ): Promise<TimeSeriesData[]> {
+    const results: TimeSeriesData[] = [];
+    let processedCount = 0;
+    let totalEstimated = await this.estimateDataSize(tagName, timeRange);
+
+    // Create streaming query with pagination
+    const batchSize = this.STREAM_BATCH_SIZE;
+    let offset = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      if (operationId) {
+        const progress = Math.min(90, (processedCount / totalEstimated) * 80 + 10);
+        progressTracker.updateProgress(
+          operationId, 
+          'querying', 
+          progress, 
+          `Processing batch ${Math.floor(offset / batchSize) + 1}, ${processedCount}/${totalEstimated} points`
+        );
+      }
+
+      const query = this.buildStreamingQuery(tagName, timeRange, options, batchSize, offset);
+      const params = this.buildQueryParams(tagName, timeRange, options);
+      params.offset = offset;
+      params.batchSize = batchSize;
+
+      const result = await this.getConnection().executeQuery<any>(query, params);
+      const batch = result.recordset.map(row => this.transformToTimeSeriesData(row, tagName));
+
+      results.push(...batch);
+      processedCount += batch.length;
+      hasMore = batch.length === batchSize;
+      offset += batchSize;
+
+      // Memory management: if results get too large, consider chunked processing
+      if (results.length > 50000) {
+        dbLogger.warn('Large result set detected, consider using chunked processing', {
+          tagName,
+          currentSize: results.length
+        });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Estimate data size for query optimization
+   */
+  private async estimateDataSize(tagName: string, timeRange: TimeRange): Promise<number> {
+    try {
+      const query = `
+        SELECT COUNT(*) as estimatedCount
+        FROM History
+        WHERE TagName = @tagName
+          AND DateTime >= @startTime
+          AND DateTime <= @endTime
+      `;
+
+      const params = {
+        tagName,
+        startTime: timeRange.startTime,
+        endTime: timeRange.endTime
+      };
+
+      const result = await this.getConnection().executeQuery<{ estimatedCount: number }>(query, params);
+      return result.recordset[0]?.estimatedCount || 0;
+    } catch (error) {
+      dbLogger.warn('Failed to estimate data size, using default', { error });
+      return this.LARGE_DATASET_THRESHOLD;
+    }
+  }
+
+  /**
+   * Build optimized time-series query with indexing hints
+   */
+  private buildOptimizedTimeSeriesQuery(
+    tagName: string, 
+    timeRange: TimeRange, 
+    options?: HistorianQueryOptions
+  ): string {
+    const mode = options?.mode || RetrievalMode.Full;
+    const includeQuality = options?.includeQuality !== false;
+
+    let query = `
+      SELECT 
+        DateTime as timestamp,
+        Value as value,
+        ${includeQuality ? 'Quality as quality,' : ''}
+        @tagName as tagName
+      FROM History WITH (INDEX(IX_History_TagName_DateTime))
+      WHERE TagName = @tagName
+        AND DateTime >= @startTime
+        AND DateTime <= @endTime
+    `;
+
+    // Add mode-specific optimizations
+    switch (mode) {
+      case RetrievalMode.Cyclic:
+        if (options?.interval) {
+          query += ` AND DATEDIFF(second, @startTime, DateTime) % @interval = 0`;
+        }
+        break;
+      
+      case RetrievalMode.Delta:
+        query += ` AND Quality = ${QualityCode.Good}`;
+        break;
+      
+      case RetrievalMode.BestFit:
+        if (options?.maxPoints) {
+          // Use statistical sampling for large datasets
+          const sampleRate = this.calculateOptimalSampleRate(timeRange, options.maxPoints);
+          query += ` AND ABS(CHECKSUM(NEWID())) % ${sampleRate} = 0`;
+        }
+        break;
+    }
+
+    // Add query optimization hints
+    query += ` 
+      ORDER BY DateTime
+      OPTION (OPTIMIZE FOR (@tagName = '${tagName}'))
+    `;
+
+    if (options?.maxPoints) {
+      query = `SELECT TOP ${options.maxPoints} * FROM (${query}) AS subquery`;
+    }
+
+    return query;
+  }
+
+  /**
+   * Build streaming query with pagination
+   */
+  private buildStreamingQuery(
+    tagName: string, 
+    timeRange: TimeRange, 
+    options?: HistorianQueryOptions,
+    batchSize: number = 1000,
+    offset: number = 0
+  ): string {
+    const includeQuality = options?.includeQuality !== false;
+
+    return `
+      SELECT 
+        DateTime as timestamp,
+        Value as value,
+        ${includeQuality ? 'Quality as quality,' : ''}
+        @tagName as tagName
+      FROM History WITH (INDEX(IX_History_TagName_DateTime))
+      WHERE TagName = @tagName
+        AND DateTime >= @startTime
+        AND DateTime <= @endTime
+      ORDER BY DateTime
+      OFFSET @offset ROWS
+      FETCH NEXT @batchSize ROWS ONLY
+      OPTION (OPTIMIZE FOR (@tagName = '${tagName}'))
+    `;
+  }
+
+  /**
+   * Calculate optimal sample rate for large datasets
+   */
+  private calculateOptimalSampleRate(timeRange: TimeRange, maxPoints: number): number {
+    const duration = timeRange.endTime.getTime() - timeRange.startTime.getTime();
+    const estimatedPoints = duration / (60 * 1000); // Assume 1 point per minute
+    const sampleRate = Math.max(1, Math.ceil(estimatedPoints / maxPoints));
+    
+    // Ensure sample rate is reasonable (between 1 and 1000)
+    return Math.min(1000, Math.max(1, sampleRate));
+  }
+
+  /**
+   * Create data processing stream for memory-efficient operations
+   */
+  createDataProcessingStream(): Transform {
+    const self = this;
+    return new Transform({
+      objectMode: true,
+      transform(chunk: any, encoding, callback) {
+        try {
+          // Process data chunk
+          const processed = self.processDataChunk(chunk);
+          callback(null, processed);
+        } catch (error) {
+          callback(error instanceof Error ? error : new Error('Processing error'));
+        }
+      }
+    });
+  }
+
+  /**
+   * Process data chunk for streaming operations
+   */
+  private processDataChunk(chunk: any): TimeSeriesData {
+    return {
+      timestamp: new Date(chunk.timestamp),
+      value: parseFloat(chunk.value),
+      quality: chunk.quality || QualityCode.Good,
+      tagName: chunk.tagName
+    };
+  }
   async getMultipleTimeSeriesData(
     tagNames: string[], 
     timeRange: TimeRange, 
-    options?: HistorianQueryOptions
+    options?: HistorianQueryOptions,
+    operationId?: string
   ): Promise<Record<string, TimeSeriesData[]>> {
     try {
       dbLogger.info('Retrieving multiple time-series data', { tagNames, timeRange });
@@ -109,15 +356,34 @@ export class DataRetrievalService {
         throw createError('At least one tag name is required', 400);
       }
 
-      // Execute queries in parallel for better performance
-      const promises = tagNames.map(tagName => 
+      if (operationId) {
+        progressTracker.updateProgress(operationId, 'preparation', 5, `Preparing to query ${tagNames.length} tags`);
+      }
+
+      // Execute queries with progress tracking
+      const promises = tagNames.map((tagName, index) => 
         this.getTimeSeriesData(tagName, timeRange, options)
-          .then(data => ({ tagName, data }))
+          .then(data => {
+            if (operationId) {
+              const progress = 10 + ((index + 1) / tagNames.length) * 80;
+              progressTracker.updateProgress(
+                operationId, 
+                'querying', 
+                progress, 
+                `Completed ${index + 1}/${tagNames.length} tags`
+              );
+            }
+            return { tagName, data };
+          })
           .catch(error => ({ tagName, error }))
       );
 
       const results = await Promise.all(promises);
       
+      if (operationId) {
+        progressTracker.updateProgress(operationId, 'processing', 95, 'Finalizing results');
+      }
+
       // Process results and handle errors
       const successfulResults: Record<string, TimeSeriesData[]> = {};
       const errors: string[] = [];
@@ -134,9 +400,20 @@ export class DataRetrievalService {
         dbLogger.warn('Some tag queries failed:', errors);
       }
 
+      if (operationId) {
+        const successCount = Object.keys(successfulResults).length;
+        progressTracker.completeOperation(
+          operationId, 
+          `Retrieved data for ${successCount}/${tagNames.length} tags`
+        );
+      }
+
       return successfulResults;
 
     } catch (error) {
+      if (operationId) {
+        progressTracker.failOperation(operationId, error instanceof Error ? error.message : 'Unknown error');
+      }
       dbLogger.error('Failed to retrieve multiple time-series data:', error);
       throw error;
     }

@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { cacheManager } from '@/services/cacheManager';
 import { dataFilteringService } from '@/services/dataFiltering';
+import { progressMiddleware } from '@/middleware/progressTracker';
 import { apiLogger } from '@/utils/logger';
 import { asyncHandler, createError } from '@/middleware/errorHandler';
 import { TimeRange, DataFilter, HistorianQueryOptions, RetrievalMode } from '@/types/historian';
@@ -67,53 +68,84 @@ router.get('/tags', asyncHandler(async (req: Request, res: Response) => {
  * GET /api/data/:tagName
  * Get time-series data for a specific tag
  */
-router.get('/:tagName', asyncHandler(async (req: Request, res: Response) => {
-  const { tagName } = req.params;
-  
-  if (!tagName) {
-    throw createError('Tag name is required', 400);
-  }
-  
-  // Validate query parameters
-  const timeRangeResult = timeRangeSchema.safeParse(req.query);
-  if (!timeRangeResult.success) {
-    throw createError('Invalid time range parameters', 400);
-  }
-  
-  const optionsResult = queryOptionsSchema.safeParse(req.query);
-  if (!optionsResult.success) {
-    throw createError('Invalid query options', 400);
-  }
-  
-  const timeRange: TimeRange = {
-    startTime: timeRangeResult.data.startTime,
-    endTime: timeRangeResult.data.endTime,
-    relativeRange: timeRangeResult.data.relativeRange
-  };
-  const options = optionsResult.data;
-  
-  apiLogger.info('Retrieving time-series data', { tagName, timeRange, options });
-  
-  const dataRetrievalService = cacheManager.getDataRetrievalService();
-  const statisticalAnalysisService = cacheManager.getStatisticalAnalysisService();
-  const data = await dataRetrievalService.getTimeSeriesData(tagName, timeRange, options);
-  
-  // Calculate basic statistics if requested
-  const includeStats = req.query.includeStats === 'true';
-  let statistics;
-  if (includeStats && data.length > 0) {
-    statistics = await statisticalAnalysisService.calculateStatistics(tagName, timeRange.startTime, timeRange.endTime, data);
-  }
-  
-  res.json({
-    success: true,
-    data,
-    count: data.length,
-    tagName,
-    timeRange,
-    ...(statistics && { statistics })
-  });
-}));
+router.get('/:tagName', 
+  progressMiddleware({ 
+    operationType: 'data-retrieval',
+    estimatedDuration: 10000 // 10 seconds
+  }),
+  asyncHandler(async (req: Request, res: Response) => {
+    const { tagName } = req.params;
+    const progressTracker = (req as any).progressTracker;
+    
+    if (!tagName) {
+      progressTracker?.failOperation('Tag name is required');
+      throw createError('Tag name is required', 400);
+    }
+    
+    try {
+      // Validate query parameters
+      const timeRangeResult = timeRangeSchema.safeParse(req.query);
+      if (!timeRangeResult.success) {
+        progressTracker?.failOperation('Invalid time range parameters');
+        throw createError('Invalid time range parameters', 400);
+      }
+      
+      const optionsResult = queryOptionsSchema.safeParse(req.query);
+      if (!optionsResult.success) {
+        progressTracker?.failOperation('Invalid query options');
+        throw createError('Invalid query options', 400);
+      }
+      
+      const timeRange: TimeRange = {
+        startTime: timeRangeResult.data.startTime,
+        endTime: timeRangeResult.data.endTime,
+        relativeRange: timeRangeResult.data.relativeRange
+      };
+      const options = optionsResult.data;
+      
+      apiLogger.info('Retrieving time-series data', { tagName, timeRange, options });
+      
+      progressTracker?.updateProgress('validation', 10, 'Parameters validated');
+      
+      const dataRetrievalService = cacheManager.getDataRetrievalService();
+      const statisticalAnalysisService = cacheManager.getStatisticalAnalysisService();
+      const data = await dataRetrievalService.getTimeSeriesData(
+        tagName, 
+        timeRange, 
+        options, 
+        progressTracker?.operationId
+      );
+      
+      // Calculate basic statistics if requested
+      const includeStats = req.query.includeStats === 'true';
+      let statistics;
+      if (includeStats && data.length > 0) {
+        progressTracker?.updateProgress('analysis', 90, 'Calculating statistics');
+        statistics = await statisticalAnalysisService.calculateStatistics(
+          tagName, 
+          timeRange.startTime, 
+          timeRange.endTime, 
+          data
+        );
+      }
+      
+      progressTracker?.completeOperation(`Retrieved ${data.length} data points`);
+      
+      res.json({
+        success: true,
+        data,
+        count: data.length,
+        tagName,
+        timeRange,
+        operationId: progressTracker?.operationId,
+        ...(statistics && { statistics })
+      });
+    } catch (error) {
+      progressTracker?.failOperation(error instanceof Error ? error.message : 'Unknown error');
+      throw error;
+    }
+  })
+);
 
 /**
  * POST /api/data/query
