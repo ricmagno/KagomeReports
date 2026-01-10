@@ -235,7 +235,7 @@ export class StatisticalAnalysisService {
   }
 
   /**
-   * Detect anomalies using statistical deviation
+   * Detect anomalies using statistical deviation with configurable thresholds
    */
   detectAnomalies(data: TimeSeriesData[], threshold: number = 2): AnomalyResult[] {
     if (data.length < 3) {
@@ -285,9 +285,268 @@ export class StatisticalAnalysisService {
   }
 
   /**
-   * Detect pattern changes in time-series data
+   * Advanced anomaly detection using multiple algorithms
    */
-  detectPatternChanges(data: TimeSeriesData[], windowSize: number = 10): AnomalyResult[] {
+  detectAdvancedAnomalies(
+    data: TimeSeriesData[], 
+    options: {
+      statisticalThreshold?: number;
+      iqrMultiplier?: number;
+      enableTrendAnalysis?: boolean;
+      enableSeasonalAnalysis?: boolean;
+      windowSize?: number;
+    } = {}
+  ): AnomalyResult[] {
+    const {
+      statisticalThreshold = 2,
+      iqrMultiplier = 1.5,
+      enableTrendAnalysis = true,
+      enableSeasonalAnalysis = false,
+      windowSize = 10
+    } = options;
+
+    if (data.length < Math.max(3, windowSize)) {
+      throw createError(`At least ${Math.max(3, windowSize)} data points required for advanced anomaly detection`, 400);
+    }
+
+    const anomalies: AnomalyResult[] = [];
+
+    // 1. Statistical deviation anomalies
+    const statisticalAnomalies = this.detectAnomalies(data, statisticalThreshold);
+    anomalies.push(...statisticalAnomalies);
+
+    // 2. IQR-based anomaly detection
+    const iqrAnomalies = this.detectIQRAnomalies(data, iqrMultiplier);
+    anomalies.push(...iqrAnomalies);
+
+    // 3. Trend-based anomaly detection
+    if (enableTrendAnalysis) {
+      const trendAnomalies = this.detectTrendAnomalies(data, windowSize);
+      anomalies.push(...trendAnomalies);
+    }
+
+    // 4. Seasonal anomaly detection (if enabled)
+    if (enableSeasonalAnalysis && data.length >= 24) {
+      const seasonalAnomalies = this.detectSeasonalAnomalies(data);
+      anomalies.push(...seasonalAnomalies);
+    }
+
+    // Remove duplicates and sort by timestamp
+    const uniqueAnomalies = this.deduplicateAnomalies(anomalies);
+
+    dbLogger.debug('Advanced anomaly detection completed', {
+      totalPoints: data.length,
+      statisticalAnomalies: statisticalAnomalies.length,
+      iqrAnomalies: iqrAnomalies.length,
+      trendAnomalies: enableTrendAnalysis ? anomalies.filter(a => a.description.includes('trend')).length : 0,
+      totalUniqueAnomalies: uniqueAnomalies.length
+    });
+
+    return uniqueAnomalies;
+  }
+
+  /**
+   * Detect anomalies using Interquartile Range (IQR) method
+   */
+  private detectIQRAnomalies(data: TimeSeriesData[], multiplier: number = 1.5): AnomalyResult[] {
+    const values = data
+      .map(point => point.value)
+      .filter(v => !isNaN(v) && isFinite(v))
+      .sort((a, b) => a - b);
+
+    if (values.length < 4) {
+      return [];
+    }
+
+    const q1Index = Math.floor(values.length * 0.25);
+    const q3Index = Math.floor(values.length * 0.75);
+    const q1 = values[q1Index]!;
+    const q3 = values[q3Index]!;
+    const iqr = q3 - q1;
+
+    const lowerBound = q1 - (multiplier * iqr);
+    const upperBound = q3 + (multiplier * iqr);
+
+    const anomalies: AnomalyResult[] = [];
+
+    for (const point of data) {
+      if (!isNaN(point.value) && isFinite(point.value)) {
+        if (point.value < lowerBound || point.value > upperBound) {
+          const expectedValue = point.value < lowerBound ? lowerBound : upperBound;
+          const deviation = Math.abs(point.value - expectedValue) / iqr;
+
+          let severity: 'low' | 'medium' | 'high';
+          if (deviation > multiplier * 2) {
+            severity = 'high';
+          } else if (deviation > multiplier * 1.5) {
+            severity = 'medium';
+          } else {
+            severity = 'low';
+          }
+
+          anomalies.push({
+            timestamp: point.timestamp,
+            value: point.value,
+            expectedValue,
+            deviation,
+            severity,
+            description: `IQR outlier: value ${point.value < lowerBound ? 'below' : 'above'} expected range [${lowerBound.toFixed(2)}, ${upperBound.toFixed(2)}]`
+          });
+        }
+      }
+    }
+
+    return anomalies;
+  }
+
+  /**
+   * Detect trend-based anomalies using sliding window analysis
+   */
+  private detectTrendAnomalies(data: TimeSeriesData[], windowSize: number): AnomalyResult[] {
+    if (data.length < windowSize * 2) {
+      return [];
+    }
+
+    const anomalies: AnomalyResult[] = [];
+
+    for (let i = windowSize; i < data.length - windowSize; i++) {
+      const beforeWindow = data.slice(i - windowSize, i);
+      const afterWindow = data.slice(i, i + windowSize);
+      const currentPoint = data[i]!;
+
+      // Calculate trends for before and after windows
+      const beforeTrend = this.calculateTrendLine(beforeWindow);
+      const afterTrend = this.calculateTrendLine(afterWindow);
+
+      // Detect significant trend changes
+      const slopeChange = Math.abs(afterTrend.slope - beforeTrend.slope);
+      const correlationDrop = beforeTrend.correlation - afterTrend.correlation;
+
+      // Predict expected value based on before trend
+      const expectedValue = beforeTrend.slope * (windowSize - 1) + beforeTrend.intercept;
+      const actualValue = currentPoint.value;
+      const predictionError = Math.abs(actualValue - expectedValue);
+
+      // Flag as anomaly if trend change is significant
+      if (slopeChange > 0.1 || correlationDrop > 0.3 || predictionError > beforeWindow.map(p => p.value).reduce((sum, v) => sum + Math.abs(v - beforeTrend.intercept), 0) / beforeWindow.length) {
+        let severity: 'low' | 'medium' | 'high';
+        if (slopeChange > 0.3 || correlationDrop > 0.6) {
+          severity = 'high';
+        } else if (slopeChange > 0.2 || correlationDrop > 0.4) {
+          severity = 'medium';
+        } else {
+          severity = 'low';
+        }
+
+        anomalies.push({
+          timestamp: currentPoint.timestamp,
+          value: actualValue,
+          expectedValue,
+          deviation: predictionError,
+          severity,
+          description: `Trend anomaly: slope change ${slopeChange.toFixed(3)}, correlation drop ${correlationDrop.toFixed(3)}`
+        });
+      }
+    }
+
+    return anomalies;
+  }
+
+  /**
+   * Detect seasonal anomalies (basic implementation)
+   */
+  private detectSeasonalAnomalies(data: TimeSeriesData[]): AnomalyResult[] {
+    // Simple seasonal detection based on hourly patterns
+    const hourlyAverages = new Map<number, number[]>();
+    
+    // Group data by hour of day
+    for (const point of data) {
+      const hour = point.timestamp.getHours();
+      if (!hourlyAverages.has(hour)) {
+        hourlyAverages.set(hour, []);
+      }
+      hourlyAverages.get(hour)!.push(point.value);
+    }
+
+    // Calculate average and standard deviation for each hour
+    const hourlyStats = new Map<number, { average: number; stdDev: number }>();
+    for (const [hour, values] of hourlyAverages) {
+      if (values.length > 1) {
+        const average = values.reduce((sum, v) => sum + v, 0) / values.length;
+        const variance = values.reduce((sum, v) => sum + Math.pow(v - average, 2), 0) / values.length;
+        const stdDev = Math.sqrt(variance);
+        hourlyStats.set(hour, { average, stdDev });
+      }
+    }
+
+    const anomalies: AnomalyResult[] = [];
+
+    // Check each point against its hourly pattern
+    for (const point of data) {
+      const hour = point.timestamp.getHours();
+      const stats = hourlyStats.get(hour);
+      
+      if (stats && stats.stdDev > 0) {
+        const deviation = Math.abs(point.value - stats.average) / stats.stdDev;
+        
+        if (deviation > 2) {
+          let severity: 'low' | 'medium' | 'high';
+          if (deviation > 4) {
+            severity = 'high';
+          } else if (deviation > 3) {
+            severity = 'medium';
+          } else {
+            severity = 'low';
+          }
+
+          anomalies.push({
+            timestamp: point.timestamp,
+            value: point.value,
+            expectedValue: stats.average,
+            deviation,
+            severity,
+            description: `Seasonal anomaly: value deviates ${deviation.toFixed(2)} standard deviations from hour ${hour} pattern`
+          });
+        }
+      }
+    }
+
+    return anomalies;
+  }
+
+  /**
+   * Remove duplicate anomalies and merge similar ones
+   */
+  private deduplicateAnomalies(anomalies: AnomalyResult[]): AnomalyResult[] {
+    const uniqueAnomalies = new Map<string, AnomalyResult>();
+
+    for (const anomaly of anomalies) {
+      const key = `${anomaly.timestamp.getTime()}_${anomaly.value}`;
+      const existing = uniqueAnomalies.get(key);
+
+      if (!existing || anomaly.severity === 'high' || 
+          (anomaly.severity === 'medium' && existing.severity === 'low')) {
+        uniqueAnomalies.set(key, anomaly);
+      }
+    }
+
+    return Array.from(uniqueAnomalies.values())
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+  }
+
+  /**
+   * Detect significant pattern changes in time-series data with configurable thresholds
+   */
+  detectPatternChanges(
+    data: TimeSeriesData[], 
+    options: {
+      windowSize?: number;
+      sensitivityThreshold?: number;
+      minChangePercent?: number;
+    } = {}
+  ): AnomalyResult[] {
+    const { windowSize = 10, sensitivityThreshold = 1.5, minChangePercent = 10 } = options;
+
     if (data.length < windowSize * 2) {
       throw createError(`At least ${windowSize * 2} data points required for pattern change detection`, 400);
     }
@@ -303,25 +562,60 @@ export class StatisticalAnalysisService {
         const currentStats = this.calculateStatisticsSync(currentWindow);
         const previousStats = this.calculateStatisticsSync(previousWindow);
 
-        // Detect significant changes in mean or variance
+        // Detect significant changes in mean, variance, and trend
         const meanChange = Math.abs(currentStats.average - previousStats.average);
         const varianceChange = Math.abs(currentStats.standardDeviation - previousStats.standardDeviation);
+        const meanChangePercent = previousStats.average !== 0 ? (meanChange / Math.abs(previousStats.average)) * 100 : 0;
 
-        const meanThreshold = previousStats.standardDeviation * 1.5;
+        // Calculate trend changes
+        const currentTrend = this.calculateTrendLine(currentWindow);
+        const previousTrend = this.calculateTrendLine(previousWindow);
+        const slopeChange = Math.abs(currentTrend.slope - previousTrend.slope);
+        const correlationChange = Math.abs(currentTrend.correlation - previousTrend.correlation);
+
+        // Thresholds for pattern change detection
+        const meanThreshold = previousStats.standardDeviation * sensitivityThreshold;
         const varianceThreshold = previousStats.standardDeviation * 0.5;
+        const slopeThreshold = 0.1;
+        const correlationThreshold = 0.3;
 
-        if (meanChange > meanThreshold || varianceChange > varianceThreshold) {
-          const severity: 'low' | 'medium' | 'high' = 
-            (meanChange > meanThreshold * 2 || varianceChange > varianceThreshold * 2) ? 'high' :
-            (meanChange > meanThreshold * 1.5 || varianceChange > varianceThreshold * 1.5) ? 'medium' : 'low';
+        // Check if any significant changes occurred
+        const significantMeanChange = meanChange > meanThreshold && meanChangePercent > minChangePercent;
+        const significantVarianceChange = varianceChange > varianceThreshold;
+        const significantSlopeChange = slopeChange > slopeThreshold;
+        const significantCorrelationChange = correlationChange > correlationThreshold;
+
+        if (significantMeanChange || significantVarianceChange || significantSlopeChange || significantCorrelationChange) {
+          // Determine severity based on multiple factors
+          let severity: 'low' | 'medium' | 'high';
+          const severityScore = 
+            (significantMeanChange ? 1 : 0) +
+            (significantVarianceChange ? 1 : 0) +
+            (significantSlopeChange ? 1 : 0) +
+            (significantCorrelationChange ? 1 : 0);
+
+          if (severityScore >= 3 || meanChangePercent > 50) {
+            severity = 'high';
+          } else if (severityScore >= 2 || meanChangePercent > 25) {
+            severity = 'medium';
+          } else {
+            severity = 'low';
+          }
+
+          // Create detailed description
+          const changes: string[] = [];
+          if (significantMeanChange) changes.push(`mean shifted by ${meanChangePercent.toFixed(1)}%`);
+          if (significantVarianceChange) changes.push(`variance changed by ${varianceChange.toFixed(2)}`);
+          if (significantSlopeChange) changes.push(`trend slope changed by ${slopeChange.toFixed(3)}`);
+          if (significantCorrelationChange) changes.push(`correlation changed by ${correlationChange.toFixed(3)}`);
 
           anomalies.push({
             timestamp: movingAverages[i]!.timestamp,
             value: currentStats.average,
             expectedValue: previousStats.average,
-            deviation: meanChange / previousStats.standardDeviation,
+            deviation: meanChange / (previousStats.standardDeviation || 1),
             severity,
-            description: `Pattern change detected: mean shifted by ${meanChange.toFixed(2)}, variance changed by ${varianceChange.toFixed(2)}`
+            description: `Pattern change detected: ${changes.join(', ')}`
           });
         }
       }
@@ -330,8 +624,94 @@ export class StatisticalAnalysisService {
     dbLogger.debug('Pattern change detection completed', {
       totalPoints: data.length,
       patternChanges: anomalies.length,
-      windowSize
+      windowSize,
+      sensitivityThreshold
     });
+
+    return anomalies;
+  }
+
+  /**
+   * Detect significant trend changes using multiple algorithms
+   */
+  detectSignificantTrendChanges(
+    data: TimeSeriesData[],
+    options: {
+      windowSize?: number;
+      trendThreshold?: number;
+      volatilityThreshold?: number;
+    } = {}
+  ): AnomalyResult[] {
+    const { windowSize = 20, trendThreshold = 0.05, volatilityThreshold = 2.0 } = options;
+
+    if (data.length < windowSize * 3) {
+      throw createError(`At least ${windowSize * 3} data points required for trend change detection`, 400);
+    }
+
+    const anomalies: AnomalyResult[] = [];
+
+    // Sliding window analysis for trend changes
+    for (let i = windowSize; i < data.length - windowSize; i += Math.floor(windowSize / 2)) {
+      const beforeWindow = data.slice(i - windowSize, i);
+      const afterWindow = data.slice(i, i + windowSize);
+
+      if (beforeWindow.length === windowSize && afterWindow.length === windowSize) {
+        const beforeTrend = this.calculateTrendLine(beforeWindow);
+        const afterTrend = this.calculateTrendLine(afterWindow);
+        const beforeStats = this.calculateStatisticsSync(beforeWindow);
+        const afterStats = this.calculateStatisticsSync(afterWindow);
+
+        // Detect trend direction changes
+        const slopeChange = Math.abs(afterTrend.slope - beforeTrend.slope);
+        const directionChange = (beforeTrend.slope > 0) !== (afterTrend.slope > 0);
+        
+        // Detect volatility changes
+        const volatilityChange = Math.abs(afterStats.standardDeviation - beforeStats.standardDeviation);
+        const volatilityRatio = beforeStats.standardDeviation > 0 ? 
+          afterStats.standardDeviation / beforeStats.standardDeviation : 1;
+
+        // Detect level shifts
+        const levelShift = Math.abs(afterStats.average - beforeStats.average);
+        const levelShiftPercent = beforeStats.average !== 0 ? 
+          (levelShift / Math.abs(beforeStats.average)) * 100 : 0;
+
+        // Check for significant changes
+        const significantSlopeChange = slopeChange > trendThreshold;
+        const significantDirectionChange = directionChange && Math.abs(beforeTrend.slope) > trendThreshold;
+        const significantVolatilityChange = volatilityRatio > volatilityThreshold || volatilityRatio < (1 / volatilityThreshold);
+        const significantLevelShift = levelShiftPercent > 15;
+
+        if (significantSlopeChange || significantDirectionChange || significantVolatilityChange || significantLevelShift) {
+          let severity: 'low' | 'medium' | 'high';
+          
+          if ((significantDirectionChange && Math.abs(beforeTrend.slope) > trendThreshold * 2) ||
+              levelShiftPercent > 50 || volatilityRatio > volatilityThreshold * 2) {
+            severity = 'high';
+          } else if (significantDirectionChange || levelShiftPercent > 25 || volatilityRatio > volatilityThreshold * 1.5) {
+            severity = 'medium';
+          } else {
+            severity = 'low';
+          }
+
+          const changePoint = data[i]!;
+          const changes: string[] = [];
+          
+          if (significantSlopeChange) changes.push(`slope change: ${slopeChange.toFixed(4)}`);
+          if (significantDirectionChange) changes.push('trend direction reversal');
+          if (significantVolatilityChange) changes.push(`volatility change: ${volatilityRatio.toFixed(2)}x`);
+          if (significantLevelShift) changes.push(`level shift: ${levelShiftPercent.toFixed(1)}%`);
+
+          anomalies.push({
+            timestamp: changePoint.timestamp,
+            value: changePoint.value,
+            expectedValue: beforeStats.average,
+            deviation: levelShift / (beforeStats.standardDeviation || 1),
+            severity,
+            description: `Significant trend change: ${changes.join(', ')}`
+          });
+        }
+      }
+    }
 
     return anomalies;
   }
@@ -408,6 +788,348 @@ export class StatisticalAnalysisService {
       qualityPercentage,
       missingDataGaps
     };
+  }
+
+  /**
+   * Comprehensive anomaly flagging system with configurable thresholds
+   */
+  flagAnomalies(
+    data: TimeSeriesData[],
+    thresholds: {
+      statisticalDeviation?: number;
+      iqrMultiplier?: number;
+      trendSensitivity?: number;
+      patternSensitivity?: number;
+      enableAdvanced?: boolean;
+      enableSeasonal?: boolean;
+      windowSize?: number;
+    } = {}
+  ): {
+    anomalies: AnomalyResult[];
+    summary: {
+      totalAnomalies: number;
+      highSeverity: number;
+      mediumSeverity: number;
+      lowSeverity: number;
+      anomalyRate: number;
+      detectionMethods: string[];
+    };
+  } {
+    const {
+      statisticalDeviation = 2.5,
+      iqrMultiplier = 1.5,
+      trendSensitivity = 1.5,
+      patternSensitivity = 1.5,
+      enableAdvanced = true,
+      enableSeasonal = false,
+      windowSize = 15
+    } = thresholds;
+
+    if (data.length < 3) {
+      throw createError('At least 3 data points required for anomaly flagging', 400);
+    }
+
+    let allAnomalies: AnomalyResult[] = [];
+    const detectionMethods: string[] = [];
+
+    try {
+      // 1. Basic statistical anomaly detection
+      const statisticalAnomalies = this.detectAnomalies(data, statisticalDeviation);
+      allAnomalies.push(...statisticalAnomalies);
+      if (statisticalAnomalies.length > 0) {
+        detectionMethods.push('statistical-deviation');
+      }
+
+      // 2. Advanced multi-algorithm detection
+      if (enableAdvanced) {
+        const advancedAnomalies = this.detectAdvancedAnomalies(data, {
+          statisticalThreshold: statisticalDeviation,
+          iqrMultiplier,
+          enableTrendAnalysis: true,
+          enableSeasonalAnalysis: enableSeasonal,
+          windowSize
+        });
+        allAnomalies.push(...advancedAnomalies);
+        detectionMethods.push('advanced-multi-algorithm');
+      }
+
+      // 3. Pattern change detection
+      if (data.length >= windowSize * 2) {
+        const patternAnomalies = this.detectPatternChanges(data, {
+          windowSize,
+          sensitivityThreshold: patternSensitivity,
+          minChangePercent: 10
+        });
+        allAnomalies.push(...patternAnomalies);
+        if (patternAnomalies.length > 0) {
+          detectionMethods.push('pattern-change');
+        }
+      }
+
+      // 4. Significant trend changes
+      if (data.length >= windowSize * 3) {
+        const trendAnomalies = this.detectSignificantTrendChanges(data, {
+          windowSize,
+          trendThreshold: 0.05 / trendSensitivity,
+          volatilityThreshold: 2.0 * trendSensitivity
+        });
+        allAnomalies.push(...trendAnomalies);
+        if (trendAnomalies.length > 0) {
+          detectionMethods.push('trend-change');
+        }
+      }
+
+      // Remove duplicates and sort
+      const uniqueAnomalies = this.deduplicateAnomalies(allAnomalies);
+
+      // Calculate summary statistics
+      const highSeverity = uniqueAnomalies.filter(a => a.severity === 'high').length;
+      const mediumSeverity = uniqueAnomalies.filter(a => a.severity === 'medium').length;
+      const lowSeverity = uniqueAnomalies.filter(a => a.severity === 'low').length;
+      const anomalyRate = (uniqueAnomalies.length / data.length) * 100;
+
+      const summary = {
+        totalAnomalies: uniqueAnomalies.length,
+        highSeverity,
+        mediumSeverity,
+        lowSeverity,
+        anomalyRate,
+        detectionMethods
+      };
+
+      dbLogger.info('Comprehensive anomaly flagging completed', {
+        dataPoints: data.length,
+        ...summary,
+        thresholds
+      });
+
+      return {
+        anomalies: uniqueAnomalies,
+        summary
+      };
+
+    } catch (error) {
+      dbLogger.error('Error in anomaly flagging:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Statistical deviation analysis with multiple methods
+   */
+  performStatisticalDeviationAnalysis(
+    data: TimeSeriesData[],
+    methods: ('zscore' | 'modified-zscore' | 'grubbs' | 'dixon')[] = ['zscore', 'modified-zscore']
+  ): {
+    method: string;
+    anomalies: AnomalyResult[];
+    statistics: {
+      mean: number;
+      median: number;
+      standardDeviation: number;
+      mad: number; // Median Absolute Deviation
+    };
+  }[] {
+    if (data.length < 3) {
+      throw createError('At least 3 data points required for statistical deviation analysis', 400);
+    }
+
+    const results: {
+      method: string;
+      anomalies: AnomalyResult[];
+      statistics: {
+        mean: number;
+        median: number;
+        standardDeviation: number;
+        mad: number;
+      };
+    }[] = [];
+
+    const values = data.map(p => p.value).filter(v => !isNaN(v) && isFinite(v));
+    const sortedValues = [...values].sort((a, b) => a - b);
+    
+    // Calculate basic statistics
+    const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+    const median = sortedValues[Math.floor(sortedValues.length / 2)]!;
+    const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
+    const standardDeviation = Math.sqrt(variance);
+    
+    // Calculate Median Absolute Deviation (MAD)
+    const deviationsFromMedian = values.map(v => Math.abs(v - median));
+    const mad = deviationsFromMedian.sort((a, b) => a - b)[Math.floor(deviationsFromMedian.length / 2)]!;
+
+    const baseStats = { mean, median, standardDeviation, mad };
+
+    for (const method of methods) {
+      let anomalies: AnomalyResult[] = [];
+
+      switch (method) {
+        case 'zscore':
+          anomalies = this.detectZScoreAnomalies(data, baseStats, 2.5);
+          break;
+        case 'modified-zscore':
+          anomalies = this.detectModifiedZScoreAnomalies(data, baseStats, 3.5);
+          break;
+        case 'grubbs':
+          if (data.length >= 7) {
+            anomalies = this.detectGrubbsAnomalies(data, baseStats);
+          }
+          break;
+        case 'dixon':
+          if (data.length >= 8 && data.length <= 30) {
+            anomalies = this.detectDixonAnomalies(data, baseStats);
+          }
+          break;
+      }
+
+      results.push({
+        method,
+        anomalies,
+        statistics: baseStats
+      });
+    }
+
+    return results;
+  }
+
+  private detectZScoreAnomalies(
+    data: TimeSeriesData[], 
+    stats: { mean: number; standardDeviation: number }, 
+    threshold: number
+  ): AnomalyResult[] {
+    const anomalies: AnomalyResult[] = [];
+
+    for (const point of data) {
+      if (!isNaN(point.value) && isFinite(point.value) && stats.standardDeviation > 0) {
+        const zScore = Math.abs(point.value - stats.mean) / stats.standardDeviation;
+        
+        if (zScore > threshold) {
+          anomalies.push({
+            timestamp: point.timestamp,
+            value: point.value,
+            expectedValue: stats.mean,
+            deviation: zScore,
+            severity: zScore > threshold * 1.5 ? 'high' : zScore > threshold * 1.2 ? 'medium' : 'low',
+            description: `Z-score anomaly: ${zScore.toFixed(2)} (threshold: ${threshold})`
+          });
+        }
+      }
+    }
+
+    return anomalies;
+  }
+
+  private detectModifiedZScoreAnomalies(
+    data: TimeSeriesData[], 
+    stats: { median: number; mad: number }, 
+    threshold: number
+  ): AnomalyResult[] {
+    const anomalies: AnomalyResult[] = [];
+
+    for (const point of data) {
+      if (!isNaN(point.value) && isFinite(point.value) && stats.mad > 0) {
+        const modifiedZScore = 0.6745 * (point.value - stats.median) / stats.mad;
+        
+        if (Math.abs(modifiedZScore) > threshold) {
+          anomalies.push({
+            timestamp: point.timestamp,
+            value: point.value,
+            expectedValue: stats.median,
+            deviation: Math.abs(modifiedZScore),
+            severity: Math.abs(modifiedZScore) > threshold * 1.5 ? 'high' : 
+                     Math.abs(modifiedZScore) > threshold * 1.2 ? 'medium' : 'low',
+            description: `Modified Z-score anomaly: ${modifiedZScore.toFixed(2)} (threshold: ${threshold})`
+          });
+        }
+      }
+    }
+
+    return anomalies;
+  }
+
+  private detectGrubbsAnomalies(
+    data: TimeSeriesData[], 
+    stats: { mean: number; standardDeviation: number }
+  ): AnomalyResult[] {
+    // Simplified Grubbs test implementation
+    const anomalies: AnomalyResult[] = [];
+    const n = data.length;
+    
+    // Critical values for Grubbs test (approximate)
+    const criticalValue = n > 30 ? 3.0 : 2.5 + (30 - n) * 0.02;
+
+    for (const point of data) {
+      if (!isNaN(point.value) && isFinite(point.value) && stats.standardDeviation > 0) {
+        const grubbsStatistic = Math.abs(point.value - stats.mean) / stats.standardDeviation;
+        
+        if (grubbsStatistic > criticalValue) {
+          anomalies.push({
+            timestamp: point.timestamp,
+            value: point.value,
+            expectedValue: stats.mean,
+            deviation: grubbsStatistic,
+            severity: grubbsStatistic > criticalValue * 1.3 ? 'high' : 'medium',
+            description: `Grubbs test anomaly: ${grubbsStatistic.toFixed(2)} (critical: ${criticalValue.toFixed(2)})`
+          });
+        }
+      }
+    }
+
+    return anomalies;
+  }
+
+  private detectDixonAnomalies(
+    data: TimeSeriesData[], 
+    stats: { mean: number; standardDeviation: number }
+  ): AnomalyResult[] {
+    // Simplified Dixon Q-test implementation
+    const anomalies: AnomalyResult[] = [];
+    const values = data.map(p => p.value).filter(v => !isNaN(v) && isFinite(v));
+    const sortedValues = [...values].sort((a, b) => a - b);
+    const n = sortedValues.length;
+
+    if (n < 8 || n > 30) return anomalies;
+
+    // Critical Q values (approximate)
+    const criticalQ = n <= 10 ? 0.41 : n <= 20 ? 0.37 : 0.35;
+
+    // Test lowest value
+    if (n >= 3) {
+      const qLow = (sortedValues[1]! - sortedValues[0]!) / (sortedValues[n-1]! - sortedValues[0]!);
+      if (qLow > criticalQ) {
+        const point = data.find(p => p.value === sortedValues[0]!);
+        if (point) {
+          anomalies.push({
+            timestamp: point.timestamp,
+            value: point.value,
+            expectedValue: stats.mean,
+            deviation: qLow,
+            severity: qLow > criticalQ * 1.2 ? 'high' : 'medium',
+            description: `Dixon Q-test anomaly (low): Q=${qLow.toFixed(3)} (critical: ${criticalQ})`
+          });
+        }
+      }
+    }
+
+    // Test highest value
+    if (n >= 3) {
+      const qHigh = (sortedValues[n-1]! - sortedValues[n-2]!) / (sortedValues[n-1]! - sortedValues[0]!);
+      if (qHigh > criticalQ) {
+        const point = data.find(p => p.value === sortedValues[n-1]!);
+        if (point) {
+          anomalies.push({
+            timestamp: point.timestamp,
+            value: point.value,
+            expectedValue: stats.mean,
+            deviation: qHigh,
+            severity: qHigh > criticalQ * 1.2 ? 'high' : 'medium',
+            description: `Dixon Q-test anomaly (high): Q=${qHigh.toFixed(3)} (critical: ${criticalQ})`
+          });
+        }
+      }
+    }
+
+    return anomalies;
   }
 }
 

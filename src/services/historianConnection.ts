@@ -69,6 +69,13 @@ export class HistorianConnection {
   }
 
   /**
+   * Close database connection (alias for disconnect)
+   */
+  async close(): Promise<void> {
+    return this.disconnect();
+  }
+
+  /**
    * Execute a SQL query with error handling and logging
    */
   async executeQuery<T = any>(query: string, params?: Record<string, any>): Promise<IResult<T>> {

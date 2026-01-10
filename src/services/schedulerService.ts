@@ -121,6 +121,20 @@ export class SchedulerService {
   }
 
   /**
+   * Public initialize method for startup validation
+   */
+  async initialize(): Promise<void> {
+    try {
+      // Database is already initialized in constructor
+      // This method is for startup validation
+      reportLogger.info('Scheduler service initialization validated');
+    } catch (error) {
+      reportLogger.error('Scheduler service initialization failed:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Create a new schedule
    */
   async createSchedule(config: Omit<ScheduleConfig, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {

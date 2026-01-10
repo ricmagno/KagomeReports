@@ -456,6 +456,38 @@ export class EmailService {
   }
 
   /**
+   * Validate email service configuration without sending test email
+   */
+  async validateConfiguration(): Promise<boolean> {
+    try {
+      // Check if basic configuration is present
+      if (!env.SMTP_HOST || !env.SMTP_PORT || !env.SMTP_USER) {
+        reportLogger.warn('Email service configuration incomplete', {
+          hasHost: !!env.SMTP_HOST,
+          hasPort: !!env.SMTP_PORT,
+          hasUser: !!env.SMTP_USER
+        });
+        return false;
+      }
+
+      // Initialize if not already done
+      if (!this.isConfigured) {
+        this.initializeTransporter();
+      }
+
+      // Verify connection if configured
+      if (this.isConfigured) {
+        return await this.verifyConnection();
+      }
+
+      return false;
+    } catch (error) {
+      reportLogger.error('Email configuration validation failed', { error });
+      return false;
+    }
+  }
+
+  /**
    * Test email configuration
    */
   async testConfiguration(testRecipient: string): Promise<EmailResult> {
