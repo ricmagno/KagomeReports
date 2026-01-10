@@ -3,6 +3,16 @@ import { env } from '@/config/environment';
 import path from 'path';
 import fs from 'fs';
 
+// Import encryption service for data sanitization
+// Note: This creates a circular dependency, so we'll handle it differently
+let encryptionService: any = null;
+try {
+  // Lazy load to avoid circular dependency
+  encryptionService = require('@/services/encryptionService').encryptionService;
+} catch {
+  // Encryption service not available during initialization
+}
+
 // Ensure logs directory exists
 const logsDir = path.dirname(env.LOG_FILE);
 if (!fs.existsSync(logsDir)) {
@@ -94,10 +104,42 @@ function parseSize(sizeStr: string): number {
 }
 
 /**
+ * Sanitize sensitive data for logging
+ */
+function sanitizeLogData(data: any): any {
+  if (encryptionService && typeof encryptionService.sanitizeForLogging === 'function') {
+    return encryptionService.sanitizeForLogging(data);
+  }
+  
+  // Fallback sanitization if encryption service is not available
+  if (typeof data !== 'object' || data === null) {
+    return data;
+  }
+
+  const sensitiveFields = [
+    'password', 'token', 'secret', 'key', 'auth', 'credential',
+    'connectionString', 'jwt', 'session', 'cookie'
+  ];
+
+  const sanitized = { ...data };
+
+  for (const key in sanitized) {
+    if (sensitiveFields.some(field => key.toLowerCase().includes(field))) {
+      sanitized[key] = '[REDACTED]';
+    } else if (typeof sanitized[key] === 'object') {
+      sanitized[key] = sanitizeLogData(sanitized[key]);
+    }
+  }
+
+  return sanitized;
+}
+
+/**
  * Create a child logger with additional context
  */
 export function createChildLogger(context: Record<string, any>) {
-  return logger.child(context);
+  const sanitizedContext = sanitizeLogData(context);
+  return logger.child(sanitizedContext);
 }
 
 /**

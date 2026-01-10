@@ -1,6 +1,7 @@
 import { ConnectionPool, config as MSSQLConfig } from 'mssql';
 import { env } from './environment';
 import { logger } from '@/utils/logger';
+import { encryptionService } from '@/services/encryptionService';
 
 // Database configuration for AVEVA Historian
 export const databaseConfig: MSSQLConfig = {
@@ -13,6 +14,10 @@ export const databaseConfig: MSSQLConfig = {
     encrypt: env.DB_ENCRYPT,
     trustServerCertificate: env.DB_TRUST_SERVER_CERTIFICATE,
     enableArithAbort: true,
+    // Enhanced security options
+    cryptoCredentialsDetails: {
+      minVersion: 'TLSv1.2'
+    }
   },
   pool: {
     min: env.DB_POOL_MIN,

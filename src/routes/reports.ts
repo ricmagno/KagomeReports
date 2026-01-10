@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { apiLogger } from '@/utils/logger';
 import { asyncHandler, createError } from '@/middleware/errorHandler';
+import { authenticateToken, requirePermission } from '@/middleware/auth';
 
 const router = Router();
 
@@ -46,7 +47,7 @@ const scheduleConfigSchema = z.object({
  * POST /api/reports/generate
  * Generate a report on-demand
  */
-router.post('/generate', asyncHandler(async (req: Request, res: Response) => {
+router.post('/generate', authenticateToken, requirePermission('reports', 'write'), asyncHandler(async (req: Request, res: Response) => {
   const configResult = reportConfigSchema.safeParse(req.body);
   if (!configResult.success) {
     throw createError('Invalid report configuration', 400);
@@ -80,7 +81,7 @@ router.post('/generate', asyncHandler(async (req: Request, res: Response) => {
  * GET /api/reports
  * Get list of saved report configurations
  */
-router.get('/', asyncHandler(async (req: Request, res: Response) => {
+router.get('/', authenticateToken, requirePermission('reports', 'read'), asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 10, search, category } = req.query;
   
   apiLogger.info('Retrieving saved reports', { page, limit, search, category });
@@ -148,7 +149,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
  * POST /api/reports
  * Save a new report configuration
  */
-router.post('/', asyncHandler(async (req: Request, res: Response) => {
+router.post('/', authenticateToken, requirePermission('reports', 'write'), asyncHandler(async (req: Request, res: Response) => {
   const configResult = reportConfigSchema.safeParse(req.body);
   if (!configResult.success) {
     throw createError('Invalid report configuration', 400);
@@ -267,7 +268,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
  * DELETE /api/reports/:id
  * Delete a report configuration
  */
-router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
+router.delete('/:id', authenticateToken, requirePermission('reports', 'delete'), asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   
   apiLogger.info('Deleting report configuration', { id });

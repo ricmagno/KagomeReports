@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { apiLogger } from '@/utils/logger';
 import { asyncHandler, createError } from '@/middleware/errorHandler';
+import { authenticateToken, requireAdmin, optionalAuth } from '@/middleware/auth';
 import { env } from '@/config/environment';
 
 const router = Router();
@@ -15,7 +16,7 @@ const router = Router();
  * GET /api/system/info
  * Get system information
  */
-router.get('/info', asyncHandler(async (req: Request, res: Response) => {
+router.get('/info', optionalAuth, asyncHandler(async (req: Request, res: Response) => {
   const systemInfo = {
     application: {
       name: 'Historian Reports',
@@ -241,7 +242,7 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response) => {
  * POST /api/system/gc
  * Trigger garbage collection (admin only)
  */
-router.post('/gc', asyncHandler(async (req: Request, res: Response) => {
+router.post('/gc', authenticateToken, requireAdmin, asyncHandler(async (req: Request, res: Response) => {
   // TODO: Implement authentication check for admin role
   
   const beforeMemory = process.memoryUsage();
@@ -273,7 +274,7 @@ router.post('/gc', asyncHandler(async (req: Request, res: Response) => {
  * GET /api/system/config
  * Get system configuration (admin only)
  */
-router.get('/config', asyncHandler(async (req: Request, res: Response) => {
+router.get('/config', authenticateToken, requireAdmin, asyncHandler(async (req: Request, res: Response) => {
   // TODO: Implement authentication check for admin role
   
   const config = {

@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { apiLogger } from '@/utils/logger';
 import { asyncHandler, createError } from '@/middleware/errorHandler';
+import { authenticateToken, requirePermission } from '@/middleware/auth';
 import { schedulerService, ScheduleConfig } from '@/services/schedulerService';
 import { ReportConfig } from '@/services/reportGeneration';
 
@@ -72,7 +73,7 @@ const scheduleUpdateSchema = z.object({
  * GET /api/schedules
  * Get list of scheduled reports
  */
-router.get('/', asyncHandler(async (req: Request, res: Response) => {
+router.get('/', authenticateToken, requirePermission('schedules', 'read'), asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 10, enabled } = req.query;
   
   apiLogger.info('Retrieving scheduled reports', { page, limit, enabled });
@@ -112,7 +113,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
  * POST /api/schedules
  * Create a new schedule
  */
-router.post('/', asyncHandler(async (req: Request, res: Response) => {
+router.post('/', authenticateToken, requirePermission('schedules', 'write'), asyncHandler(async (req: Request, res: Response) => {
   const configResult = scheduleConfigSchema.safeParse(req.body);
   if (!configResult.success) {
     apiLogger.error('Invalid schedule configuration', { errors: configResult.error.errors });
@@ -206,7 +207,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
  * DELETE /api/schedules/:id
  * Delete a schedule
  */
-router.delete('/:id', asyncHandler(async (req: Request, res: Response) => {
+router.delete('/:id', authenticateToken, requirePermission('schedules', 'delete'), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
   
   apiLogger.info('Deleting schedule', { id });

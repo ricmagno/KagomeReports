@@ -8,6 +8,7 @@ import { getDatabase, testDatabaseConnection } from '@/config/database';
 import { dbLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
 import { RetryHandler } from '@/utils/retryHandler';
+import { encryptionService } from '@/services/encryptionService';
 import { DatabaseConfig, TimeSeriesData, TagInfo, TimeRange, DataFilter, QueryResult, HistorianQueryOptions, RetrievalMode, QualityCode } from '@/types/historian';
 
 export class HistorianConnection {
