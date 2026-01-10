@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens as CSS custom properties */
+:root {
+  --color-primary-500: #0ea5e9;
+  --color-gray-50: #f9fafb;
+  --color-gray-900: #111827;
+  --font-family-sans: 'Inter', system-ui, sans-serif;
+  --spacing-4: 1rem;
+}
+
+/* Base styles */
+body {
+  font-family: var(--font-family-sans);
+  color: var(--color-gray-900);
+  background-color: var(--color-gray-50);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Import Inter font */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-gray-50);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-gray-500);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gray-700);
+}
