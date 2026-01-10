@@ -6,11 +6,10 @@ import {
   Calendar,
   Download,
   Plus,
-  Search,
-  Filter,
   Save,
   History,
-  AlertCircle
+  AlertCircle,
+  Tag
 } from 'lucide-react';
 import { ReportConfig, TimeRange } from '../../types/api';
 import { Button } from '../ui/Button';
@@ -20,7 +19,11 @@ import { TimeRangePicker } from '../forms/TimeRangePicker';
 import { TagSelector } from '../forms/TagSelector';
 import { ReportVersionHistoryComponent } from '../forms/ReportVersionHistory';
 import { VersionComparison } from '../forms/VersionComparison';
+import { ReportPreview } from '../reports/ReportPreview';
+import { ReportManager } from '../reports/ReportManager';
+import { ReportCategories, Category, TagInfo } from '../reports/ReportCategories';
 import { useVersionControl } from '../../hooks/useVersionControl';
+import { apiService } from '../../services/api';
 import { cn } from '../../utils/cn';
 
 interface DashboardProps {
@@ -28,7 +31,7 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
-  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'categories'>('create');
   const [reportConfig, setReportConfig] = useState<Partial<ReportConfig>>({
     name: '',
     description: '',
@@ -42,11 +45,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     template: 'default',
   });
 
-  const [searchTerm, setSearchTerm] = useState('');
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showVersionComparison, setShowVersionComparison] = useState(false);
   const [comparisonVersions, setComparisonVersions] = useState<any>(null);
   const [saveDescription, setSaveDescription] = useState('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [tags, setTags] = useState<TagInfo[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Version control hook
   const versionControl = useVersionControl({
@@ -67,6 +72,80 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       versionControl.checkUnsavedChanges(reportConfig as ReportConfig);
     }
   }, [reportConfig, versionControl]);
+
+  // Load initial data
+  useEffect(() => {
+    loadReports();
+    loadCategories();
+    loadTags();
+  }, []);
+
+  const loadReports = async () => {
+    try {
+      setIsLoading(true);
+      // In a real implementation, this would load reports from the API
+      // const response = await apiService.getReports();
+      // setSavedReports(response.data);
+    } catch (error) {
+      console.error('Failed to load reports:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadCategories = async () => {
+    try {
+      // Mock categories for now - in real implementation, this would be an API call
+      const mockCategories: Category[] = [
+        {
+          id: '1',
+          name: 'Production',
+          description: 'Production-related reports',
+          color: '#3B82F6',
+          reportCount: 5,
+          createdAt: new Date()
+        },
+        {
+          id: '2',
+          name: 'Quality',
+          description: 'Quality control and analysis reports',
+          color: '#10B981',
+          reportCount: 3,
+          createdAt: new Date()
+        },
+        {
+          id: '3',
+          name: 'Analysis',
+          description: 'Trend analysis and forecasting reports',
+          color: '#F59E0B',
+          reportCount: 2,
+          createdAt: new Date()
+        }
+      ];
+      setCategories(mockCategories);
+    } catch (error) {
+      console.error('Failed to load categories:', error);
+    }
+  };
+
+  const loadTags = async () => {
+    try {
+      // Mock tags for now - in real implementation, this would be an API call
+      const mockTags: TagInfo[] = [
+        { name: 'daily', count: 4, category: 'Production' },
+        { name: 'weekly', count: 3, category: 'Quality' },
+        { name: 'monthly', count: 2, category: 'Analysis' },
+        { name: 'production', count: 5 },
+        { name: 'quality', count: 3 },
+        { name: 'trends', count: 2 },
+        { name: 'metrics', count: 6 },
+        { name: 'analysis', count: 4 }
+      ];
+      setTags(mockTags);
+    } catch (error) {
+      console.error('Failed to load tags:', error);
+    }
+  };
 
   const handleTimeRangeChange = (timeRange: TimeRange) => {
     setReportConfig(prev => ({
@@ -104,8 +183,126 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   };
 
   const handleGenerateReport = async () => {
-    // TODO: Implement report generation
-    console.log('Generating report with config:', reportConfig);
+    if (!reportConfig.name || !reportConfig.tags?.length) {
+      alert('Please provide a report name and select at least one tag');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const blob = await apiService.generateReport(reportConfig as ReportConfig);
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `${reportConfig.name}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      alert('Report generated successfully!');
+    } catch (error) {
+      console.error('Failed to generate report:', error);
+      alert('Failed to generate report. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveReport = async (config: ReportConfig) => {
+    try {
+      await apiService.saveReport(config);
+      await loadReports();
+      alert('Report saved successfully!');
+    } catch (error) {
+      console.error('Failed to save report:', error);
+      alert('Failed to save report. Please try again.');
+    }
+  };
+
+  const handleLoadReport = (config: ReportConfig) => {
+    setReportConfig(config);
+    setActiveTab('create');
+  };
+
+  const handleDeleteReport = async (reportId: string) => {
+    try {
+      await apiService.deleteReport(reportId);
+      await loadReports();
+      alert('Report deleted successfully!');
+    } catch (error) {
+      console.error('Failed to delete report:', error);
+      alert('Failed to delete report. Please try again.');
+    }
+  };
+
+  const handleExportReports = (reports: ReportConfig[]) => {
+    const dataStr = JSON.stringify(reports, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    
+    const url = window.URL.createObjectURL(dataBlob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = 'report-configurations.json';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  };
+
+  const handleImportReports = async (file: File): Promise<ReportConfig[]> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const configs = JSON.parse(e.target?.result as string);
+          // In a real implementation, you would save these to the backend
+          resolve(configs);
+        } catch (error) {
+          reject(new Error('Invalid JSON file'));
+        }
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
+    });
+  };
+
+  const handleCreateCategory = async (category: Omit<Category, 'id' | 'reportCount' | 'createdAt'>) => {
+    // Mock implementation - in real app, this would be an API call
+    const newCategory: Category = {
+      ...category,
+      id: Date.now().toString(),
+      reportCount: 0,
+      createdAt: new Date()
+    };
+    setCategories(prev => [...prev, newCategory]);
+  };
+
+  const handleUpdateCategory = async (id: string, updates: Partial<Category>) => {
+    setCategories(prev => prev.map(cat => 
+      cat.id === id ? { ...cat, ...updates } : cat
+    ));
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    setCategories(prev => prev.filter(cat => cat.id !== id));
+  };
+
+  const handleCreateTag = async (tagName: string, category?: string) => {
+    const newTag: TagInfo = {
+      name: tagName,
+      count: 0,
+      category
+    };
+    setTags(prev => [...prev, newTag]);
+  };
+
+  const handleDeleteTag = async (tagName: string) => {
+    setTags(prev => prev.filter(tag => tag.name !== tagName));
   };
 
   const handleVersionSelect = (version: any) => {
@@ -126,6 +323,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     { id: 'create', label: 'Create Report', icon: Plus },
     { id: 'reports', label: 'My Reports', icon: FileText },
     { id: 'schedules', label: 'Schedules', icon: Calendar },
+    { id: 'categories', label: 'Categories', icon: Tag },
   ] as const;
 
   const changesSummary = versionControl.getChangesSummary(reportConfig as ReportConfig);
@@ -366,12 +564,35 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               )}
               <Button
                 onClick={handleGenerateReport}
-                disabled={!reportConfig.name || !reportConfig.tags?.length}
+                disabled={!reportConfig.name || !reportConfig.tags?.length || isLoading}
+                loading={isLoading}
               >
                 <Download className="h-4 w-4 mr-2" />
                 Generate Report
               </Button>
             </div>
+
+            {/* Report Preview */}
+            {reportConfig.name && reportConfig.tags?.length && (
+              <div className="mt-8">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Report Preview</h3>
+                <ReportPreview
+                  config={{
+                    ...reportConfig,
+                    name: reportConfig.name || '',
+                    description: reportConfig.description || '',
+                    tags: reportConfig.tags || [],
+                    timeRange: reportConfig.timeRange!,
+                    chartTypes: reportConfig.chartTypes || ['line'],
+                    template: reportConfig.template || 'default'
+                  } as ReportConfig}
+                  onGenerate={handleGenerateReport}
+                  onEdit={() => {
+                    // Already in edit mode
+                  }}
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -384,38 +605,58 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   Manage your saved report configurations and generated reports.
                 </p>
               </div>
-              <Button>
+              <Button onClick={() => setActiveTab('create')}>
                 <Plus className="h-4 w-4 mr-2" />
                 New Report
               </Button>
             </div>
 
-            {/* Search and Filter */}
-            <div className="flex items-center space-x-4">
-              <div className="flex-1 relative">
-                <Input
-                  type="text"
-                  placeholder="Search reports..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pr-10"
-                />
-                <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <ReportManager
+              currentConfig={reportConfig as ReportConfig}
+              onSave={handleSaveReport}
+              onLoad={handleLoadReport}
+              onDelete={handleDeleteReport}
+              onNew={() => {
+                setReportConfig({
+                  name: '',
+                  description: '',
+                  tags: [],
+                  timeRange: {
+                    startTime: new Date(Date.now() - 24 * 60 * 60 * 1000),
+                    endTime: new Date(),
+                    relativeRange: 'last24h',
+                  },
+                  chartTypes: ['line'],
+                  template: 'default',
+                });
+                setActiveTab('create');
+              }}
+              onExport={handleExportReports}
+              onImport={handleImportReports}
+            />
+          </div>
+        )}
+
+        {activeTab === 'categories' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-3xl font-bold text-gray-900">Categories & Tags</h2>
+                <p className="text-gray-600">
+                  Organize your reports with categories and tags for better management.
+                </p>
               </div>
-              <Button variant="outline">
-                <Filter className="h-4 w-4 mr-2" />
-                Filter
-              </Button>
             </div>
 
-            {/* Reports List */}
-            <div className="bg-white rounded-lg border border-gray-200">
-              <div className="p-6 text-center text-gray-500">
-                <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-lg font-medium">No reports yet</p>
-                <p>Create your first report to get started</p>
-              </div>
-            </div>
+            <ReportCategories
+              categories={categories}
+              tags={tags}
+              onCreateCategory={handleCreateCategory}
+              onUpdateCategory={handleUpdateCategory}
+              onDeleteCategory={handleDeleteCategory}
+              onCreateTag={handleCreateTag}
+              onDeleteTag={handleDeleteTag}
+            />
           </div>
         )}
 
