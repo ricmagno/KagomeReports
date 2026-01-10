@@ -536,7 +536,7 @@ export class SchedulerService {
               <p><strong>Tags:</strong> ${schedule.reportConfig.tags.join(', ')}</p>
               <p><strong>Time Range:</strong> ${schedule.reportConfig.timeRange.startTime.toLocaleString()} - ${schedule.reportConfig.timeRange.endTime.toLocaleString()}</p>
               <hr>
-              <p><em>This is an automated report from the Kagome Reports system.</em></p>
+              <p><em>This is an automated report from the Historian Reports system.</em></p>
             `
           );
 

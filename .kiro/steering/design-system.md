@@ -2,7 +2,7 @@
 inclusion: always
 ---
 
-# Design System Rules for Kagome Reports Application
+# Design System Rules for Historian Reports Application
 
 ## Project Overview
 This is a React.js + Node.js application for generating reports from AVEVA Historian database. The system follows modern web development practices with a focus on professional, data-driven interfaces.

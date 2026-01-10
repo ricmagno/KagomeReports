@@ -1,8 +1,8 @@
-# Kagome Reports API Documentation
+# Historian Reports API Documentation
 
 ## Overview
 
-The Kagome Reports API provides endpoints for retrieving and analyzing time-series data from AVEVA Historian databases. The API supports data filtering, statistical analysis, and trend detection.
+The Historian Reports API provides endpoints for retrieving and analyzing time-series data from AVEVA Historian databases. The API supports data filtering, statistical analysis, and trend detection.
 
 ## Base URL
 
@@ -208,7 +208,7 @@ Get system information.
   "success": true,
   "data": {
     "application": {
-      "name": "Kagome Reports",
+      "name": "Historian Reports",
       "version": "1.0.0",
       "environment": "development",
       "uptime": 3600

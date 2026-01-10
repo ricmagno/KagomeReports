@@ -1,15 +1,15 @@
-# Kagome Reports Agent Guide
+# Historian Reports Agent Guide
 
-This document provides essential information for agents working in the Kagome Reports codebase. It covers project structure, commands, patterns, and conventions to help agents understand and work effectively with this system.
+This document provides essential information for agents working in the Historian Reports codebase. It covers project structure, commands, patterns, and conventions to help agents understand and work effectively with this system.
 
 ## Project Overview
 
-Kagome Reports is a professional reporting application designed to generate printable reports and trends from the AVEVA Historian database. The system connects directly to the AVEVA Historian database via SQL to extract historical time-series data, process it into meaningful trends, and generate professional printable reports.
+Historian Reports is a professional reporting application designed to generate printable reports and trends from the AVEVA Historian database. The system connects directly to the AVEVA Historian database via SQL to extract historical time-series data, process it into meaningful trends, and generate professional printable reports.
 
 ## Project Structure
 
 ```
-kagome-reports/
+historian-reports/
 ├── src/                    # Source code
 │   ├── server.ts          # Main application entry point
 │   ├── config/            # Configuration files

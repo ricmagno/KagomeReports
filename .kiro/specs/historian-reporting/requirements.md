@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The Kagome Reports Application is a comprehensive reporting system designed to extract historical data from AVEVA Historian databases, process it into meaningful trends, and generate professional printable reports. The system provides both on-demand and automated scheduled reporting capabilities with email delivery functionality.
+The Historian Reports Application is a comprehensive reporting system designed to extract historical data from AVEVA Historian databases, process it into meaningful trends, and generate professional printable reports. The system provides both on-demand and automated scheduled reporting capabilities with email delivery functionality.
 
 ## Glossary
 

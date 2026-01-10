@@ -1,8 +1,8 @@
-# Kagome Reports
+# Historian Reports
 
 ## Project Overview
 
-This is a Node.js backend application for "Kagome Reports", a professional reporting application for the AVEVA Historian database. The application is written in TypeScript and uses Express.js as the web framework. It connects to a Microsoft SQL Server database, which is likely the AVEVA Historian database.
+This is a Node.js backend application for "Historian Reports", a professional reporting application for the AVEVA Historian database. The application is written in TypeScript and uses Express.js as the web framework. It connects to a Microsoft SQL Server database, which is likely the AVEVA Historian database.
 
 The project is well-structured with a clear separation of concerns. It has dedicated folders for configuration, middleware, services, and utilities. It also includes a comprehensive testing setup using Jest.
 

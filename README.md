@@ -1,4 +1,4 @@
-# Kagome Reports Application
+# Historian Reports Application
 
 ## Project Overview
 

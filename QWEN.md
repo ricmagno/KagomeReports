@@ -1,8 +1,8 @@
-# Kagome Reports Application - Context Guide
+# Historian Reports Application - Context Guide
 
 ## Project Overview
 
-Kagome Reports is a professional reporting application designed to generate printable reports and trends from the AVEVA Historian database. The system connects directly to the AVEVA Historian database via SQL to extract historical data, process it into meaningful trends, and generate professional printable reports.
+Historian Reports is a professional reporting application designed to generate printable reports and trends from the AVEVA Historian database. The system connects directly to the AVEVA Historian database via SQL to extract historical data, process it into meaningful trends, and generate professional printable reports.
 
 ### Key Features
 - **Direct SQL connectivity** to AVEVA Historian database (no APIs required)

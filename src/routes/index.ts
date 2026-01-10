@@ -1,6 +1,6 @@
 /**
  * Main API Routes
- * Aggregates all route modules for the Kagome Reports API
+ * Aggregates all route modules for the Historian Reports API
  */
 
 import { Router } from 'express';
@@ -24,7 +24,7 @@ router.use('/system', systemRoutes);
 // API info endpoint
 router.get('/', (req, res) => {
   res.json({
-    name: 'Kagome Reports API',
+    name: 'Historian Reports API',
     version: '1.0.0',
     description: 'Professional reporting application for AVEVA Historian database',
     endpoints: {

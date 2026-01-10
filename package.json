@@ -14,7 +14,7 @@
     "test:watch": "jest --watch",
     "test:property": "jest --testNamePattern='Property'",
     "lint": "eslint src/**/*.ts",
-    "docker:build": "docker buildx build --platform linux/amd64,linux/arm64 -t kagome-reports .",
+    "docker:build": "docker buildx build --platform linux/amd64,linux/arm64 -t historian-reports .",
     "docker:dev": "docker-compose up --build"
   },
   "keywords": [

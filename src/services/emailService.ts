@@ -249,7 +249,7 @@ export class EmailService {
         <p><strong>Generated:</strong> ${new Date().toLocaleString()}</p>
         <p><strong>File Size:</strong> ${fileSizeMB.toFixed(2)} MB</p>
         <hr>
-        <p><em>This is an automated message from the Kagome Reports system.</em></p>
+        <p><em>This is an automated message from the Historian Reports system.</em></p>
       `;
 
       const emailConfig: EmailConfig = {
@@ -461,10 +461,10 @@ export class EmailService {
   async testConfiguration(testRecipient: string): Promise<EmailResult> {
     const testConfig: EmailConfig = {
       to: [testRecipient],
-      subject: 'Kagome Reports - Email Configuration Test',
+      subject: 'Historian Reports - Email Configuration Test',
       html: `
         <h2>Email Configuration Test</h2>
-        <p>This is a test email to verify that the Kagome Reports email service is working correctly.</p>
+        <p>This is a test email to verify that the Historian Reports email service is working correctly.</p>
         <p><strong>Sent:</strong> ${new Date().toLocaleString()}</p>
         <p><strong>SMTP Host:</strong> ${env.SMTP_HOST}</p>
         <p><strong>SMTP Port:</strong> ${env.SMTP_PORT}</p>
@@ -472,7 +472,7 @@ export class EmailService {
         <hr>
         <p><em>If you received this email, the configuration is working correctly.</em></p>
       `,
-      text: `Email Configuration Test\n\nThis is a test email to verify that the Kagome Reports email service is working correctly.\n\nSent: ${new Date().toLocaleString()}\nSMTP Host: ${env.SMTP_HOST}\nSMTP Port: ${env.SMTP_PORT}\nSecure: ${env.SMTP_SECURE ? 'Yes' : 'No'}\n\nIf you received this email, the configuration is working correctly.`,
+      text: `Email Configuration Test\n\nThis is a test email to verify that the Historian Reports email service is working correctly.\n\nSent: ${new Date().toLocaleString()}\nSMTP Host: ${env.SMTP_HOST}\nSMTP Port: ${env.SMTP_PORT}\nSecure: ${env.SMTP_SECURE ? 'Yes' : 'No'}\n\nIf you received this email, the configuration is working correctly.`,
       priority: 'normal'
     };
 

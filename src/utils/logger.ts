@@ -35,7 +35,7 @@ const logFormat = winston.format.combine(
 export const logger = winston.createLogger({
   level: env.LOG_LEVEL,
   format: logFormat,
-  defaultMeta: { service: 'kagome-reports' },
+  defaultMeta: { service: 'historian-reports' },
   transports: [
     // File transport
     new winston.transports.File({

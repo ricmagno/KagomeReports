@@ -18,7 +18,7 @@ const router = Router();
 router.get('/info', asyncHandler(async (req: Request, res: Response) => {
   const systemInfo = {
     application: {
-      name: 'Kagome Reports',
+      name: 'Historian Reports',
       version: process.env.npm_package_version || '1.0.0',
       environment: env.NODE_ENV,
       startTime: process.env.START_TIME || new Date().toISOString(),
@@ -130,28 +130,28 @@ router.get('/logs', asyncHandler(async (req: Request, res: Response) => {
       timestamp: '2023-01-01T12:00:00Z',
       level: 'info',
       message: 'Server started successfully',
-      service: 'kagome-reports',
+      service: 'historian-reports',
       component: 'server'
     },
     {
       timestamp: '2023-01-01T12:01:00Z',
       level: 'info',
       message: 'Database connection established',
-      service: 'kagome-reports',
+      service: 'historian-reports',
       component: 'database'
     },
     {
       timestamp: '2023-01-01T12:02:00Z',
       level: 'warn',
       message: 'High memory usage detected',
-      service: 'kagome-reports',
+      service: 'historian-reports',
       component: 'monitor'
     },
     {
       timestamp: '2023-01-01T12:03:00Z',
       level: 'error',
       message: 'Failed to generate report: timeout',
-      service: 'kagome-reports',
+      service: 'historian-reports',
       component: 'reports'
     }
   ];

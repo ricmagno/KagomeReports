@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Kagome Reports Application is a containerized web-based system that extracts historical time-series data from AVEVA Historian databases, processes it for trend analysis, and generates professional printable reports. The system supports both on-demand and automated scheduled reporting with email delivery capabilities.
+The Historian Reports Application is a containerized web-based system that extracts historical time-series data from AVEVA Historian databases, processes it for trend analysis, and generates professional printable reports. The system supports both on-demand and automated scheduled reporting with email delivery capabilities.
 
 The application follows a microservices architecture with clear separation of concerns, containerized deployment supporting both ARM and AMD64 architectures, and a modern web-based user interface for report configuration and management.
 
