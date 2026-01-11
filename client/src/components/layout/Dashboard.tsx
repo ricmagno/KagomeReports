@@ -218,6 +218,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       return;
     }
 
+    // Validate date range
+    if (reportConfig.timeRange?.startTime && reportConfig.timeRange?.endTime) {
+      if (reportConfig.timeRange.startTime > reportConfig.timeRange.endTime) {
+        alert('Start time cannot be after end time');
+        return;
+      }
+    } else {
+      alert('Please provide both start and end times');
+      return;
+    }
+
     if (!isAuthenticated) {
       alert('Please log in to generate reports');
       return;
@@ -225,10 +236,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
     try {
       setIsLoading(true);
-      
+
       // Generate real report with authentication
       const blob = await apiService.generateReport(reportConfig as ReportConfig);
-      
+
       // Create download link
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -239,7 +250,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      
+
       alert('Report generated successfully!');
     } catch (error) {
       console.error('Failed to generate report:', error);
@@ -447,15 +458,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                       <div className="grid grid-cols-2 gap-2">
                         <Input
                           label="Date (YYYY-MM-DD)"
-                          type="text"
-                          placeholder="2025-01-01"
-                          value={reportConfig.timeRange?.startTime?.toISOString().slice(0, 10) || ''}
+                          type="date"
+                          value={reportConfig.timeRange?.startTime?.toISOString().split('T')[0] || ''}
                           onChange={(e) => {
                             const dateStr = e.target.value;
                             const currentTime = reportConfig.timeRange?.startTime || new Date();
-                            const timeStr = currentTime.toTimeString().slice(0, 8);
+                            const timeStr = currentTime.toTimeString().substring(0, 8);
                             const newDate = new Date(dateStr + 'T' + timeStr);
-                            
+
                             setReportConfig(prev => ({
                               ...prev,
                               timeRange: {
@@ -469,10 +479,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           label="Time (HH:MM)"
                           type="time"
                           step="60"
-                          value={reportConfig.timeRange?.startTime?.toTimeString().slice(0, 5) || ''}
+                          value={reportConfig.timeRange?.startTime ?
+                            reportConfig.timeRange.startTime.toTimeString().substring(0, 5) :
+                            '00:00'}
                           onChange={(e) => {
                             const currentDate = reportConfig.timeRange?.startTime || new Date();
-                            const newDateTime = new Date(currentDate.toISOString().slice(0, 10) + 'T' + e.target.value + ':00');
+                            const newDateTime = new Date(currentDate.toISOString().substring(0, 10) + 'T' + e.target.value + ':00');
+
+                            // Validate that start time is not after end time
+                            if (reportConfig.timeRange?.endTime && newDateTime > reportConfig.timeRange.endTime) {
+                              alert('Start time cannot be after end time');
+                              return;
+                            }
+
                             setReportConfig(prev => ({
                               ...prev,
                               timeRange: {
@@ -491,15 +510,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                       <div className="grid grid-cols-2 gap-2">
                         <Input
                           label="Date (YYYY-MM-DD)"
-                          type="text"
-                          placeholder="2025-01-01"
-                          value={reportConfig.timeRange?.endTime?.toISOString().slice(0, 10) || ''}
+                          type="date"
+                          value={reportConfig.timeRange?.endTime?.toISOString().split('T')[0] || ''}
                           onChange={(e) => {
                             const dateStr = e.target.value;
                             const currentTime = reportConfig.timeRange?.endTime || new Date();
-                            const timeStr = currentTime.toTimeString().slice(0, 8);
+                            const timeStr = currentTime.toTimeString().substring(0, 8);
                             const newDate = new Date(dateStr + 'T' + timeStr);
-                            
+
+                            // Validate that end time is not before start time
+                            if (reportConfig.timeRange?.startTime && newDate < reportConfig.timeRange.startTime) {
+                              alert('End time cannot be before start time');
+                              return;
+                            }
+
                             setReportConfig(prev => ({
                               ...prev,
                               timeRange: {
@@ -513,10 +537,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           label="Time (HH:MM)"
                           type="time"
                           step="60"
-                          value={reportConfig.timeRange?.endTime?.toTimeString().slice(0, 5) || ''}
+                          value={reportConfig.timeRange?.endTime ?
+                            reportConfig.timeRange.endTime.toTimeString().substring(0, 5) :
+                            '23:59'}
                           onChange={(e) => {
                             const currentDate = reportConfig.timeRange?.endTime || new Date();
-                            const newDateTime = new Date(currentDate.toISOString().slice(0, 10) + 'T' + e.target.value + ':00');
+                            const newDateTime = new Date(currentDate.toISOString().substring(0, 10) + 'T' + e.target.value + ':00');
+
+                            // Validate that end time is not before start time
+                            if (reportConfig.timeRange?.startTime && newDateTime < reportConfig.timeRange.startTime) {
+                              alert('End time cannot be before start time');
+                              return;
+                            }
+
                             setReportConfig(prev => ({
                               ...prev,
                               timeRange: {
@@ -535,9 +568,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                         <div className="flex items-center justify-between">
                           <span>Duration:</span>
                           <span className="font-medium">
-                            {Math.ceil((reportConfig.timeRange.endTime.getTime() - reportConfig.timeRange.startTime.getTime()) / (1000 * 60 * 60 * 24))} days, {' '}
-                            {Math.ceil(((reportConfig.timeRange.endTime.getTime() - reportConfig.timeRange.startTime.getTime()) % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))} hours
+                            {(() => {
+                              const diffMs = reportConfig.timeRange!.endTime.getTime() - reportConfig.timeRange!.startTime.getTime();
+                              const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+                              const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                              const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+                              if (diffDays > 0) {
+                                return `${diffDays} day${diffDays !== 1 ? 's' : ''}, ${diffHours} hour${diffHours !== 1 ? 's' : ''}`;
+                              } else if (diffHours > 0) {
+                                return `${diffHours} hour${diffHours !== 1 ? 's' : ''}, ${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''}`;
+                              } else {
+                                return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''}`;
+                              }
+                            })()}
                           </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Validation Error Message */}
+                    {reportConfig.timeRange?.startTime && reportConfig.timeRange?.endTime &&
+                     reportConfig.timeRange.startTime > reportConfig.timeRange.endTime && (
+                      <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">
+                        <div className="flex items-center">
+                          <AlertCircle className="h-4 w-4 mr-2" />
+                          <span>Warning: Start time is after end time</span>
                         </div>
                       </div>
                     )}
@@ -734,7 +790,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             <div className="flex justify-end space-x-4">
               <Button
                 onClick={handleGenerateReport}
-                disabled={!reportConfig.name || !reportConfig.tags?.length || isLoading}
+                disabled={
+                  !reportConfig.name ||
+                  !reportConfig.tags?.length ||
+                  isLoading ||
+                  (reportConfig.timeRange?.startTime &&
+                   reportConfig.timeRange?.endTime &&
+                   reportConfig.timeRange.startTime > reportConfig.timeRange.endTime)
+                }
                 loading={isLoading}
               >
                 <Download className="h-4 w-4 mr-2" />

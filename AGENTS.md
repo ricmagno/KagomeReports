@@ -230,15 +230,16 @@ The system supports:
 2. Customizable report templates
 3. Data visualization capabilities
 4. Professional formatting and styling
-5. Report preview before generation.
+6. Typed date and time inputs with post validation for precise window selection
+5. Report preview after submit and before generation.
+7. Validation happens after the user submit the query. The user should be free to type freely as long is a number.
+8. Validation to ensure start date/time is not greater than end date/time
+9. Duration display showing the time difference between start and end dates
 
 ### Automation Features
 Support for scheduled report generation with various intervals:
 - Hourly, Every 6 hours, Every 8 hours, Every 12 hours, Daily (24 hours)
 - Weekly, Monthly intervals
-- Start and end date and time for report generation should be typed for precise window selection.
-- Date and time check should be validated to ensure start date is not greater than end date.
-- The duration (end date-time minus start date-time should be shown at all times) 
 - Email delivery capabilities
 
 ### Security Considerations
