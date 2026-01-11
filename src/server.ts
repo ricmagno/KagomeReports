@@ -11,6 +11,7 @@ import { cacheManager } from '@/services/cacheManager';
 import { getHistorianConnection } from '@/services/historianConnection';
 import { schedulerService } from '@/services/schedulerService';
 import { emailService } from '@/services/emailService';
+import { setupDatabaseConfigIntegration } from '@/services/databaseConfigService';
 
 // Create Express application
 const app = express();
@@ -84,6 +85,10 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
   const components: ComponentHealth[] = [];
   
   logger.info('Starting comprehensive dependency validation...');
+
+  // Setup database configuration integration
+  setupDatabaseConfigIntegration();
+  logger.info('✓ Database configuration integration setup completed');
 
   // 1. Environment Configuration Validation
   try {

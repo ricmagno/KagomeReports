@@ -223,19 +223,22 @@ This implementation plan breaks down the Historian Reports Application into disc
     - **Property 23: Connection Testing Validation**
     - **Validates: Requirements 9.2**
 
-  - [ ] 12.5 Implement configuration switching and activation
+  - [x] 12.5 Implement configuration switching and activation
     - Create active configuration management
     - Update connection pool when configurations change
     - Add configuration status tracking
     - _Requirements: 9.5_
+    - ✅ **COMPLETED**: Updated `src/services/historianConnection.ts` and `src/services/databaseConfigService.ts` with configuration switching integration
 
   - [ ] 12.6 Write property test for configuration switching
     - **Property 24: Active Configuration Switching**
     - **Validates: Requirements 9.5**
+    - ✅ **COMPLETED**: Created `tests/properties/configuration-switching.property.test.ts`
 
   - [ ] 12.7 Write property test for configuration round-trip
     - **Property 22: Database Configuration Round-Trip**
     - **Validates: Requirements 9.4**
+    - ✅ **COMPLETED**: Created `tests/properties/configuration-round-trip.property.test.ts`
 
 - [ ] 13. Database Configuration UI
   - [ ] 13.1 Create database configuration interface components

@@ -1,6 +1,7 @@
 /**
  * AVEVA Historian Database Connection Service
  * Handles database connections, authentication, and connection pooling
+ * Now integrates with Database Configuration Management
  */
 
 import { ConnectionPool, Request, IResult } from 'mssql';
@@ -8,36 +9,59 @@ import { getDatabase, testDatabaseConnection } from '@/config/database';
 import { dbLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
 import { RetryHandler } from '@/utils/retryHandler';
-import { encryptionService } from '@/services/encryptionService';
-import { DatabaseConfig, TimeSeriesData, TagInfo, TimeRange, DataFilter, QueryResult, HistorianQueryOptions, RetrievalMode, QualityCode } from '@/types/historian';
+import { databaseConfigService } from '@/services/databaseConfigService';
 
 export class HistorianConnection {
-  private pool: ConnectionPool;
+  private pool: ConnectionPool | null = null;
   private isConnected: boolean = false;
   private connectionAttempts: number = 0;
   private maxRetryAttempts: number = 3;
   private retryDelay: number = 1000; // Start with 1 second
+  private currentConfigId: string | null = null;
 
   constructor() {
-    this.pool = getDatabase();
+    // Don't initialize pool in constructor - will be created when needed
   }
 
   /**
    * Connect to AVEVA Historian database with retry logic
+   * Uses active database configuration if available, falls back to environment config
    */
   async connect(): Promise<void> {
     return RetryHandler.executeWithRetry(
       async () => {
-        if (this.isConnected) {
+        if (this.isConnected && this.pool) {
           return;
         }
 
         dbLogger.info('Attempting to connect to AVEVA Historian database...');
         
-        // Test the connection
-        const isHealthy = await testDatabaseConnection();
-        if (!isHealthy) {
-          throw createError('Database connection test failed', 503);
+        // Try to get active database configuration first
+        const activeConfig = databaseConfigService.getActiveConfiguration();
+        
+        if (activeConfig) {
+          dbLogger.info('Using active database configuration', {
+            configId: activeConfig.id,
+            configName: activeConfig.name,
+            host: activeConfig.host,
+            database: activeConfig.database
+          });
+          
+          // Use the active configuration's connection pool
+          this.pool = await databaseConfigService.getActiveConnectionPool();
+          this.currentConfigId = activeConfig.id;
+        } else {
+          dbLogger.info('No active database configuration found, using environment configuration');
+          
+          // Fall back to environment-based configuration
+          this.pool = getDatabase();
+          this.currentConfigId = null;
+          
+          // Test the connection
+          const isHealthy = await testDatabaseConnection();
+          if (!isHealthy) {
+            throw createError('Database connection test failed', 503);
+          }
         }
 
         this.isConnected = true;
@@ -48,6 +72,8 @@ export class HistorianConnection {
       'database-connection'
     ).catch(error => {
       this.isConnected = false;
+      this.pool = null;
+      this.currentConfigId = null;
       dbLogger.error('Database connection failed:', error);
       throw error;
     });
@@ -58,14 +84,72 @@ export class HistorianConnection {
    */
   async disconnect(): Promise<void> {
     try {
-      if (this.isConnected) {
+      if (this.isConnected && this.pool) {
+        // Only close the pool if we're using environment config
+        // Active config pools are managed by databaseConfigService
+        if (!this.currentConfigId) {
+          await this.pool.close();
+        }
         this.isConnected = false;
+        this.pool = null;
+        this.currentConfigId = null;
         dbLogger.info('Disconnected from AVEVA Historian database');
       }
     } catch (error) {
       dbLogger.error('Error disconnecting from database:', error);
       throw error;
     }
+  }
+
+  /**
+   * Switch to a new database configuration
+   * This method is called when the active configuration changes
+   */
+  async switchConfiguration(newConfigId: string): Promise<void> {
+    try {
+      dbLogger.info('Switching database configuration', { 
+        oldConfigId: this.currentConfigId, 
+        newConfigId 
+      });
+
+      // Disconnect from current configuration
+      if (this.isConnected) {
+        await this.disconnect();
+      }
+
+      // Reset state
+      this.isConnected = false;
+      this.pool = null;
+      this.currentConfigId = null;
+      this.connectionAttempts = 0;
+
+      // Reconnect with new configuration
+      await this.connect();
+
+      dbLogger.info('Successfully switched database configuration', { 
+        newConfigId: this.currentConfigId 
+      });
+    } catch (error) {
+      dbLogger.error('Failed to switch database configuration', { 
+        error, 
+        newConfigId 
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get current configuration ID
+   */
+  getCurrentConfigId(): string | null {
+    return this.currentConfigId;
+  }
+
+  /**
+   * Check if using active configuration (vs environment config)
+   */
+  isUsingActiveConfig(): boolean {
+    return this.currentConfigId !== null;
   }
 
   /**
@@ -83,6 +167,10 @@ export class HistorianConnection {
       async () => {
         if (!this.isConnected) {
           await this.connect();
+        }
+
+        if (!this.pool) {
+          throw createError('Database connection not available', 503);
         }
 
         dbLogger.debug('Executing query:', { query: this.sanitizeQueryForLogging(query), params });

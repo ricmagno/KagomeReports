@@ -24,9 +24,30 @@ export class DatabaseConfigService {
   private configurations: Map<string, DatabaseConfiguration> = new Map();
   private activeConfigId: string | null = null;
   private activePool: ConnectionPool | null = null;
+  private configChangeListeners: Array<(configId: string) => Promise<void>> = [];
 
   constructor() {
     this.loadConfigurations();
+  }
+
+  /**
+   * Register a listener for configuration changes
+   */
+  onConfigurationChange(listener: (configId: string) => Promise<void>): void {
+    this.configChangeListeners.push(listener);
+  }
+
+  /**
+   * Notify all listeners of configuration change
+   */
+  private async notifyConfigurationChange(configId: string): Promise<void> {
+    for (const listener of this.configChangeListeners) {
+      try {
+        await listener(configId);
+      } catch (error) {
+        apiLogger.error('Configuration change listener failed', { error, configId });
+      }
+    }
   }
 
   /**
@@ -376,6 +397,9 @@ export class DatabaseConfigService {
 
       await this.persistConfigurations();
 
+      // Notify listeners of configuration change
+      await this.notifyConfigurationChange(configId);
+
       apiLogger.info('Database configuration activated', {
         configId,
         name: dbConfig.name,
@@ -623,3 +647,19 @@ export class DatabaseConfigService {
 
 // Export singleton instance
 export const databaseConfigService = new DatabaseConfigService();
+
+/**
+ * Setup integration with historian connection service
+ * This should be called during application initialization
+ */
+export function setupDatabaseConfigIntegration(): void {
+  // Register historian connection as a listener for configuration changes
+  databaseConfigService.onConfigurationChange(async (configId: string) => {
+    // Import here to avoid circular dependency
+    const { getHistorianConnection } = await import('@/services/historianConnection');
+    const connection = getHistorianConnection();
+    
+    // Switch to the new configuration
+    await connection.switchConfiguration(configId);
+  });
+}
