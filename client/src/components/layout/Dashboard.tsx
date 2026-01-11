@@ -61,9 +61,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         });
         clearTimeout(timeoutId);
 
-        if (response.ok) {
-          const data = await response.json();
+        // Try to parse JSON regardless of status code, as 503 might contain health info
+        let data: any = {};
+        try {
+          data = await response.json();
+        } catch (e) {
+          // If JSON parsing fails, we'll rely on status code
+        }
 
+        if (response.ok || response.status === 503) {
           if (data.status === 'healthy') {
             setHealthStatus('✅ Backend connected & Ready');
           } else if (data.connection && data.connection.state === 'retrying' && data.connection.nextRetry) {
@@ -74,11 +80,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             setHealthStatus(`⚠️ Connection lost. Retrying in ${seconds}s...`);
           } else if (data.connection && data.connection.state === 'connecting') {
             setHealthStatus('⚠️ Connecting to database...');
-          } else {
+          } else if (data.status) {
+            // Fallback for other status messages
             setHealthStatus(`❌ Backend Connected - Database: ${data.status} (${data.connection?.state || 'unknown'})`);
+          } else {
+            setHealthStatus(`❌ Backend error - Status: ${response.status}`);
           }
         } else {
-          // If detailed check fails, try basic check
+          // If detailed check fails hard (not 503), try basic check
           const controllerBasic = new AbortController();
           const timeoutBasic = setTimeout(() => controllerBasic.abort(), 1000);
 

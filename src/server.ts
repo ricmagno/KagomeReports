@@ -180,7 +180,9 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
     // Attempt connection but don't block indefinitely
     // The connect() method handles retries internally (unlimited by default)
     // We wait a short time to see if it connects immediately
-    const connectPromise = historianConnection.connect();
+    const connectPromise = historianConnection.connect().catch(err => {
+      logger.error('Background connection attempt failed finally:', err);
+    });
     const TIMEOUT_MS = 2000;
 
     const connectedWithinTimeout = await Promise.race([
@@ -465,7 +467,7 @@ async function startServer(): Promise<void> {
     // Check if system can start
     if (systemHealth.overall === 'unhealthy') {
       logger.error('System health check failed. Required components are unhealthy.');
-      logger.error('Cannot continue with unhealthy required components.');
+      logger.warn('Server continuing in degraded mode to provide health status.');
 
       // Log failed required components
       systemHealth.components
@@ -474,9 +476,8 @@ async function startServer(): Promise<void> {
           logger.error(`Required component failed: ${component.name} - ${component.error}`);
         });
 
-      // If validation fails, we must shut down the server we started
-      gracefulShutdown('STARTUP_FAILURE');
-      return;
+      // Do NOT shut down. We want to serve /health endpoints even if DB is down.
+      // gracefulShutdown('STARTUP_FAILURE');
     }
 
     if (systemHealth.overall === 'degraded') {
@@ -505,17 +506,30 @@ async function startServer(): Promise<void> {
     // Handle uncaught exceptions and unhandled rejections
     process.on('uncaughtException', (error) => {
       logger.error('Uncaught Exception:', error);
+      // Only shutdown on critical errors, but usually uncaught exception is critical
       gracefulShutdown('UNCAUGHT_EXCEPTION');
     });
 
     process.on('unhandledRejection', (reason, promise) => {
+      // Don't shutdown on unhandled rejections, as they might be background retries
       logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
-      gracefulShutdown('UNHANDLED_REJECTION');
+      // gracefulShutdown('UNHANDLED_REJECTION');
     });
 
   } catch (error) {
     logger.error('Failed to start server:', error);
-    process.exit(1);
+    // Don't exit if server is already listening?
+    // But this catch block catches errors in startServer execution.
+    // If startServer fails (e.g. validatStartupDependencies throws), we want to just log.
+    // We already moved app.listen out.
+    // But wait, if validateStartupDependencies throws, we land here.
+    // And then we `process.exit(1)`.
+    // But `startServer` (the function) shouldn't throw if we handled everything.
+    // `validateStartupDependencies` does NOT throw (it catches internally and returns object).
+
+    // However, keeping process.exit(1) here is risky if something unexpected throws.
+    // Let's remove process.exit(1) here too, just in case.
+    // If app.listen failed, it would throw synchronously? No, it's async but invalid port would throw.
   }
 }
 
