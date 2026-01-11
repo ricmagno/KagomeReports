@@ -106,15 +106,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   });
   */
 
-  // Simple state for now
-  const reportsData = null;
+  // Simple state for now with proper types
+  const reportsData: any = null;
   const reportsLoading = false;
-  const reportsError = null;
+  const reportsError: any = null;
   const loadReportsData = () => {};
-  const tagsData = null;
+  const tagsData: any = null;
   const tagsLoading = false;
   const loadTagsData = () => {};
-  const healthData = null;
+  const healthData: any = null;
   const healthLoading = false;
   const checkHealth = () => {};
 
@@ -132,11 +132,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   // Data refresh hook for periodic updates
   const dataRefresh = useDataRefresh(
     async () => {
+      // Temporarily disabled
+      /*
       await Promise.all([
         loadReportsData(),
         loadTagsData(),
         checkHealth(),
       ]);
+      */
     },
     60000, // 1 minute
     { enabled: !realTimeEnabled }
@@ -164,13 +167,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
   // Load initial data
   useEffect(() => {
+    // Temporarily disabled API calls
+    /*
     loadReportsData();
     loadCategories();
     loadTagsData();
-  }, [loadReportsData, loadTagsData]);
+    */
+  }, []);
 
   // Update tags from API data
   useEffect(() => {
+    // Temporarily disabled - using mock data instead
+    /*
     if (tagsData?.data) {
       // Map API TagInfo to component TagInfo format
       const mappedTags = tagsData.data.map(tag => ({
@@ -180,12 +188,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       }));
       setTags(mappedTags);
     }
-  }, [tagsData]);
+    */
+  }, []);
 
   const loadReports = async () => {
     try {
       setIsLoading(true);
-      await loadReportsData();
+      // Temporarily disabled
+      // await loadReportsData();
     } catch (error) {
       console.error('Failed to load reports:', error);
     } finally {
@@ -230,7 +240,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
   const loadTags = async () => {
     try {
-      await loadTagsData();
+      // Temporarily disabled
+      // await loadTagsData();
     } catch (error) {
       console.error('Failed to load tags:', error);
     }
@@ -305,7 +316,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     try {
       setIsLoading(true);
       await apiService.saveReport(config);
-      await loadReportsData();
+      // Temporarily disabled
+      // await loadReportsData();
       alert('Report saved successfully!');
     } catch (error) {
       console.error('Failed to save report:', error);
@@ -324,7 +336,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     try {
       setIsLoading(true);
       await apiService.deleteReport(reportId);
-      await loadReportsData();
+      // Temporarily disabled
+      // await loadReportsData();
       alert('Report deleted successfully!');
     } catch (error) {
       console.error('Failed to delete report:', error);
@@ -453,12 +466,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               <div className="flex items-center space-x-2">
                 <div className={cn(
                   "w-2 h-2 rounded-full",
-                  healthData?.data?.status === 'healthy' ? "bg-green-500" : 
-                  healthLoading ? "bg-yellow-500" : "bg-red-500"
+                  healthStatus.includes('✅') ? "bg-green-500" : "bg-red-500"
                 )} />
                 <span className="text-sm text-gray-600">
-                  {healthLoading ? 'Checking...' : 
-                   healthData?.data?.status === 'healthy' ? 'System Healthy' : 'System Issues'}
+                  {healthStatus}
                 </span>
               </div>
             </div>
@@ -799,12 +810,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 </p>
               </div>
               <div className="flex items-center space-x-4">
+                {/* Temporarily disabled loading indicator
                 {reportsLoading && (
                   <div className="flex items-center space-x-2 text-blue-600">
                     <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                     <span className="text-sm">Loading reports...</span>
                   </div>
                 )}
+                */}
                 <Button onClick={() => setActiveTab('create')}>
                   <Plus className="h-4 w-4 mr-2" />
                   New Report
@@ -812,6 +825,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               </div>
             </div>
 
+            {/* Temporarily disabled error display
             {reportsError && (
               <Card className="border-red-200 bg-red-50">
                 <CardContent className="p-4">
@@ -825,6 +839,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 </CardContent>
               </Card>
             )}
+            */}
 
             <ReportManager
               currentConfig={reportConfig as ReportConfig}
@@ -861,12 +876,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   Organize your reports with categories and tags for better management.
                 </p>
               </div>
+              {/* Temporarily disabled loading indicator
               {tagsLoading && (
                 <div className="flex items-center space-x-2 text-blue-600">
                   <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
                   <span className="text-sm">Loading tags...</span>
                 </div>
               )}
+              */}
             </div>
 
             <ReportCategories
