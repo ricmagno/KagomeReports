@@ -116,13 +116,19 @@ export enum RetrievalMode {
   Delta = 'Delta',         // Value change based
   Full = 'Full',           // All data points
   BestFit = 'BestFit',     // Optimized sampling
+  Average = 'Average',     // Time-weighted average
+  Minimum = 'Minimum',     // Minimum value in period
+  Maximum = 'Maximum',     // Maximum value in period
+  Interpolated = 'Interpolated', // Linear interpolation
+  ValueState = 'ValueState', // State-based retrieval
 }
 
 // Query options for AVEVA Historian
 export interface HistorianQueryOptions {
   mode: RetrievalMode;
   interval?: number | undefined;        // For Cyclic mode (seconds)
+  resolution?: number | undefined;      // For specific frequency (milliseconds)
   tolerance?: number | undefined;       // For Delta mode (percentage)
-  maxPoints?: number | undefined;       // Maximum points to return
+  maxPoints?: number | undefined;       // Maximum points to return (maps to wwCycleCount)
   includeQuality?: boolean | undefined; // Include quality information
 }

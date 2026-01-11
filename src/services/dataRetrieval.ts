@@ -11,15 +11,15 @@ import { progressTracker } from '@/middleware/progressTracker';
 import { createHash } from 'crypto';
 import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
-import { 
-  TimeSeriesData, 
-  TagInfo, 
-  TimeRange, 
-  DataFilter, 
-  QueryResult, 
-  HistorianQueryOptions, 
-  RetrievalMode, 
-  QualityCode 
+import {
+  TimeSeriesData,
+  TagInfo,
+  TimeRange,
+  DataFilter,
+  QueryResult,
+  HistorianQueryOptions,
+  RetrievalMode,
+  QualityCode
 } from '@/types/historian';
 
 export class DataRetrievalService {
@@ -44,8 +44,8 @@ export class DataRetrievalService {
    * Get time-series data for a specific tag within a time range
    */
   async getTimeSeriesData(
-    tagName: string, 
-    timeRange: TimeRange, 
+    tagName: string,
+    timeRange: TimeRange,
     options?: HistorianQueryOptions,
     operationId?: string
   ): Promise<TimeSeriesData[]> {
@@ -64,11 +64,11 @@ export class DataRetrievalService {
       // Check cache first if caching is enabled
       if (this.cacheService) {
         const cachedData = await this.cacheService.getCachedTimeSeriesData(
-          tagName, 
-          timeRange.startTime, 
+          tagName,
+          timeRange.startTime,
           timeRange.endTime
         );
-        
+
         if (cachedData) {
           dbLogger.debug(`Cache hit for time-series data: ${tagName}`);
           if (operationId) {
@@ -80,7 +80,7 @@ export class DataRetrievalService {
 
       // Estimate data size and use streaming for large datasets
       const estimatedSize = await this.estimateDataSize(tagName, timeRange);
-      
+
       if (estimatedSize > this.LARGE_DATASET_THRESHOLD) {
         dbLogger.info(`Large dataset detected (${estimatedSize} points), using streaming approach`);
         return this.getTimeSeriesDataStreaming(tagName, timeRange, options, operationId);
@@ -95,7 +95,7 @@ export class DataRetrievalService {
       const params = this.buildQueryParams(tagName, timeRange, options);
 
       const result = await this.getConnection().executeQuery<any>(query, params);
-      
+
       if (operationId) {
         progressTracker.updateProgress(operationId, 'processing', 70, 'Processing query results');
       }
@@ -109,9 +109,9 @@ export class DataRetrievalService {
           progressTracker.updateProgress(operationId, 'caching', 90, 'Caching results');
         }
         await this.cacheService.cacheTimeSeriesData(
-          tagName, 
-          timeRange.startTime, 
-          timeRange.endTime, 
+          tagName,
+          timeRange.startTime,
+          timeRange.endTime,
           timeSeriesData
         );
       }
@@ -136,8 +136,8 @@ export class DataRetrievalService {
    * Get time-series data using streaming for large datasets
    */
   private async getTimeSeriesDataStreaming(
-    tagName: string, 
-    timeRange: TimeRange, 
+    tagName: string,
+    timeRange: TimeRange,
     options?: HistorianQueryOptions,
     operationId?: string
   ): Promise<TimeSeriesData[]> {
@@ -154,9 +154,9 @@ export class DataRetrievalService {
       if (operationId) {
         const progress = Math.min(90, (processedCount / totalEstimated) * 80 + 10);
         progressTracker.updateProgress(
-          operationId, 
-          'querying', 
-          progress, 
+          operationId,
+          'querying',
+          progress,
           `Processing batch ${Math.floor(offset / batchSize) + 1}, ${processedCount}/${totalEstimated} points`
         );
       }
@@ -217,14 +217,13 @@ export class DataRetrievalService {
    * Build optimized time-series query with indexing hints
    */
   private buildOptimizedTimeSeriesQuery(
-    tagName: string, 
-    timeRange: TimeRange, 
+    tagName: string,
+    timeRange: TimeRange,
     options?: HistorianQueryOptions
   ): string {
-    const mode = options?.mode || RetrievalMode.Full;
     const includeQuality = options?.includeQuality !== false;
 
-    // Use the AVEVA Historian History view which provides the correct interface
+    // Use the native AVEVA Historian History view with wwRetrievalMode parameters
     let query = `
       SELECT 
         DateTime as timestamp,
@@ -235,35 +234,21 @@ export class DataRetrievalService {
       WHERE TagName = @tagName
         AND DateTime >= @startTime
         AND DateTime <= @endTime
+        AND wwRetrievalMode = @mode
     `;
 
-    // Add mode-specific optimizations
-    switch (mode) {
-      case RetrievalMode.Cyclic:
-        if (options?.interval) {
-          query += ` AND DATEDIFF(second, @startTime, DateTime) % @interval = 0`;
-        }
-        break;
-      
-      case RetrievalMode.Delta:
-        query += ` AND Quality = ${QualityCode.Good}`;
-        break;
-      
-      case RetrievalMode.BestFit:
-        if (options?.maxPoints) {
-          // Use statistical sampling for large datasets
-          const sampleRate = this.calculateOptimalSampleRate(timeRange, options.maxPoints);
-          query += ` AND ABS(CHECKSUM(NEWID())) % ${sampleRate} = 0`;
-        }
-        break;
+    // Add resolution if specified or for Cyclic mode
+    if (options?.resolution || options?.interval) {
+      query += ` AND wwResolution = @resolution`;
+    }
+
+    // Use wwCycleCount for point limiting if specified
+    if (options?.maxPoints) {
+      query += ` AND wwCycleCount = @maxPoints`;
     }
 
     // Add query optimization
     query += ` ORDER BY DateTime`;
-
-    if (options?.maxPoints) {
-      query = `SELECT TOP ${options.maxPoints} * FROM (${query}) AS subquery`;
-    }
 
     return query;
   }
@@ -272,12 +257,13 @@ export class DataRetrievalService {
    * Build streaming query with pagination
    */
   private buildStreamingQuery(
-    tagName: string, 
-    timeRange: TimeRange, 
+    tagName: string,
+    timeRange: TimeRange,
     options?: HistorianQueryOptions,
     batchSize: number = 1000,
     offset: number = 0
   ): string {
+    const mode = options?.mode || RetrievalMode.Full;
     const includeQuality = options?.includeQuality !== false;
 
     return `
@@ -290,23 +276,14 @@ export class DataRetrievalService {
       WHERE TagName = @tagName
         AND DateTime >= @startTime
         AND DateTime <= @endTime
+        AND wwRetrievalMode = @mode
       ORDER BY DateTime
       OFFSET @offset ROWS
       FETCH NEXT @batchSize ROWS ONLY
     `;
   }
 
-  /**
-   * Calculate optimal sample rate for large datasets
-   */
-  private calculateOptimalSampleRate(timeRange: TimeRange, maxPoints: number): number {
-    const duration = timeRange.endTime.getTime() - timeRange.startTime.getTime();
-    const estimatedPoints = duration / (60 * 1000); // Assume 1 point per minute
-    const sampleRate = Math.max(1, Math.ceil(estimatedPoints / maxPoints));
-    
-    // Ensure sample rate is reasonable (between 1 and 1000)
-    return Math.min(1000, Math.max(1, sampleRate));
-  }
+
 
   /**
    * Create data processing stream for memory-efficient operations
@@ -339,8 +316,8 @@ export class DataRetrievalService {
     };
   }
   async getMultipleTimeSeriesData(
-    tagNames: string[], 
-    timeRange: TimeRange, 
+    tagNames: string[],
+    timeRange: TimeRange,
     options?: HistorianQueryOptions,
     operationId?: string
   ): Promise<Record<string, TimeSeriesData[]>> {
@@ -358,15 +335,15 @@ export class DataRetrievalService {
       }
 
       // Execute queries with progress tracking
-      const promises = tagNames.map((tagName, index) => 
+      const promises = tagNames.map((tagName, index) =>
         this.getTimeSeriesData(tagName, timeRange, options)
           .then(data => {
             if (operationId) {
               const progress = 10 + ((index + 1) / tagNames.length) * 80;
               progressTracker.updateProgress(
-                operationId, 
-                'querying', 
-                progress, 
+                operationId,
+                'querying',
+                progress,
                 `Completed ${index + 1}/${tagNames.length} tags`
               );
             }
@@ -376,7 +353,7 @@ export class DataRetrievalService {
       );
 
       const results = await Promise.all(promises);
-      
+
       if (operationId) {
         progressTracker.updateProgress(operationId, 'processing', 95, 'Finalizing results');
       }
@@ -400,7 +377,7 @@ export class DataRetrievalService {
       if (operationId) {
         const successCount = Object.keys(successfulResults).length;
         progressTracker.completeOperation(
-          operationId, 
+          operationId,
           `Retrieved data for ${successCount}/${tagNames.length} tags`
         );
       }
@@ -425,31 +402,33 @@ export class DataRetrievalService {
 
       // Check cache first if caching is enabled
       if (this.cacheService) {
-        const cachedTags = filter 
+        const cachedTags = filter
           ? await this.cacheService.getCachedFilteredTags(filter)
           : await this.cacheService.getCachedTagList();
-        
+
         if (cachedTags) {
           dbLogger.debug(`Cache hit for tag list${filter ? ` with filter: ${filter}` : ''}`);
           return cachedTags;
         }
       }
 
-      // Use the correct AVEVA Historian schema - _Tag table has the actual columns
+      // Use the standard AVEVA Historian Tag view which contains all active tags
       let query = `
         SELECT 
           TagName as name,
           Description as description,
+          EngineeringUnit as units,
           CASE 
             WHEN TagType = 1 THEN 'analog'
             WHEN TagType = 2 THEN 'discrete'
-            ELSE 'string'
+            WHEN TagType = 3 THEN 'string'
+            ELSE 'unknown'
           END as dataType,
-          DateCreated as lastUpdate,
+          GETDATE() as lastUpdate,
           MinEU as minValue,
           MaxEU as maxValue
-        FROM _Tag
-        WHERE Status = 0
+        FROM Tag
+        WHERE 1=1
       `;
 
       const params: Record<string, any> = {};
@@ -462,18 +441,18 @@ export class DataRetrievalService {
       query += ` ORDER BY TagName`;
 
       const result = await this.getConnection().executeQuery<any>(query, params);
-      
+
       // Transform to TagInfo format
       const tagInfos: TagInfo[] = result.recordset.map(row => ({
         name: row.name,
         description: row.description || '',
-        units: '', // Will be populated from engineering units if needed
+        units: row.units || '',
         dataType: row.dataType,
-        lastUpdate: row.lastUpdate,
+        lastUpdate: new Date(row.lastUpdate),
         minValue: row.minValue,
         maxValue: row.maxValue
       }));
-      
+
       // Cache the result if caching is enabled
       if (this.cacheService && tagInfos.length > 0) {
         if (filter) {
@@ -513,7 +492,7 @@ export class DataRetrievalService {
       const params = this.buildFilteredQueryParams(timeRange, filter, cursor);
 
       const result = await this.getConnection().executeQuery<any>(query, params);
-      
+
       // Transform and paginate results
       const data = result.recordset.map(row => this.transformToTimeSeriesData(row));
       const hasMore = data.length === pageSize;
@@ -538,75 +517,39 @@ export class DataRetrievalService {
   }
 
   /**
-   * Build time-series query based on retrieval mode
+   * Build time-series query based on retrieval mode (legacy fallback)
    */
   private buildTimeSeriesQuery(
-    tagName: string, 
-    timeRange: TimeRange, 
+    tagName: string,
+    timeRange: TimeRange,
     options?: HistorianQueryOptions
   ): string {
-    const mode = options?.mode || RetrievalMode.Full;
-    const includeQuality = options?.includeQuality !== false;
-
-    let query = `
-      SELECT 
-        DateTime as timestamp,
-        Value as value,
-        ${includeQuality ? 'Quality as quality,' : ''}
-        @tagName as tagName
-      FROM History
-      WHERE TagName = @tagName
-        AND DateTime >= @startTime
-        AND DateTime <= @endTime
-    `;
-
-    // Add mode-specific conditions
-    switch (mode) {
-      case RetrievalMode.Cyclic:
-        if (options?.interval) {
-          query += ` AND DATEDIFF(second, @startTime, DateTime) % @interval = 0`;
-        }
-        break;
-      
-      case RetrievalMode.Delta:
-        // Delta mode would require more complex logic with LAG functions
-        query += ` AND Quality = ${QualityCode.Good}`;
-        break;
-      
-      case RetrievalMode.BestFit:
-        // Implement sampling logic for large datasets
-        if (options?.maxPoints) {
-          const sampleRate = this.calculateSampleRate(timeRange, options.maxPoints);
-          query += ` AND ROW_NUMBER() OVER (ORDER BY DateTime) % ${sampleRate} = 1`;
-        }
-        break;
-    }
-
-    query += ` ORDER BY DateTime`;
-
-    if (options?.maxPoints) {
-      query = `SELECT TOP ${options.maxPoints} * FROM (${query}) AS subquery`;
-    }
-
-    return query;
+    return this.buildOptimizedTimeSeriesQuery(tagName, timeRange, options);
   }
 
   /**
    * Build query parameters
    */
   private buildQueryParams(
-    tagName: string, 
-    timeRange: TimeRange, 
+    tagName: string,
+    timeRange: TimeRange,
     options?: HistorianQueryOptions
   ): Record<string, any> {
     const params: Record<string, any> = {
       tagName,
       startTime: timeRange.startTime,
-      endTime: timeRange.endTime
+      endTime: timeRange.endTime,
+      mode: options?.mode || RetrievalMode.Full
     };
 
-    if (options?.interval) {
-      params.interval = options.interval;
+    if (options?.resolution) {
+      params.resolution = options.resolution;
+    } else if (options?.interval) {
+      params.resolution = options.interval * 1000; // Convert seconds to milliseconds
+    }
+
+    if (options?.maxPoints) {
+      params.maxPoints = options.maxPoints;
     }
 
     return params;
@@ -630,7 +573,12 @@ export class DataRetrievalService {
       FROM History
       WHERE DateTime >= @startTime
         AND DateTime <= @endTime
+        AND wwRetrievalMode = @mode
     `;
+
+    if (filter.samplingInterval) {
+      query += ` AND wwResolution = @resolution`;
+    }
 
     // Add tag name filter
     if (filter.tagNames && filter.tagNames.length > 0) {
@@ -674,8 +622,13 @@ export class DataRetrievalService {
   ): Record<string, any> {
     const params: Record<string, any> = {
       startTime: timeRange.startTime,
-      endTime: timeRange.endTime
+      endTime: timeRange.endTime,
+      mode: filter.samplingInterval ? RetrievalMode.Cyclic : RetrievalMode.Full
     };
+
+    if (filter.samplingInterval) {
+      params.resolution = filter.samplingInterval;
+    }
 
     // Add tag name parameters
     if (filter.tagNames) {
@@ -755,14 +708,7 @@ export class DataRetrievalService {
     };
   }
 
-  /**
-   * Calculate sample rate for BestFit mode
-   */
-  private calculateSampleRate(timeRange: TimeRange, maxPoints: number): number {
-    const duration = timeRange.endTime.getTime() - timeRange.startTime.getTime();
-    const estimatedPoints = duration / (60 * 1000); // Assume 1 point per minute
-    return Math.max(1, Math.ceil(estimatedPoints / maxPoints));
-  }
+
 
   /**
    * Generate cursor for pagination
@@ -786,7 +732,7 @@ export class DataRetrievalService {
     // Check for reasonable time range (not more than 1 year)
     const maxDuration = 365 * 24 * 60 * 60 * 1000; // 1 year in milliseconds
     const duration = timeRange.endTime.getTime() - timeRange.startTime.getTime();
-    
+
     if (duration > maxDuration) {
       throw createError('Time range cannot exceed 1 year', 400);
     }
