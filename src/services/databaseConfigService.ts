@@ -200,9 +200,16 @@ export class DatabaseConfigService {
         user: config.username,
         password: config.password,
         options: {
-          encrypt: config.encrypt,
-          trustServerCertificate: config.trustServerCertificate,
-          enableArithAbort: true
+          // For IP addresses with encryption, we need special handling
+          encrypt: config.encrypt && !this.isIPAddress(config.host),
+          trustServerCertificate: config.trustServerCertificate || this.isIPAddress(config.host),
+          enableArithAbort: true,
+          // Only set cryptoCredentialsDetails for hostnames
+          ...(config.encrypt && !this.isIPAddress(config.host) && {
+            cryptoCredentialsDetails: {
+              minVersion: 'TLSv1.2'
+            }
+          })
         },
         connectionTimeout: Math.min(config.connectionTimeout, 15000), // Max 15 seconds for testing
         requestTimeout: Math.min(config.requestTimeout, 15000),
@@ -523,9 +530,16 @@ export class DatabaseConfigService {
         user: config.username,
         password: config.password,
         options: {
-          encrypt: config.encrypt,
-          trustServerCertificate: config.trustServerCertificate,
-          enableArithAbort: true
+          // For IP addresses with encryption, we need special handling
+          encrypt: config.encrypt && !this.isIPAddress(config.host),
+          trustServerCertificate: config.trustServerCertificate || this.isIPAddress(config.host),
+          enableArithAbort: true,
+          // Only set cryptoCredentialsDetails for hostnames
+          ...(config.encrypt && !this.isIPAddress(config.host) && {
+            cryptoCredentialsDetails: {
+              minVersion: 'TLSv1.2'
+            }
+          })
         },
         connectionTimeout: config.connectionTimeout,
         requestTimeout: config.requestTimeout,
@@ -650,9 +664,47 @@ export class DatabaseConfigService {
    */
   private async loadConfigurations(): Promise<void> {
     try {
-      // In a real implementation, this would load from a database
-      // For now, we'll use in-memory storage
-      apiLogger.info('Database configurations loaded from storage');
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      
+      const configDir = path.join(process.cwd(), 'data');
+      const configFile = path.join(configDir, 'database-configs.json');
+      
+      try {
+        // Ensure data directory exists
+        await fs.mkdir(configDir, { recursive: true });
+        
+        // Try to read existing configurations
+        const data = await fs.readFile(configFile, 'utf-8');
+        const savedConfigs = JSON.parse(data);
+        
+        // Load configurations into memory
+        this.configurations.clear();
+        for (const config of savedConfigs.configurations || []) {
+          // Convert date strings back to Date objects
+          config.createdAt = new Date(config.createdAt);
+          if (config.lastTested) {
+            config.lastTested = new Date(config.lastTested);
+          }
+          this.configurations.set(config.id, config);
+        }
+        
+        // Restore active configuration ID
+        this.activeConfigId = savedConfigs.activeConfigId || null;
+        
+        apiLogger.info('Database configurations loaded from storage', {
+          count: this.configurations.size,
+          activeConfigId: this.activeConfigId
+        });
+        
+      } catch (error: any) {
+        if (error.code === 'ENOENT') {
+          // File doesn't exist yet, that's fine
+          apiLogger.info('No existing database configurations found, starting fresh');
+        } else {
+          throw error;
+        }
+      }
     } catch (error) {
       apiLogger.error('Failed to load database configurations', { error });
     }
@@ -663,12 +715,42 @@ export class DatabaseConfigService {
    */
   private async persistConfigurations(): Promise<void> {
     try {
-      // In a real implementation, this would save to a database
-      // For now, we'll just log the operation
-      apiLogger.debug('Database configurations persisted to storage');
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      
+      const configDir = path.join(process.cwd(), 'data');
+      const configFile = path.join(configDir, 'database-configs.json');
+      
+      // Ensure data directory exists
+      await fs.mkdir(configDir, { recursive: true });
+      
+      // Convert Map to array for serialization
+      const configurations = Array.from(this.configurations.values());
+      
+      const dataToSave = {
+        configurations,
+        activeConfigId: this.activeConfigId,
+        lastUpdated: new Date().toISOString()
+      };
+      
+      await fs.writeFile(configFile, JSON.stringify(dataToSave, null, 2), 'utf-8');
+      
+      apiLogger.debug('Database configurations persisted to storage', {
+        count: configurations.length,
+        activeConfigId: this.activeConfigId
+      });
     } catch (error) {
       apiLogger.error('Failed to persist database configurations', { error });
     }
+  }
+
+  /**
+   * Check if a string is an IP address
+   */
+  private isIPAddress(host: string): boolean {
+    const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+    const ipv6Regex = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
+    return ipv4Regex.test(host) || ipv6Regex.test(host);
   }
 
   /**

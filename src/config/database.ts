@@ -11,13 +11,16 @@ export const databaseConfig: MSSQLConfig = {
   user: env.DB_USER,
   password: env.DB_PASSWORD,
   options: {
-    encrypt: env.DB_ENCRYPT,
-    trustServerCertificate: env.DB_TRUST_SERVER_CERTIFICATE,
+    // For IP addresses with encryption, we need special handling
+    encrypt: env.DB_ENCRYPT && !isIPAddress(env.DB_HOST),
+    trustServerCertificate: env.DB_TRUST_SERVER_CERTIFICATE || isIPAddress(env.DB_HOST),
     enableArithAbort: true,
-    // Enhanced security options
-    cryptoCredentialsDetails: {
-      minVersion: 'TLSv1.2'
-    }
+    // Only set cryptoCredentialsDetails for hostnames
+    ...(env.DB_ENCRYPT && !isIPAddress(env.DB_HOST) && {
+      cryptoCredentialsDetails: {
+        minVersion: 'TLSv1.2'
+      }
+    })
   },
   pool: {
     min: env.DB_POOL_MIN,
@@ -27,6 +30,15 @@ export const databaseConfig: MSSQLConfig = {
   requestTimeout: env.DB_TIMEOUT_MS,
   connectionTimeout: env.DB_TIMEOUT_MS,
 };
+
+/**
+ * Check if a string is an IP address
+ */
+function isIPAddress(host: string): boolean {
+  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+  const ipv6Regex = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/;
+  return ipv4Regex.test(host) || ipv6Regex.test(host);
+}
 
 // Global connection pool instance
 let pool: ConnectionPool | null = null;
