@@ -224,13 +224,14 @@ export class DataRetrievalService {
     const mode = options?.mode || RetrievalMode.Full;
     const includeQuality = options?.includeQuality !== false;
 
+    // Use the AVEVA Historian History view which provides the correct interface
     let query = `
       SELECT 
         DateTime as timestamp,
         Value as value,
         ${includeQuality ? 'Quality as quality,' : ''}
-        @tagName as tagName
-      FROM History WITH (INDEX(IX_History_TagName_DateTime))
+        TagName as tagName
+      FROM History
       WHERE TagName = @tagName
         AND DateTime >= @startTime
         AND DateTime <= @endTime
@@ -257,11 +258,8 @@ export class DataRetrievalService {
         break;
     }
 
-    // Add query optimization hints
-    query += ` 
-      ORDER BY DateTime
-      OPTION (OPTIMIZE FOR (@tagName = '${tagName}'))
-    `;
+    // Add query optimization
+    query += ` ORDER BY DateTime`;
 
     if (options?.maxPoints) {
       query = `SELECT TOP ${options.maxPoints} * FROM (${query}) AS subquery`;
@@ -287,15 +285,14 @@ export class DataRetrievalService {
         DateTime as timestamp,
         Value as value,
         ${includeQuality ? 'Quality as quality,' : ''}
-        @tagName as tagName
-      FROM History WITH (INDEX(IX_History_TagName_DateTime))
+        TagName as tagName
+      FROM History
       WHERE TagName = @tagName
         AND DateTime >= @startTime
         AND DateTime <= @endTime
       ORDER BY DateTime
       OFFSET @offset ROWS
       FETCH NEXT @batchSize ROWS ONLY
-      OPTION (OPTIMIZE FOR (@tagName = '${tagName}'))
     `;
   }
 
@@ -438,22 +435,21 @@ export class DataRetrievalService {
         }
       }
 
+      // Use the correct AVEVA Historian schema - _Tag table has the actual columns
       let query = `
         SELECT 
           TagName as name,
           Description as description,
-          EngineeringUnits as units,
           CASE 
-            WHEN DataType = 1 THEN 'analog'
-            WHEN DataType = 2 THEN 'discrete'
+            WHEN TagType = 1 THEN 'analog'
+            WHEN TagType = 2 THEN 'discrete'
             ELSE 'string'
           END as dataType,
-          LastUpdate as lastUpdate,
+          DateCreated as lastUpdate,
           MinEU as minValue,
-          MaxEU as maxValue,
-          EngineeringUnits as engineeringUnits
-        FROM Tag
-        WHERE 1=1
+          MaxEU as maxValue
+        FROM _Tag
+        WHERE Status = 0
       `;
 
       const params: Record<string, any> = {};
@@ -465,19 +461,30 @@ export class DataRetrievalService {
 
       query += ` ORDER BY TagName`;
 
-      const result = await this.getConnection().executeQuery<TagInfo>(query, params);
+      const result = await this.getConnection().executeQuery<any>(query, params);
+      
+      // Transform to TagInfo format
+      const tagInfos: TagInfo[] = result.recordset.map(row => ({
+        name: row.name,
+        description: row.description || '',
+        units: '', // Will be populated from engineering units if needed
+        dataType: row.dataType,
+        lastUpdate: row.lastUpdate,
+        minValue: row.minValue,
+        maxValue: row.maxValue
+      }));
       
       // Cache the result if caching is enabled
-      if (this.cacheService && result.recordset.length > 0) {
+      if (this.cacheService && tagInfos.length > 0) {
         if (filter) {
-          await this.cacheService.cacheFilteredTags(filter, result.recordset);
+          await this.cacheService.cacheFilteredTags(filter, tagInfos);
         } else {
-          await this.cacheService.cacheTagList(result.recordset);
+          await this.cacheService.cacheTagList(tagInfos);
         }
       }
 
-      dbLogger.info(`Retrieved ${result.recordset.length} tags`);
-      return result.recordset;
+      dbLogger.info(`Retrieved ${tagInfos.length} tags`);
+      return tagInfos;
 
     } catch (error) {
       dbLogger.error('Failed to retrieve tag list:', error);
@@ -616,44 +623,43 @@ export class DataRetrievalService {
   ): string {
     let query = `
       SELECT TOP ${pageSize + 1}
-        h.DateTime as timestamp,
-        h.Value as value,
-        h.Quality as quality,
-        h.TagName as tagName
-      FROM History h
-      INNER JOIN Tag t ON h.TagName = t.TagName
-      WHERE h.DateTime >= @startTime
-        AND h.DateTime <= @endTime
+        DateTime as timestamp,
+        Value as value,
+        Quality as quality,
+        TagName as tagName
+      FROM History
+      WHERE DateTime >= @startTime
+        AND DateTime <= @endTime
     `;
 
     // Add tag name filter
     if (filter.tagNames && filter.tagNames.length > 0) {
       const tagPlaceholders = filter.tagNames.map((_, index) => `@tag${index}`).join(',');
-      query += ` AND h.TagName IN (${tagPlaceholders})`;
+      query += ` AND TagName IN (${tagPlaceholders})`;
     }
 
     // Add quality filter
     if (filter.qualityFilter && filter.qualityFilter.length > 0) {
       const qualityPlaceholders = filter.qualityFilter.map((_, index) => `@quality${index}`).join(',');
-      query += ` AND h.Quality IN (${qualityPlaceholders})`;
+      query += ` AND Quality IN (${qualityPlaceholders})`;
     }
 
     // Add value range filter
     if (filter.valueRange) {
       if (filter.valueRange.min !== undefined) {
-        query += ` AND h.Value >= @minValue`;
+        query += ` AND Value >= @minValue`;
       }
       if (filter.valueRange.max !== undefined) {
-        query += ` AND h.Value <= @maxValue`;
+        query += ` AND Value <= @maxValue`;
       }
     }
 
     // Add cursor for pagination
     if (cursor) {
-      query += ` AND h.DateTime > @cursorTime`;
+      query += ` AND DateTime > @cursorTime`;
     }
 
-    query += ` ORDER BY h.DateTime, h.TagName`;
+    query += ` ORDER BY DateTime, TagName`;
 
     return query;
   }
@@ -709,29 +715,28 @@ export class DataRetrievalService {
   private buildCountQuery(timeRange: TimeRange, filter: DataFilter): string {
     let query = `
       SELECT COUNT(*) as total
-      FROM History h
-      INNER JOIN Tag t ON h.TagName = t.TagName
-      WHERE h.DateTime >= @startTime
-        AND h.DateTime <= @endTime
+      FROM History
+      WHERE DateTime >= @startTime
+        AND DateTime <= @endTime
     `;
 
     // Add same filters as main query (without cursor)
     if (filter.tagNames && filter.tagNames.length > 0) {
       const tagPlaceholders = filter.tagNames.map((_, index) => `@tag${index}`).join(',');
-      query += ` AND h.TagName IN (${tagPlaceholders})`;
+      query += ` AND TagName IN (${tagPlaceholders})`;
     }
 
     if (filter.qualityFilter && filter.qualityFilter.length > 0) {
       const qualityPlaceholders = filter.qualityFilter.map((_, index) => `@quality${index}`).join(',');
-      query += ` AND h.Quality IN (${qualityPlaceholders})`;
+      query += ` AND Quality IN (${qualityPlaceholders})`;
     }
 
     if (filter.valueRange) {
       if (filter.valueRange.min !== undefined) {
-        query += ` AND h.Value >= @minValue`;
+        query += ` AND Value >= @minValue`;
       }
       if (filter.valueRange.max !== undefined) {
-        query += ` AND h.Value <= @maxValue`;
+        query += ` AND Value <= @maxValue`;
       }
     }
 

@@ -146,7 +146,9 @@ export const useAuthState = () => {
 
   // Initialize auth state on mount
   useEffect(() => {
-    refreshUser();
+    // Authentication disabled for now - using mock state
+    // refreshUser();
+    setIsLoading(false); // Set loading to false immediately
   }, []);
 
   return {

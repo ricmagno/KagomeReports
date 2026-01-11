@@ -12,10 +12,22 @@ import {
   Tag,
   Database
 } from 'lucide-react';
-import { ReportConfig } from '../../types/api';
+import { ReportConfig, TimeRange } from '../../types/api';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Card, CardContent, CardHeader } from '../ui/Card';
+import { TimeRangePicker } from '../forms/TimeRangePicker';
+import { TagSelector } from '../forms/TagSelector';
+import { ReportVersionHistoryComponent } from '../forms/ReportVersionHistory';
+import { VersionComparison } from '../forms/VersionComparison';
+import { DatabaseConfigManager } from '../forms/DatabaseConfigManager';
+import { ReportPreview } from '../reports/ReportPreview';
+import { ReportManager } from '../reports/ReportManager';
+import { ReportCategories, Category, TagInfo } from '../reports/ReportCategories';
+import { useVersionControl } from '../../hooks/useVersionControl';
+import { apiService } from '../../services/api';
+import { useApi, usePaginatedApi } from '../../hooks/useApi';
+import { useRealTimeData, useDataRefresh } from '../../hooks/useRealTimeData';
 import { cn } from '../../utils/cn';
 
 interface DashboardProps {
@@ -58,10 +70,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   }, []);
 
   const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showVersionComparison, setShowVersionComparison] = useState(false);
+  const [comparisonVersions, setComparisonVersions] = useState<any>(null);
+  const [saveDescription, setSaveDescription] = useState('');
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [tags, setTags] = useState<TagInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [realTimeEnabled, setRealTimeEnabled] = useState(false);
 
-  // Simplified state management without complex hooks to avoid API call issues
+  // Temporarily disable complex API hooks to avoid authentication issues
+  /*
+  // API hooks for data management
+  const {
+    data: reportsData,
+    loading: reportsLoading,
+    error: reportsError,
+    execute: loadReportsData,
+  } = useApi(apiService.getReports);
+
+  const {
+    data: tagsData,
+    loading: tagsLoading,
+    execute: loadTagsData,
+  } = useApi(apiService.getTags);
+
+  const {
+    data: healthData,
+    loading: healthLoading,
+    execute: checkHealth,
+  } = useApi(apiService.checkHealth, {
+    immediate: true,
+    onError: (error) => {
+      console.warn('Health check failed:', error.message);
+    },
+  });
+  */
+
+  // Simple state for now with proper types
   const reportsData: any = null;
   const reportsLoading = false;
   const reportsError: any = null;
@@ -73,32 +118,52 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const healthLoading = false;
   const checkHealth = () => {};
 
-  // Mock real-time data state
-  const realTimeData = {
-    isActive: false,
-    connected: false,
-    loading: false,
-    error: null as string | null,
-    lastUpdate: null as Date | null,
-    updateCount: 0,
-  };
+  // Real-time data hook
+  const realTimeData = useRealTimeData({
+    tags: reportConfig.tags || [],
+    timeRange: reportConfig.timeRange || {
+      startTime: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      endTime: new Date(),
+    },
+    interval: 30, // 30 seconds
+    enabled: realTimeEnabled && (reportConfig.tags?.length || 0) > 0,
+  });
 
-  // Mock data refresh state
-  const dataRefresh = {
-    isRefreshing: false,
-    forceRefresh: () => {},
-  };
+  // Data refresh hook for periodic updates
+  const dataRefresh = useDataRefresh(
+    async () => {
+      // Temporarily disabled
+      /*
+      await Promise.all([
+        loadReportsData(),
+        loadTagsData(),
+        checkHealth(),
+      ]);
+      */
+    },
+    60000, // 1 minute
+    { enabled: !realTimeEnabled }
+  );
 
-  // Mock version control state
-  const versionControl = {
-    hasUnsavedChanges: false,
-    currentVersion: null,
-    loading: false,
-    createVersion: async () => {},
-    rollbackToVersion: async () => {},
-    checkUnsavedChanges: () => {},
-    getChangesSummary: () => [],
-  };
+  // Version control hook
+  const versionControl = useVersionControl({
+    reportId: reportConfig.id || 'new-report',
+    onVersionChange: (version) => {
+      console.log('Version created:', version);
+      setReportConfig(version.config);
+    },
+    onRollback: (version) => {
+      console.log('Rolled back to version:', version);
+      setReportConfig(version.config);
+    },
+  });
+
+  // Check for unsaved changes when config changes
+  useEffect(() => {
+    if (reportConfig.name) {
+      versionControl.checkUnsavedChanges(reportConfig as ReportConfig);
+    }
+  }, [reportConfig, versionControl]);
 
   // Load initial data
   useEffect(() => {
@@ -126,11 +191,95 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     */
   }, []);
 
+  const loadReports = async () => {
+    try {
+      setIsLoading(true);
+      // Temporarily disabled
+      // await loadReportsData();
+    } catch (error) {
+      console.error('Failed to load reports:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadCategories = async () => {
+    try {
+      // Mock categories for now - in real implementation, this would be an API call
+      const mockCategories: Category[] = [
+        {
+          id: '1',
+          name: 'Production',
+          description: 'Production-related reports',
+          color: '#3B82F6',
+          reportCount: 5,
+          createdAt: new Date()
+        },
+        {
+          id: '2',
+          name: 'Quality',
+          description: 'Quality control and analysis reports',
+          color: '#10B981',
+          reportCount: 3,
+          createdAt: new Date()
+        },
+        {
+          id: '3',
+          name: 'Analysis',
+          description: 'Trend analysis and forecasting reports',
+          color: '#F59E0B',
+          reportCount: 2,
+          createdAt: new Date()
+        }
+      ];
+      setCategories(mockCategories);
+    } catch (error) {
+      console.error('Failed to load categories:', error);
+    }
+  };
+
+  const loadTags = async () => {
+    try {
+      // Temporarily disabled
+      // await loadTagsData();
+    } catch (error) {
+      console.error('Failed to load tags:', error);
+    }
+  };
+
+  const handleTimeRangeChange = (timeRange: TimeRange) => {
+    setReportConfig(prev => ({
+      ...prev,
+      timeRange,
+    }));
+  };
+
   const handleTagsChange = (tags: string[]) => {
     setReportConfig(prev => ({
       ...prev,
       tags,
     }));
+  };
+
+  const handleSaveVersion = async () => {
+    if (!reportConfig.name) {
+      alert('Please enter a report name');
+      return;
+    }
+
+    try {
+      const configToSave = {
+        ...reportConfig,
+        id: reportConfig.id || `report-${Date.now()}`,
+        updatedAt: new Date(),
+      } as ReportConfig;
+
+      await versionControl.createVersion(configToSave, saveDescription || undefined);
+      setSaveDescription('');
+      alert('Version saved successfully!');
+    } catch (error) {
+      alert('Failed to save version: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    }
   };
 
   const handleGenerateReport = async () => {
@@ -141,14 +290,140 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
     try {
       setIsLoading(true);
-      // Mock report generation for now
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      alert('Report generated successfully! (Mock implementation)');
+      const blob = await apiService.generateReport(reportConfig as ReportConfig);
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `${reportConfig.name}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      alert('Report generated successfully!');
     } catch (error) {
       console.error('Failed to generate report:', error);
       alert('Failed to generate report. Please try again.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSaveReport = async (config: ReportConfig) => {
+    try {
+      setIsLoading(true);
+      await apiService.saveReport(config);
+      // Temporarily disabled
+      // await loadReportsData();
+      alert('Report saved successfully!');
+    } catch (error) {
+      console.error('Failed to save report:', error);
+      alert('Failed to save report. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLoadReport = (config: ReportConfig) => {
+    setReportConfig(config);
+    setActiveTab('create');
+  };
+
+  const handleDeleteReport = async (reportId: string) => {
+    try {
+      setIsLoading(true);
+      await apiService.deleteReport(reportId);
+      // Temporarily disabled
+      // await loadReportsData();
+      alert('Report deleted successfully!');
+    } catch (error) {
+      console.error('Failed to delete report:', error);
+      alert('Failed to delete report. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleExportReports = (reports: ReportConfig[]) => {
+    const dataStr = JSON.stringify(reports, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    
+    const url = window.URL.createObjectURL(dataBlob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = 'report-configurations.json';
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  };
+
+  const handleImportReports = async (file: File): Promise<ReportConfig[]> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const configs = JSON.parse(e.target?.result as string);
+          // In a real implementation, you would save these to the backend
+          resolve(configs);
+        } catch (error) {
+          reject(new Error('Invalid JSON file'));
+        }
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsText(file);
+    });
+  };
+
+  const handleCreateCategory = async (category: Omit<Category, 'id' | 'reportCount' | 'createdAt'>) => {
+    // Mock implementation - in real app, this would be an API call
+    const newCategory: Category = {
+      ...category,
+      id: Date.now().toString(),
+      reportCount: 0,
+      createdAt: new Date()
+    };
+    setCategories(prev => [...prev, newCategory]);
+  };
+
+  const handleUpdateCategory = async (id: string, updates: Partial<Category>) => {
+    setCategories(prev => prev.map(cat => 
+      cat.id === id ? { ...cat, ...updates } : cat
+    ));
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    setCategories(prev => prev.filter(cat => cat.id !== id));
+  };
+
+  const handleCreateTag = async (tagName: string, category?: string) => {
+    const newTag: TagInfo = {
+      name: tagName,
+      count: 0,
+      category
+    };
+    setTags(prev => [...prev, newTag]);
+  };
+
+  const handleDeleteTag = async (tagName: string) => {
+    setTags(prev => prev.filter(tag => tag.name !== tagName));
+  };
+
+  const handleVersionSelect = (version: any) => {
+    setReportConfig(version.config);
+    setShowVersionHistory(false);
+  };
+
+  const handleVersionRollback = async (version: number) => {
+    try {
+      await versionControl.rollbackToVersion(version);
+      alert(`Successfully rolled back to version ${version}`);
+    } catch (error) {
+      alert('Failed to rollback: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
@@ -159,6 +434,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     { id: 'categories', label: 'Categories', icon: Tag },
     { id: 'database', label: 'Database Config', icon: Database },
   ] as const;
+
+  const changesSummary = versionControl.getChangesSummary(reportConfig as ReportConfig);
 
   return (
     <div className={cn('min-h-screen bg-gray-50', className)}>
@@ -239,7 +516,69 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   Configure your report settings and generate professional reports from AVEVA Historian data.
                 </p>
               </div>
+              
+              {/* Version control indicators */}
+              <div className="flex items-center space-x-4">
+                {/* Real-time data indicator */}
+                {realTimeData.isActive && (
+                  <div className="flex items-center space-x-2 text-green-600">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                    <span className="text-sm">
+                      Live Data ({realTimeData.updateCount} updates)
+                    </span>
+                  </div>
+                )}
+                
+                {/* Data refresh indicator */}
+                {dataRefresh.isRefreshing && (
+                  <div className="flex items-center space-x-2 text-blue-600">
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-sm">Refreshing...</span>
+                  </div>
+                )}
+                
+                {versionControl.hasUnsavedChanges && (
+                  <div className="flex items-center space-x-2 text-warning">
+                    <AlertCircle className="h-4 w-4" />
+                    <span className="text-sm">Unsaved changes</span>
+                  </div>
+                )}
+                
+                {versionControl.currentVersion && (
+                  <div className="text-sm text-gray-500">
+                    Version {versionControl.currentVersion.version}
+                  </div>
+                )}
+                
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowVersionHistory(!showVersionHistory)}
+                >
+                  <History className="h-4 w-4 mr-2" />
+                  History
+                </Button>
+              </div>
             </div>
+
+            {/* Unsaved changes summary */}
+            {versionControl.hasUnsavedChanges && changesSummary.length > 0 && (
+              <Card className="border-warning bg-yellow-50">
+                <CardContent className="p-4">
+                  <div className="flex items-start space-x-3">
+                    <AlertCircle className="h-5 w-5 text-warning mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-warning">Unsaved Changes</h4>
+                      <ul className="text-sm text-gray-700 mt-1 space-y-1">
+                        {changesSummary.map((change, index) => (
+                          <li key={index}>• {change}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Report Configuration */}
@@ -268,125 +607,35 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                         description: e.target.value,
                       }))}
                     />
+                    
+                    {/* Save version section */}
+                    {versionControl.hasUnsavedChanges && (
+                      <div className="border-t pt-4">
+                        <Input
+                          label="Change Description (Optional)"
+                          placeholder="Describe what changed in this version..."
+                          value={saveDescription}
+                          onChange={(e) => setSaveDescription(e.target.value)}
+                        />
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
-                {/* Simplified Time Range */}
-                <Card>
-                  <CardHeader>
-                    <h3 className="text-lg font-medium">Time Range</h3>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <Input
-                        label="Start Time"
-                        type="datetime-local"
-                        value={reportConfig.timeRange?.startTime?.toISOString().slice(0, 16) || ''}
-                        onChange={(e) => {
-                          const startTime = new Date(e.target.value);
-                          setReportConfig(prev => ({
-                            ...prev,
-                            timeRange: {
-                              ...prev.timeRange!,
-                              startTime,
-                            },
-                          }));
-                        }}
-                      />
-                      <Input
-                        label="End Time"
-                        type="datetime-local"
-                        value={reportConfig.timeRange?.endTime?.toISOString().slice(0, 16) || ''}
-                        onChange={(e) => {
-                          const endTime = new Date(e.target.value);
-                          setReportConfig(prev => ({
-                            ...prev,
-                            timeRange: {
-                              ...prev.timeRange!,
-                              endTime,
-                            },
-                          }));
-                        }}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
+                <TimeRangePicker
+                  value={reportConfig.timeRange!}
+                  onChange={handleTimeRangeChange}
+                />
               </div>
 
               {/* Tag Selection and Version History */}
               <div className="space-y-6">
                 {!showVersionHistory ? (
                   <>
-                    {/* Simplified Tag Selection */}
-                    <Card>
-                      <CardHeader>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <Tag className="h-5 w-5 text-gray-500" />
-                            <h3 className="text-lg font-medium">Tag Selection</h3>
-                          </div>
-                          <span className="text-sm text-gray-500">
-                            {reportConfig.tags?.length || 0}/10 selected
-                          </span>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        {/* Available Tags */}
-                        <div className="space-y-2">
-                          <h4 className="text-sm font-medium text-gray-700">Available Tags:</h4>
-                          <div className="space-y-1 max-h-40 overflow-y-auto">
-                            {['Temperature_01', 'Pressure_01', 'Flow_01', 'Level_01', 'Status_01'].map((tag) => (
-                              <button
-                                key={tag}
-                                onClick={() => handleTagsChange([...(reportConfig.tags || []), tag])}
-                                disabled={reportConfig.tags?.includes(tag)}
-                                className={cn(
-                                  'w-full text-left px-3 py-2 text-sm rounded-md transition-colors',
-                                  reportConfig.tags?.includes(tag)
-                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                    : 'hover:bg-gray-50 text-gray-700'
-                                )}
-                              >
-                                {tag}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Selected Tags */}
-                        {reportConfig.tags && reportConfig.tags.length > 0 && (
-                          <div className="space-y-2">
-                            <h4 className="text-sm font-medium text-gray-700">Selected Tags:</h4>
-                            <div className="flex flex-wrap gap-2">
-                              {reportConfig.tags.map((tagName) => (
-                                <div
-                                  key={tagName}
-                                  className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-primary-100 text-primary-800 border border-primary-200"
-                                >
-                                  <span className="mr-2">{tagName}</span>
-                                  <button
-                                    onClick={() => handleTagsChange(reportConfig.tags?.filter(tag => tag !== tagName) || [])}
-                                    className="ml-1 hover:text-primary-900 focus:outline-none"
-                                    aria-label={`Remove ${tagName}`}
-                                  >
-                                    ×
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Empty state */}
-                        {(!reportConfig.tags || reportConfig.tags.length === 0) && (
-                          <div className="text-center py-8 text-gray-500">
-                            <Tag className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                            <p>No tags selected</p>
-                            <p className="text-sm">Select tags from the list above</p>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
+                    <TagSelector
+                      selectedTags={reportConfig.tags || []}
+                      onChange={handleTagsChange}
+                    />
 
                     {/* Chart Options */}
                     <Card>
@@ -482,24 +731,41 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                     </Card>
                   </>
                 ) : (
-                  <Card>
-                    <CardHeader>
-                      <h3 className="text-lg font-medium">Version History</h3>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-center py-8 text-gray-500">
-                        <History className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                        <p>Version history coming soon</p>
-                        <p className="text-sm">Track changes to your report configurations</p>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <ReportVersionHistoryComponent
+                    reportId={reportConfig.id || 'new-report'}
+                    currentConfig={reportConfig as ReportConfig}
+                    onVersionSelect={handleVersionSelect}
+                    onRollback={handleVersionRollback}
+                  />
                 )}
               </div>
             </div>
 
             {/* Action Buttons */}
             <div className="flex justify-end space-x-4">
+              {versionControl.hasUnsavedChanges && (
+                <Button
+                  variant="outline"
+                  onClick={handleSaveVersion}
+                  disabled={!reportConfig.name || versionControl.loading}
+                  loading={versionControl.loading}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Save Version
+                </Button>
+              )}
+              
+              {/* Manual refresh button */}
+              <Button
+                variant="outline"
+                onClick={dataRefresh.forceRefresh}
+                disabled={dataRefresh.isRefreshing || realTimeEnabled}
+                loading={dataRefresh.isRefreshing}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Refresh Data
+              </Button>
+              
               <Button
                 onClick={handleGenerateReport}
                 disabled={!reportConfig.name || !reportConfig.tags?.length || isLoading}
@@ -514,16 +780,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             {reportConfig.name && reportConfig.tags?.length && (
               <div className="mt-8">
                 <h3 className="text-lg font-medium text-gray-900 mb-4">Report Preview</h3>
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="text-center py-8 text-gray-500">
-                      <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                      <p className="text-lg font-medium">Report: {reportConfig.name}</p>
-                      <p className="text-sm">Tags: {reportConfig.tags.join(', ')}</p>
-                      <p className="text-sm">Preview functionality coming soon</p>
-                    </div>
-                  </CardContent>
-                </Card>
+                <ReportPreview
+                  config={{
+                    ...reportConfig,
+                    name: reportConfig.name || '',
+                    description: reportConfig.description || '',
+                    tags: reportConfig.tags || [],
+                    timeRange: reportConfig.timeRange!,
+                    chartTypes: reportConfig.chartTypes || ['line'],
+                    template: reportConfig.template || 'default'
+                  } as ReportConfig}
+                  onGenerate={handleGenerateReport}
+                  onEdit={() => {
+                    // Already in edit mode
+                  }}
+                />
               </div>
             )}
           </div>
@@ -570,13 +841,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             )}
             */}
 
-            <div className="bg-white rounded-lg border border-gray-200">
-              <div className="p-6 text-center text-gray-500">
-                <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-lg font-medium">No reports yet</p>
-                <p>Create your first report to get started</p>
-              </div>
-            </div>
+            <ReportManager
+              currentConfig={reportConfig as ReportConfig}
+              onSave={handleSaveReport}
+              onLoad={handleLoadReport}
+              onDelete={handleDeleteReport}
+              onNew={() => {
+                setReportConfig({
+                  name: '',
+                  description: '',
+                  tags: [],
+                  timeRange: {
+                    startTime: new Date(Date.now() - 24 * 60 * 60 * 1000),
+                    endTime: new Date(),
+                    relativeRange: 'last24h',
+                  },
+                  chartTypes: ['line'],
+                  template: 'default',
+                });
+                setActiveTab('create');
+              }}
+              onExport={handleExportReports}
+              onImport={handleImportReports}
+            />
           </div>
         )}
 
@@ -599,13 +886,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               */}
             </div>
 
-            <div className="bg-white rounded-lg border border-gray-200">
-              <div className="p-6 text-center text-gray-500">
-                <Tag className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-lg font-medium">Categories coming soon</p>
-                <p>Organize your tags and reports with custom categories</p>
-              </div>
-            </div>
+            <ReportCategories
+              categories={categories}
+              tags={tags}
+              onCreateCategory={handleCreateCategory}
+              onUpdateCategory={handleUpdateCategory}
+              onDeleteCategory={handleDeleteCategory}
+              onCreateTag={handleCreateTag}
+              onDeleteTag={handleDeleteTag}
+            />
           </div>
         )}
 
@@ -636,26 +925,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         )}
 
         {activeTab === 'database' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-3xl font-bold text-gray-900">Database Configuration</h2>
-                <p className="text-gray-600">
-                  Manage your AVEVA Historian database connections.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg border border-gray-200">
-              <div className="p-6 text-center text-gray-500">
-                <Database className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-lg font-medium">Database configuration</p>
-                <p>Current connection: {healthStatus}</p>
-              </div>
-            </div>
-          </div>
+          <DatabaseConfigManager className="space-y-6" />
         )}
       </main>
+
+      {/* Version Comparison Modal */}
+      {showVersionComparison && comparisonVersions && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-auto">
+            <VersionComparison
+              version1={comparisonVersions.version1}
+              version2={comparisonVersions.version2}
+              onClose={() => {
+                setShowVersionComparison(false);
+                setComparisonVersions(null);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

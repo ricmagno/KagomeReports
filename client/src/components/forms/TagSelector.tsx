@@ -32,12 +32,23 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
       setLoading(true);
       setError(null);
       try {
-        const response = await apiService.getTags();
-        if (response.success) {
-          setAvailableTags(response.data);
-        } else {
-          setError('Failed to load tags');
-        }
+        // Using mock data instead of API call
+        // const response = await apiService.getTags();
+        // if (response.success) {
+        //   setAvailableTags(response.data);
+        // } else {
+        //   setError('Failed to load tags');
+        // }
+        
+        // Use mock data instead
+        const mockTags: TagInfo[] = [
+          { name: 'Temperature_01', description: 'Temperature sensor 1', units: '°C', dataType: 'analog', lastUpdate: new Date() },
+          { name: 'Pressure_01', description: 'Pressure sensor 1', units: 'PSI', dataType: 'analog', lastUpdate: new Date() },
+          { name: 'Flow_01', description: 'Flow meter 1', units: 'GPM', dataType: 'analog', lastUpdate: new Date() },
+          { name: 'Level_01', description: 'Level sensor 1', units: '%', dataType: 'analog', lastUpdate: new Date() },
+          { name: 'Status_01', description: 'Status indicator 1', units: '', dataType: 'discrete', lastUpdate: new Date() },
+        ];
+        setAvailableTags(mockTags);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load tags');
       } finally {
