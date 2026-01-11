@@ -117,7 +117,7 @@ router.get('/status/:sessionId',
     }
 
     const status = autoUpdateService.getSessionStatus(sessionId);
-    
+
     if (!status) {
       return res.status(404).json({
         success: false,
@@ -125,7 +125,7 @@ router.get('/status/:sessionId',
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       sessionId,
       status
@@ -149,7 +149,7 @@ router.get('/data/:sessionId',
     }
 
     const data = autoUpdateService.getCurrentData(sessionId);
-    
+
     if (!data) {
       return res.status(404).json({
         success: false,
@@ -163,7 +163,7 @@ router.get('/data/:sessionId',
       dataObject[tagName] = timeSeriesData;
     }
 
-    res.json({
+    return res.json({
       success: true,
       sessionId,
       data: dataObject,
@@ -206,7 +206,7 @@ router.get('/sessions',
 router.get('/timing-stats',
   asyncHandler(async (req: Request, res: Response) => {
     const stats = autoUpdateService.getTimingStatistics();
-    
+
     res.json({
       success: true,
       timingStatistics: stats
@@ -323,7 +323,7 @@ router.post('/stop-all',
     try {
       const activeSessions = autoUpdateService.getActiveSessions();
       autoUpdateService.stopAllSessions();
-      
+
       apiLogger.info('All auto-update sessions stopped via API', {
         stoppedSessions: activeSessions.length
       });

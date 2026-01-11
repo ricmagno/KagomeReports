@@ -23,7 +23,7 @@ router.use(authenticateToken);
  */
 router.get('/configs', asyncHandler(async (req: Request, res: Response) => {
   const configurations = await databaseConfigService.listConfigurations();
-  
+
   apiLogger.info('Database configurations listed', {
     userId: req.user?.id,
     count: configurations.length
@@ -60,17 +60,17 @@ router.get('/configs/:id', [
   }
 
   const configuration = await databaseConfigService.loadConfiguration(id);
-  
+
   // Remove password from response for security
   const { password, ...safeConfig } = configuration;
-  
+
   apiLogger.info('Database configuration retrieved', {
     userId: req.user?.id,
     configId: id,
     configName: configuration.name
   });
 
-  res.json({
+  return res.json({
     success: true,
     data: safeConfig
   });
@@ -116,7 +116,7 @@ router.post('/configs', [
   };
 
   const configId = await databaseConfigService.saveConfiguration(config, req.user!.id);
-  
+
   apiLogger.info('Database configuration created', {
     userId: req.user?.id,
     configId,
@@ -125,7 +125,7 @@ router.post('/configs', [
     database: config.database
   });
 
-  res.status(201).json({
+  return res.status(201).json({
     success: true,
     message: 'Database configuration created successfully',
     data: { id: configId }
@@ -182,7 +182,7 @@ router.put('/configs/:id', [
   };
 
   const configId = await databaseConfigService.saveConfiguration(config, req.user!.id);
-  
+
   apiLogger.info('Database configuration updated', {
     userId: req.user?.id,
     configId,
@@ -191,7 +191,7 @@ router.put('/configs/:id', [
     database: config.database
   });
 
-  res.json({
+  return res.json({
     success: true,
     message: 'Database configuration updated successfully',
     data: { id: configId }
@@ -224,13 +224,13 @@ router.delete('/configs/:id', [
   }
 
   await databaseConfigService.deleteConfiguration(id, req.user!.id);
-  
+
   apiLogger.info('Database configuration deleted', {
     userId: req.user?.id,
     configId: id
   });
 
-  res.json({
+  return res.json({
     success: true,
     message: 'Database configuration deleted successfully'
   });
@@ -274,7 +274,7 @@ router.post('/test', [
   };
 
   const testResult = await databaseConfigService.testConnection(config);
-  
+
   apiLogger.info('Database connection tested', {
     userId: req.user?.id,
     host: config.host,
@@ -283,7 +283,7 @@ router.post('/test', [
     responseTime: testResult.responseTime
   });
 
-  res.json({
+  return res.json({
     success: true,
     data: testResult
   });
@@ -315,13 +315,13 @@ router.post('/activate/:id', [
   }
 
   await databaseConfigService.activateConfiguration(id, req.user!.id);
-  
+
   apiLogger.info('Database configuration activated', {
     userId: req.user?.id,
     configId: id
   });
 
-  res.json({
+  return res.json({
     success: true,
     message: 'Database configuration activated successfully'
   });
@@ -333,7 +333,7 @@ router.post('/activate/:id', [
  */
 router.get('/active', asyncHandler(async (req: Request, res: Response) => {
   const activeConfig = databaseConfigService.getActiveConfiguration();
-  
+
   if (!activeConfig) {
     return res.json({
       success: true,
@@ -364,7 +364,7 @@ router.get('/active', asyncHandler(async (req: Request, res: Response) => {
     configName: activeConfig.name
   });
 
-  res.json({
+  return res.json({
     success: true,
     data: safeConfig
   });

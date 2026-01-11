@@ -76,7 +76,7 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
 
   const config = configResult.data;
   const reportId = `report_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
+
   // Create full report config
   const reportConfig: ReportConfig = {
     id: reportId,
@@ -91,7 +91,7 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
     metadata: config.metadata
   };
 
-  apiLogger.info('Starting end-to-end report generation', { 
+  apiLogger.info('Starting end-to-end report generation', {
     reportId,
     tags: config.tags,
     timeRange: config.timeRange
@@ -107,9 +107,9 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
     });
 
     if (!validation.valid) {
-      apiLogger.error('Data flow configuration validation failed', { 
+      apiLogger.error('Data flow configuration validation failed', {
         reportId,
-        errors: validation.errors 
+        errors: validation.errors
       });
       throw createError(`Configuration validation failed: ${validation.errors.join(', ')}`, 400);
     }
@@ -123,7 +123,7 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
     });
 
     if (!result.success) {
-      apiLogger.error('Report generation failed', { 
+      apiLogger.error('Report generation failed', {
         reportId,
         error: result.error,
         dataMetrics: result.dataMetrics
@@ -151,7 +151,7 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    
+
     apiLogger.error('Report generation failed with exception', {
       reportId,
       error: errorMessage
@@ -175,7 +175,7 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
  */
 router.get('/', authenticateToken, requirePermission('reports', 'read'), asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 10, search, category } = req.query;
-  
+
   apiLogger.info('Retrieving saved reports', { page, limit, search, category });
 
   // TODO: Implement actual database query
@@ -209,7 +209,7 @@ router.get('/', authenticateToken, requirePermission('reports', 'read'), asyncHa
   let filteredReports = mockReports;
   if (search) {
     const searchTerm = (search as string).toLowerCase();
-    filteredReports = mockReports.filter(report => 
+    filteredReports = mockReports.filter(report =>
       report.name.toLowerCase().includes(searchTerm) ||
       report.description?.toLowerCase().includes(searchTerm)
     );
@@ -248,13 +248,13 @@ router.post('/', authenticateToken, requirePermission('reports', 'write'), async
   }
 
   const config = configResult.data;
-  
+
   apiLogger.info('Saving new report configuration', { config });
 
   // TODO: Implement actual database save
   // For now, return mock response
   const reportId = `report_${Date.now()}`;
-  
+
   const savedReport = {
     id: reportId,
     ...config,
@@ -276,7 +276,7 @@ router.post('/', authenticateToken, requirePermission('reports', 'write'), async
  */
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  
+
   apiLogger.info('Retrieving report configuration', { id });
 
   // TODO: Implement actual database query
@@ -315,14 +315,14 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
  */
 router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  
+
   const configResult = reportConfigSchema.partial().safeParse(req.body);
   if (!configResult.success) {
     throw createError('Invalid report configuration', 400);
   }
 
   const updates = configResult.data;
-  
+
   apiLogger.info('Updating report configuration', { id, updates });
 
   // TODO: Implement actual database update
@@ -362,7 +362,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
  */
 router.delete('/:id', authenticateToken, requirePermission('reports', 'delete'), asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  
+
   apiLogger.info('Deleting report configuration', { id });
 
   // TODO: Implement actual database deletion
@@ -383,24 +383,24 @@ router.delete('/:id', authenticateToken, requirePermission('reports', 'delete'),
  */
 router.get('/:id/download', asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
-  
+
   apiLogger.info('Downloading report', { id });
 
   try {
     // Look for the report file in the reports directory
     const reportsDir = process.env.REPORTS_DIR || './reports';
     const files = fs.readdirSync(reportsDir);
-    
+
     // Find file that starts with the report ID
-    const reportFile = files.find(file => file.startsWith(id));
-    
+    const reportFile = files.find(file => id && file.startsWith(id));
+
     if (!reportFile) {
       apiLogger.warn('Report file not found', { reportId: id });
       throw createError('Report not found', 404);
     }
 
     const filePath = path.join(reportsDir, reportFile);
-    
+
     // Check if file exists and is readable
     if (!fs.existsSync(filePath)) {
       apiLogger.warn('Report file does not exist', { reportId: id, filePath });
@@ -409,7 +409,7 @@ router.get('/:id/download', asyncHandler(async (req: Request, res: Response) => 
 
     const stats = fs.statSync(filePath);
     const fileExtension = path.extname(reportFile).toLowerCase();
-    
+
     // Set appropriate content type
     let contentType = 'application/octet-stream';
     if (fileExtension === '.pdf') {
@@ -426,7 +426,7 @@ router.get('/:id/download', asyncHandler(async (req: Request, res: Response) => 
 
     // Stream the file
     const fileStream = fs.createReadStream(filePath);
-    
+
     fileStream.on('error', (error) => {
       apiLogger.error('Error streaming report file', { reportId: id, error });
       if (!res.headersSent) {
@@ -440,8 +440,8 @@ router.get('/:id/download', asyncHandler(async (req: Request, res: Response) => 
 
     fileStream.pipe(res);
 
-    apiLogger.info('Report download started', { 
-      reportId: id, 
+    apiLogger.info('Report download started', {
+      reportId: id,
       fileName: reportFile,
       fileSize: stats.size,
       contentType
@@ -451,7 +451,7 @@ router.get('/:id/download', asyncHandler(async (req: Request, res: Response) => 
     if (error instanceof Error && error.message.includes('not found')) {
       throw error;
     }
-    
+
     apiLogger.error('Failed to download report', { reportId: id, error });
     throw createError('Failed to download report', 500);
   }

@@ -412,33 +412,36 @@ export class DataRetrievalService {
         }
       }
 
-      // Use the standard AVEVA Historian Tag view which contains all active tags
+      // Use the standard AVEVA Historian Tag view joined with AnalogTag and EngineeringUnit
+      // to get comprehensive metadata including units and ranges.
       let query = `
         SELECT 
-          TagName as name,
-          Description as description,
-          EngineeringUnit as units,
+          t.TagName as name,
+          t.Description as description,
+          eu.Unit as units,
           CASE 
-            WHEN TagType = 1 THEN 'analog'
-            WHEN TagType = 2 THEN 'discrete'
-            WHEN TagType = 3 THEN 'string'
+            WHEN t.TagType = 1 THEN 'analog'
+            WHEN t.TagType = 2 THEN 'discrete'
+            WHEN t.TagType = 3 THEN 'string'
             ELSE 'unknown'
           END as dataType,
-          GETDATE() as lastUpdate,
-          MinEU as minValue,
-          MaxEU as maxValue
-        FROM Tag
+          t.DateCreated as lastUpdate,
+          at.MinEU as minValue,
+          at.MaxEU as maxValue
+        FROM Tag t
+        LEFT JOIN AnalogTag at ON t.TagName = at.TagName
+        LEFT JOIN EngineeringUnit eu ON at.EUKey = eu.EUKey
         WHERE 1=1
       `;
 
       const params: Record<string, any> = {};
 
       if (filter) {
-        query += ` AND (TagName LIKE @filter OR Description LIKE @filter)`;
+        query += ` AND (t.TagName LIKE @filter OR t.Description LIKE @filter)`;
         params.filter = `%${filter}%`;
       }
 
-      query += ` ORDER BY TagName`;
+      query += ` ORDER BY t.TagName`;
 
       const result = await this.getConnection().executeQuery<any>(query, params);
 

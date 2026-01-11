@@ -51,12 +51,12 @@ const paginationSchema = z.object({
  */
 router.get('/tags', asyncHandler(async (req: Request, res: Response) => {
   const { filter } = req.query;
-  
+
   apiLogger.info('Retrieving tag list', { filter });
-  
+
   const dataRetrievalService = cacheManager.getDataRetrievalService();
   const tags = await dataRetrievalService.getTagList(filter as string);
-  
+
   res.json({
     success: true,
     data: tags,
@@ -68,20 +68,20 @@ router.get('/tags', asyncHandler(async (req: Request, res: Response) => {
  * GET /api/data/:tagName
  * Get time-series data for a specific tag
  */
-router.get('/:tagName', 
-  progressMiddleware({ 
+router.get('/:tagName',
+  progressMiddleware({
     operationType: 'data-retrieval',
     estimatedDuration: 10000 // 10 seconds
   }),
   asyncHandler(async (req: Request, res: Response) => {
     const { tagName } = req.params;
     const progressTracker = (req as any).progressTracker;
-    
+
     if (!tagName) {
       progressTracker?.failOperation('Tag name is required');
       throw createError('Tag name is required', 400);
     }
-    
+
     try {
       // Validate query parameters
       const timeRangeResult = timeRangeSchema.safeParse(req.query);
@@ -89,48 +89,48 @@ router.get('/:tagName',
         progressTracker?.failOperation('Invalid time range parameters');
         throw createError('Invalid time range parameters', 400);
       }
-      
+
       const optionsResult = queryOptionsSchema.safeParse(req.query);
       if (!optionsResult.success) {
         progressTracker?.failOperation('Invalid query options');
         throw createError('Invalid query options', 400);
       }
-      
+
       const timeRange: TimeRange = {
         startTime: timeRangeResult.data.startTime,
         endTime: timeRangeResult.data.endTime,
         relativeRange: timeRangeResult.data.relativeRange
       };
       const options = optionsResult.data;
-      
+
       apiLogger.info('Retrieving time-series data', { tagName, timeRange, options });
-      
+
       progressTracker?.updateProgress('validation', 10, 'Parameters validated');
-      
+
       const dataRetrievalService = cacheManager.getDataRetrievalService();
       const statisticalAnalysisService = cacheManager.getStatisticalAnalysisService();
       const data = await dataRetrievalService.getTimeSeriesData(
-        tagName, 
-        timeRange, 
-        options, 
+        tagName,
+        timeRange,
+        options,
         progressTracker?.operationId
       );
-      
+
       // Calculate basic statistics if requested
       const includeStats = req.query.includeStats === 'true';
       let statistics;
       if (includeStats && data.length > 0) {
         progressTracker?.updateProgress('analysis', 90, 'Calculating statistics');
         statistics = await statisticalAnalysisService.calculateStatistics(
-          tagName, 
-          timeRange.startTime, 
-          timeRange.endTime, 
+          tagName,
+          timeRange.startTime,
+          timeRange.endTime,
           data
         );
       }
-      
+
       progressTracker?.completeOperation(`Retrieved ${data.length} data points`);
-      
+
       res.json({
         success: true,
         data,
@@ -161,16 +161,16 @@ router.post('/query', asyncHandler(async (req: Request, res: Response) => {
     includeStatistics: z.boolean().default(false),
     includeQualityReport: z.boolean().default(false)
   });
-  
+
   const queryResult = querySchema.safeParse(req.body);
   if (!queryResult.success) {
     throw createError('Invalid query parameters', 400);
   }
-  
+
   const { timeRange, filter, options, pagination, includeStatistics, includeQualityReport } = queryResult.data;
-  
+
   apiLogger.info('Executing custom data query', { timeRange, filter, options, pagination });
-  
+
   // Execute filtered data query
   const dataRetrievalService = cacheManager.getDataRetrievalService();
   const statisticalAnalysisService = cacheManager.getStatisticalAnalysisService();
@@ -180,16 +180,16 @@ router.post('/query', asyncHandler(async (req: Request, res: Response) => {
     pagination?.pageSize || 100,
     pagination?.cursor
   );
-  
+
   // Apply additional filtering if needed
   let processedData = result.data;
   let qualityReport;
-  
+
   if (includeQualityReport) {
     const qualityResult = dataFilteringService.filterByQuality(processedData);
     qualityReport = qualityResult.qualityReport;
   }
-  
+
   // Calculate statistics if requested
   let statistics;
   if (includeStatistics && processedData.length > 0) {
@@ -197,7 +197,7 @@ router.post('/query', asyncHandler(async (req: Request, res: Response) => {
     const tagName = filter.tagNames?.[0] || 'filtered-query';
     statistics = await statisticalAnalysisService.calculateStatistics(tagName, timeRange.startTime, timeRange.endTime, processedData);
   }
-  
+
   res.json({
     success: true,
     data: processedData,
@@ -218,51 +218,51 @@ router.post('/query', asyncHandler(async (req: Request, res: Response) => {
  */
 router.get('/:tagName/statistics', asyncHandler(async (req: Request, res: Response) => {
   const { tagName } = req.params;
-  
+
   if (!tagName) {
     throw createError('Tag name is required', 400);
   }
-  
+
   // Validate query parameters
   const timeRangeResult = timeRangeSchema.safeParse(req.query);
   if (!timeRangeResult.success) {
     throw createError('Invalid time range parameters', 400);
   }
-  
+
   const timeRange: TimeRange = {
     startTime: timeRangeResult.data.startTime,
     endTime: timeRangeResult.data.endTime,
     relativeRange: timeRangeResult.data.relativeRange
   };
-  
+
   apiLogger.info('Calculating statistics for tag', { tagName, timeRange });
-  
+
   // Get data
   const dataRetrievalService = cacheManager.getDataRetrievalService();
   const statisticalAnalysisService = cacheManager.getStatisticalAnalysisService();
   const data = await dataRetrievalService.getTimeSeriesData(tagName, timeRange);
-  
+
   if (data.length === 0) {
     throw createError('No data found for the specified tag and time range', 404);
   }
-  
+
   // Calculate comprehensive statistics
   const basicStats = await statisticalAnalysisService.calculateStatistics(tagName, timeRange.startTime, timeRange.endTime, data);
   const qualityMetrics = statisticalAnalysisService.calculateDataQuality(data);
-  
+
   // Calculate trend if enough data points
   let trend;
   if (data.length >= 2) {
     trend = statisticalAnalysisService.calculateTrendLine(data);
   }
-  
+
   // Detect anomalies
   let anomalies;
   if (data.length >= 3) {
     const threshold = parseFloat(req.query.anomalyThreshold as string) || 2.0;
     anomalies = statisticalAnalysisService.detectAnomalies(data, threshold);
   }
-  
+
   res.json({
     success: true,
     tagName,
@@ -287,28 +287,28 @@ router.post('/multiple', asyncHandler(async (req: Request, res: Response) => {
     options: queryOptionsSchema.optional(),
     includeStatistics: z.boolean().default(false)
   });
-  
+
   const queryResult = multipleQuerySchema.safeParse(req.body);
   if (!queryResult.success) {
     throw createError('Invalid query parameters', 400);
   }
-  
+
   const { tagNames, timeRange, options, includeStatistics } = queryResult.data;
-  
+
   // Create proper TimeRange object
   const properTimeRange: TimeRange = {
     startTime: timeRange.startTime,
     endTime: timeRange.endTime,
     relativeRange: timeRange.relativeRange
   };
-  
+
   apiLogger.info('Retrieving multiple time-series data', { tagNames, timeRange: properTimeRange });
-  
+
   // Get data for all tags
   const dataRetrievalService = cacheManager.getDataRetrievalService();
   const statisticalAnalysisService = cacheManager.getStatisticalAnalysisService();
   const results = await dataRetrievalService.getMultipleTimeSeriesData(tagNames, properTimeRange, options);
-  
+
   // Calculate statistics for each tag if requested
   const response: any = {
     success: true,
@@ -317,7 +317,7 @@ router.post('/multiple', asyncHandler(async (req: Request, res: Response) => {
     requestedTags: tagNames,
     retrievedTags: Object.keys(results)
   };
-  
+
   if (includeStatistics) {
     const statistics: Record<string, any> = {};
     for (const [tagName, data] of Object.entries(results)) {
@@ -327,7 +327,7 @@ router.post('/multiple', asyncHandler(async (req: Request, res: Response) => {
     }
     response.statistics = statistics;
   }
-  
+
   res.json(response);
 }));
 
@@ -337,47 +337,47 @@ router.post('/multiple', asyncHandler(async (req: Request, res: Response) => {
  */
 router.get('/:tagName/trend', asyncHandler(async (req: Request, res: Response) => {
   const { tagName } = req.params;
-  
+
   if (!tagName) {
     throw createError('Tag name is required', 400);
   }
-  
+
   // Validate query parameters
   const timeRangeResult = timeRangeSchema.safeParse(req.query);
   if (!timeRangeResult.success) {
     throw createError('Invalid time range parameters', 400);
   }
-  
+
   const timeRange: TimeRange = {
     startTime: timeRangeResult.data.startTime,
     endTime: timeRangeResult.data.endTime,
     relativeRange: timeRangeResult.data.relativeRange
   };
   const windowSize = parseInt(req.query.windowSize as string) || 10;
-  
+
   apiLogger.info('Calculating trend analysis for tag', { tagName, timeRange, windowSize });
-  
+
   // Get data
   const dataRetrievalService = cacheManager.getDataRetrievalService();
   const statisticalAnalysisService = cacheManager.getStatisticalAnalysisService();
   const data = await dataRetrievalService.getTimeSeriesData(tagName, timeRange);
-  
+
   if (data.length < 2) {
     throw createError('Insufficient data points for trend analysis (minimum 2 required)', 400);
   }
-  
+
   // Calculate trend line
   const trendLine = statisticalAnalysisService.calculateTrendLine(data);
-  
+
   // Calculate moving average
   const movingAverage = statisticalAnalysisService.calculateMovingAverage(data, windowSize);
-  
+
   // Detect pattern changes
   let patternChanges;
   if (data.length >= windowSize * 2) {
-    patternChanges = statisticalAnalysisService.detectPatternChanges(data, windowSize);
+    patternChanges = statisticalAnalysisService.detectPatternChanges(data, { windowSize });
   }
-  
+
   res.json({
     success: true,
     tagName,
@@ -388,11 +388,11 @@ router.get('/:tagName/trend', asyncHandler(async (req: Request, res: Response) =
       windowSize,
       data: movingAverage
     },
-    ...(patternChanges && { 
-      patternChanges: { 
-        count: patternChanges.length, 
-        detected: patternChanges 
-      } 
+    ...(patternChanges && {
+      patternChanges: {
+        count: patternChanges.length,
+        detected: patternChanges
+      }
     })
   });
 }));
