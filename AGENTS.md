@@ -231,6 +231,7 @@ The system supports:
 2. Customizable report templates
 3. Data visualization capabilities
 4. Professional formatting and styling
+5. Tag selection search field with autocomplete filter
 6. Typed date and time inputs with post validation for precise window selection
 5. Report preview after submit and before generation.
 7. Validation happens after the user submit the query. The user should be free to type freely as long is a number.

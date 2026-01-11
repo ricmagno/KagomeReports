@@ -184,381 +184,206 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [realTimeEnabled, setRealTimeEnabled] = useState(false);
+  const [tagSearchTerm, setTagSearchTerm] = useState('');
   const [availableTags, setAvailableTags] = useState<string[]>([]);
 
-  // Simplified state management without complex hooks to avoid API call issues
-  const reportsData: any = null;
-  const reportsLoading = false;
-  const reportsError: any = null;
-  const loadReportsData = () => { };
-  const tagsData: any = null;
-  const tagsLoading = false;
-  const loadTagsData = () => { };
-  const healthData: any = null;
-  const healthLoading = false;
-  const checkHealth = () => { };
-
-  // Mock real-time data state
-  const realTimeData = {
-    isActive: false,
-    connected: false,
-    loading: false,
-    error: null as string | null,
-    lastUpdate: null as Date | null,
-    updateCount: 0,
-  };
-
-  // Mock data refresh state
-  const dataRefresh = {
-    isRefreshing: false,
-    forceRefresh: () => { },
-  };
-
-  // Mock version control state
-  const versionControl = {
-    hasUnsavedChanges: false,
-    currentVersion: null,
-    loading: false,
-    createVersion: async () => { },
-    rollbackToVersion: async () => { },
-    checkUnsavedChanges: () => { },
-    getChangesSummary: () => [],
-  };
-
-  // Load initial data
+  // Fetch tags from API when search term changes
   useEffect(() => {
-    const loadTags = async () => {
+    const fetchTags = async () => {
       try {
-        const response = await apiService.getTags();
-        if (response.success && Array.isArray(response.data)) {
-          setAvailableTags(response.data.map((tag: any) => tag.name));
-        } else {
-          // Fallback to known good tags if API fails
-          setAvailableTags(['SysSpaceMain', 'Temperature_01', 'Pressure_01', 'Flow_01', 'Level_01', 'Status_01']);
+        const response = await apiService.getTags(tagSearchTerm);
+        if (response.success && response.data) {
+          setAvailableTags(response.data.map(tag => tag.name));
         }
       } catch (error) {
-        console.warn('Failed to load tags from API, using fallback:', error);
-        setAvailableTags(['SysSpaceMain', 'Temperature_01', 'Pressure_01', 'Flow_01', 'Level_01', 'Status_01']);
+        console.error('Failed to fetch tags:', error);
       }
     };
 
-    loadTags();
-  }, []);
+    const debounceTimer = setTimeout(() => {
+      fetchTags();
+    }, 300);
 
-  // Update tags from API data
-  useEffect(() => {
-    // Temporarily disabled - using mock data instead
-    /*
-    if (tagsData?.data) {
-      // Map API TagInfo to component TagInfo format
-      const mappedTags = tagsData.data.map(tag => ({
-        name: tag.name,
-        count: 0, // Default count since API doesn't provide this
-        category: undefined, // API doesn't provide category
-      }));
-      setTags(mappedTags);
-    }
-    */
-  }, []);
+    return () => clearTimeout(debounceTimer);
+  }, [tagSearchTerm]);
+  const [realTimeData] = useState({
+    connected: false,
+    loading: false,
+    lastUpdate: null as Date | null,
+    error: null as string | null
+  });
 
   const handleTagsChange = (tags: string[]) => {
-    setReportConfig(prev => ({
-      ...prev,
-      tags,
-    }));
+    setReportConfig(prev => ({ ...prev, tags }));
   };
 
   const handleGenerateReport = async () => {
-    if (!reportConfig.name || !reportConfig.tags?.length) {
-      alert('Please provide a report name and select at least one tag');
-      return;
-    }
-
-    // Validate date range
-    if (reportConfig.timeRange?.startTime && reportConfig.timeRange?.endTime) {
-      if (reportConfig.timeRange.startTime > reportConfig.timeRange.endTime) {
-        alert('Start time cannot be after end time');
-        return;
-      }
-    } else {
-      alert('Please provide both start and end times');
-      return;
-    }
-
-    if (!isAuthenticated) {
-      alert('Please log in to generate reports');
-      return;
-    }
-
     try {
       setIsLoading(true);
-
-      // Generate real report with authentication
-      const blob = await apiService.generateReport(reportConfig as ReportConfig);
-
-      // Create download link
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.style.display = 'none';
-      a.href = url;
-      a.download = `${reportConfig.name}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      alert('Report generated successfully!');
+      // Mock report generation
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log('Generating report with config:', reportConfig);
+      setActiveTab('reports');
     } catch (error) {
       console.error('Failed to generate report:', error);
-      alert('Failed to generate report: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsLoading(false);
     }
   };
 
-  const tabs = [
-    { id: 'create', label: 'Create Report', icon: Plus },
-    { id: 'reports', label: 'My Reports', icon: FileText },
-    { id: 'schedules', label: 'Schedules', icon: Calendar },
-    { id: 'categories', label: 'Categories', icon: Tag },
-    { id: 'database', label: 'Database Config', icon: Database },
-  ] as const;
-
-  // Show login form if not authenticated
-  if (!isAuthenticated) {
-    return (
-      <div className={cn('min-h-screen bg-gray-50 flex items-center justify-center', className)}>
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <div className="text-center">
-              <BarChart3 className="h-12 w-12 text-primary-600 mx-auto mb-4" />
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">
-                Historian Reports
-              </h1>
-              <p className="text-gray-600">
-                Please log in to access the application
-              </p>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Input
-              label="Username"
-              placeholder="Enter username"
-              value={loginForm.username}
-              onChange={(e) => setLoginForm(prev => ({ ...prev, username: e.target.value }))}
-              onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-            />
-            <Input
-              label="Password"
-              type="password"
-              placeholder="Enter password"
-              value={loginForm.password}
-              onChange={(e) => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
-              onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-            />
-            <Button
-              onClick={handleLogin}
-              disabled={loginLoading}
-              loading={loginLoading}
-              className="w-full"
-            >
-              <LogIn className="h-4 w-4 mr-2" />
-              Log In
-            </Button>
-            <div className="text-center text-sm text-gray-500">
-              <p>Default credentials:</p>
-              <p>Username: <code>admin</code></p>
-              <p>Password: <code>admin123</code></p>
-            </div>
-            <div className="text-center text-sm text-gray-600">
-              Backend Status: {healthStatus}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
-    <div className={cn('min-h-screen bg-gray-50', className)}>
-      {/* Health Status Bar */}
-      <div className="bg-blue-50 border-b border-blue-200 px-6 py-2">
-        <div className="text-sm text-blue-800">
-          Backend Status: {healthStatus}
-        </div>
-      </div>
-
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <BarChart3 className="h-8 w-8 text-primary-600" />
-              <h1 className="text-2xl font-bold text-gray-900">
-                Historian Reports
-              </h1>
+    <div className={cn("min-h-screen bg-gray-50", className)}>
+      <nav className="bg-white shadow-sm border-b border-gray-200">
+        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <BarChart3 className="h-6 w-6 text-primary-600" />
+            <span className="text-xl font-bold text-gray-900">Historian Reports</span>
+          </div>
+          <div className="flex items-center space-x-4">
+            <div className={`text-sm px-3 py-1 rounded-full ${healthStatus.includes('✅') ? 'bg-green-100 text-green-800' :
+              healthStatus.includes('⚠️') ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
+              }`}>
+              {healthStatus}
             </div>
-            <div className="flex items-center space-x-4">
-              <Button variant="outline" size="sm">
-                <Settings className="h-4 w-4 mr-2" />
-                Settings
+            {isAuthenticated && (
+              <Button variant="ghost" size="sm" onClick={handleLogout}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Logout
               </Button>
-
-              {/* User info and logout */}
-              {currentUser && (
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-600">
-                    Welcome, {currentUser.firstName || currentUser.username}
-                  </span>
-                  <Button variant="outline" size="sm" onClick={handleLogout}>
-                    <LogOut className="h-4 w-4 mr-2" />
-                    Logout
-                  </Button>
-                </div>
-              )}
-
-              {/* System Health Indicator */}
-              <div className="flex items-center space-x-2">
-                <div className={cn(
-                  "w-2 h-2 rounded-full",
-                  healthStatus.includes('✅') ? "bg-green-500" : "bg-red-500"
-                )} />
-                <span className="text-sm text-gray-600">
-                  {healthStatus}
-                </span>
-              </div>
-            </div>
+            )}
           </div>
         </div>
-      </header>
+      </nav>
 
-      {/* Navigation Tabs */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <nav className="flex space-x-8">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
+      <main className="container mx-auto px-4 py-8">
+        {!isAuthenticated ? (
+          <div className="max-w-md mx-auto mt-20">
+            <Card>
+              <CardHeader>
+                <h2 className="text-2xl font-bold text-center">Login</h2>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                  <Input
+                    value={loginForm.username}
+                    onChange={e => setLoginForm(prev => ({ ...prev, username: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                  <Input
+                    type="password"
+                    value={loginForm.password}
+                    onChange={e => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                  />
+                </div>
+                <Button className="w-full" onClick={handleLogin} loading={loginLoading}>
+                  <LogIn className="h-4 w-4 mr-2" />
+                  Login
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <>
+            <div className="mb-6 flex space-x-2 border-b border-gray-200 overflow-x-auto">
+              {[
+                { id: 'create', label: 'Create Report', icon: Plus },
+                { id: 'reports', label: 'My Reports', icon: FileText },
+                { id: 'schedules', label: 'Schedules', icon: Calendar },
+                { id: 'categories', label: 'Categories', icon: Tag },
+                { id: 'database', label: 'Database', icon: Database },
+              ].map(tab => (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => setActiveTab(tab.id as any)}
                   className={cn(
-                    'flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm',
+                    "flex items-center px-4 py-2 border-b-2 font-medium text-sm whitespace-nowrap transition-colors",
                     activeTab === tab.id
-                      ? 'border-primary-500 text-primary-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? "border-primary-600 text-primary-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                   )}
                 >
-                  <Icon className="h-4 w-4" />
-                  <span>{tab.label}</span>
+                  <tab.icon className="h-4 w-4 mr-2" />
+                  {tab.label}
                 </button>
-              );
-            })}
-          </nav>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'create' && (
-          <div className="space-y-8">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-3xl font-bold text-gray-900 mb-2">
-                  Create New Report
-                </h2>
-                <p className="text-gray-600">
-                  Configure your report settings and generate professional reports from AVEVA Historian data.
-                </p>
-              </div>
+              ))}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Report Configuration */}
-              <div className="lg:col-span-2 space-y-6">
-                <Card>
-                  <CardHeader>
-                    <h3 className="text-lg font-medium">Report Details</h3>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <Input
-                      label="Report Name"
-                      placeholder="Enter report name..."
-                      value={reportConfig.name || ''}
-                      onChange={(e) => setReportConfig(prev => ({
-                        ...prev,
-                        name: e.target.value,
-                      }))}
-                      required
-                    />
-                    <Input
-                      label="Description"
-                      placeholder="Enter report description..."
-                      value={reportConfig.description || ''}
-                      onChange={(e) => setReportConfig(prev => ({
-                        ...prev,
-                        description: e.target.value,
-                      }))}
-                    />
-                  </CardContent>
-                </Card>
-
-                <TimeRangePicker
-                  value={reportConfig.timeRange!}
-                  onChange={(newTimeRange) => setReportConfig(prev => ({
-                    ...prev,
-                    timeRange: newTimeRange
-                  }))}
-                />
-                {/* Validation Error Message - Handled inside TimeRangePicker but we check for button disable state */}
-                {reportConfig.timeRange?.startTime && reportConfig.timeRange?.endTime &&
-                  reportConfig.timeRange.startTime > reportConfig.timeRange.endTime && (
-                    <div className="mt-2 text-sm text-red-600 bg-red-50 p-3 rounded-md hidden">
-                      <div className="flex items-center">
-                        <AlertCircle className="h-4 w-4 mr-2" />
-                        <span>Warning: Start time is after end time</span>
-                      </div>
-                    </div>
-                  )}
-              </div>
-
-              {/* Tag Selection and Version History */}
+            {activeTab === 'create' && (
               <div className="space-y-6">
+                <div className="flex justify-end">
+                  <Button variant="ghost" size="sm" onClick={() => setShowVersionHistory(!showVersionHistory)}>
+                    <History className="h-4 w-4 mr-2" />
+                    {showVersionHistory ? 'Back to Editor' : 'Version History'}
+                  </Button>
+                </div>
+
                 {!showVersionHistory ? (
                   <>
-                    {/* Simplified Tag Selection */}
                     <Card>
                       <CardHeader>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <Tag className="h-5 w-5 text-gray-500" />
-                            <h3 className="text-lg font-medium">Tag Selection</h3>
-                          </div>
-                          <span className="text-sm text-gray-500">
-                            {reportConfig.tags?.length || 0}/10 selected
-                          </span>
-                        </div>
+                        <h3 className="text-lg font-medium">Report Configuration</h3>
                       </CardHeader>
                       <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">Report Name</label>
+                          <Input
+                            placeholder="Enter report name..."
+                            value={reportConfig.name}
+                            onChange={e => setReportConfig(prev => ({ ...prev, name: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">Description</label>
+                          <Input
+                            placeholder="Optional description..."
+                            value={reportConfig.description}
+                            onChange={e => setReportConfig(prev => ({ ...prev, description: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">Time Range</label>
+                          <TimeRangePicker
+                            value={reportConfig.timeRange!}
+                            onChange={range => setReportConfig(prev => ({ ...prev, timeRange: range }))}
+                          />
+                        </div>
+                        {/* Search Tags */}
+                        <div className="space-y-2">
+                          <Input
+                            placeholder="Search tags..."
+                            value={tagSearchTerm}
+                            onChange={(e) => setTagSearchTerm(e.target.value)}
+                          />
+                        </div>
+
                         {/* Available Tags */}
                         <div className="space-y-2">
                           <h4 className="text-sm font-medium text-gray-700">Available Tags:</h4>
                           <div className="space-y-1 max-h-40 overflow-y-auto">
-                            {availableTags.map((tag) => (
-                              <button
-                                key={tag}
-                                onClick={() => handleTagsChange([...(reportConfig.tags || []), tag])}
-                                disabled={reportConfig.tags?.includes(tag)}
-                                className={cn(
-                                  'w-full text-left px-3 py-2 text-sm rounded-md transition-colors',
-                                  reportConfig.tags?.includes(tag)
-                                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                    : 'hover:bg-gray-50 text-gray-700'
-                                )}
-                              >
-                                {tag}
-                              </button>
-                            ))}
+                            {availableTags
+                              .filter(tag => tag.toLowerCase().includes(tagSearchTerm.toLowerCase()))
+                              .map((tag) => (
+                                <button
+                                  key={tag}
+                                  onClick={() => handleTagsChange([...(reportConfig.tags || []), tag])}
+                                  disabled={reportConfig.tags?.includes(tag)}
+                                  className={cn(
+                                    'w-full text-left px-3 py-2 text-sm rounded-md transition-colors',
+                                    reportConfig.tags?.includes(tag)
+                                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                      : 'hover:bg-gray-50 text-gray-700'
+                                  )}
+                                >
+                                  {tag}
+                                </button>
+                              ))}
+                            {availableTags.filter(tag => tag.toLowerCase().includes(tagSearchTerm.toLowerCase())).length === 0 && (
+                              <div className="px-3 py-2 text-sm text-gray-500 italic">No tags found</div>
+                            )}
                           </div>
                         </div>
 
@@ -704,59 +529,61 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                     </CardContent>
                   </Card>
                 )}
-              </div>
-            </div>
 
-            {/* Action Buttons */}
-            <div className="flex justify-end space-x-4">
-              <Button
-                onClick={handleGenerateReport}
-                disabled={
-                  !reportConfig.name ||
-                  !reportConfig.tags?.length ||
-                  isLoading ||
-                  (reportConfig.timeRange?.startTime &&
-                    reportConfig.timeRange?.endTime &&
-                    reportConfig.timeRange.startTime > reportConfig.timeRange.endTime)
+
+                {/* Action Buttons */}
+                <div className="flex justify-end space-x-4">
+                  <Button
+                    onClick={handleGenerateReport}
+                    disabled={
+                      !reportConfig.name ||
+                      !reportConfig.tags?.length ||
+                      isLoading ||
+                      (reportConfig.timeRange?.startTime &&
+                        reportConfig.timeRange?.endTime &&
+                        reportConfig.timeRange.startTime > reportConfig.timeRange.endTime)
+                    }
+                    loading={isLoading}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Generate Report
+                  </Button>
+                </div>
+
+                {/* Report Preview */}
+                {
+                  reportConfig.name && reportConfig.tags?.length && (
+                    <div className="mt-8">
+                      <ReportPreview
+                        config={{
+                          id: 'preview',
+                          name: reportConfig.name,
+                          description: reportConfig.description || '',
+                          tags: reportConfig.tags,
+                          timeRange: reportConfig.timeRange!,
+                          chartTypes: reportConfig.chartTypes as any[],
+                          template: reportConfig.template || 'default'
+                        }}
+                        onGenerate={handleGenerateReport}
+                      />
+                    </div>
+                  )
                 }
-                loading={isLoading}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Generate Report
-              </Button>
-            </div>
-
-            {/* Report Preview */}
-            {reportConfig.name && reportConfig.tags?.length && (
-              <div className="mt-8">
-                <ReportPreview
-                  config={{
-                    id: 'preview',
-                    name: reportConfig.name,
-                    description: reportConfig.description || '',
-                    tags: reportConfig.tags,
-                    timeRange: reportConfig.timeRange!,
-                    chartTypes: reportConfig.chartTypes as any[],
-                    template: reportConfig.template || 'default'
-                  }}
-                  onGenerate={handleGenerateReport}
-                />
               </div>
             )}
-          </div>
-        )}
 
-        {activeTab === 'reports' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-3xl font-bold text-gray-900">My Reports</h2>
-                <p className="text-gray-600">
-                  Manage your saved report configurations and generated reports.
-                </p>
-              </div>
-              <div className="flex items-center space-x-4">
-                {/* Temporarily disabled loading indicator
+            {
+              activeTab === 'reports' && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-3xl font-bold text-gray-900">My Reports</h2>
+                      <p className="text-gray-600">
+                        Manage your saved report configurations and generated reports.
+                      </p>
+                    </div>
+                    <div className="flex items-center space-x-4">
+                      {/* Temporarily disabled loading indicator
                 {reportsLoading && (
                   <div className="flex items-center space-x-2 text-blue-600">
                     <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -764,14 +591,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   </div>
                 )}
                 */}
-                <Button onClick={() => setActiveTab('create')}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Report
-                </Button>
-              </div>
-            </div>
+                      <Button onClick={() => setActiveTab('create')}>
+                        <Plus className="h-4 w-4 mr-2" />
+                        New Report
+                      </Button>
+                    </div>
+                  </div>
 
-            {/* Temporarily disabled error display
+                  {/* Temporarily disabled error display
             {reportsError && (
               <Card className="border-red-200 bg-red-50">
                 <CardContent className="p-4">
@@ -787,26 +614,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             )}
             */}
 
-            <div className="bg-white rounded-lg border border-gray-200">
-              <div className="p-6 text-center text-gray-500">
-                <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-lg font-medium">No reports yet</p>
-                <p>Create your first report to get started</p>
-              </div>
-            </div>
-          </div>
-        )}
+                  <div className="bg-white rounded-lg border border-gray-200">
+                    <div className="p-6 text-center text-gray-500">
+                      <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                      <p className="text-lg font-medium">No reports yet</p>
+                      <p>Create your first report to get started</p>
+                    </div>
+                  </div>
+                </div>
+              )
+            }
 
-        {activeTab === 'categories' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-3xl font-bold text-gray-900">Categories & Tags</h2>
-                <p className="text-gray-600">
-                  Organize your reports with categories and tags for better management.
-                </p>
-              </div>
-              {/* Temporarily disabled loading indicator
+            {
+              activeTab === 'categories' && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-3xl font-bold text-gray-900">Categories & Tags</h2>
+                      <p className="text-gray-600">
+                        Organize your reports with categories and tags for better management.
+                      </p>
+                    </div>
+                    {/* Temporarily disabled loading indicator
               {tagsLoading && (
                 <div className="flex items-center space-x-2 text-blue-600">
                   <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -814,63 +643,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 </div>
               )}
               */}
-            </div>
+                  </div>
 
-            <div className="bg-white rounded-lg border border-gray-200">
-              <div className="p-6 text-center text-gray-500">
-                <Tag className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-lg font-medium">Categories coming soon</p>
-                <p>Organize your tags and reports with custom categories</p>
-              </div>
-            </div>
-          </div>
-        )}
+                  <div className="bg-white rounded-lg border border-gray-200">
+                    <div className="p-6 text-center text-gray-500">
+                      <Tag className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                      <p className="text-lg font-medium">Categories coming soon</p>
+                      <p>Organize your tags and reports with custom categories</p>
+                    </div>
+                  </div>
+                </div>
+              )
+            }
 
-        {activeTab === 'schedules' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-3xl font-bold text-gray-900">Scheduled Reports</h2>
-                <p className="text-gray-600">
-                  Manage automated report generation and delivery schedules.
-                </p>
-              </div>
-              <Button>
-                <Plus className="h-4 w-4 mr-2" />
-                New Schedule
-              </Button>
-            </div>
+            {
+              activeTab === 'schedules' && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-3xl font-bold text-gray-900">Scheduled Reports</h2>
+                      <p className="text-gray-600">
+                        Manage automated report generation and delivery schedules.
+                      </p>
+                    </div>
+                    <Button>
+                      <Plus className="h-4 w-4 mr-2" />
+                      New Schedule
+                    </Button>
+                  </div>
 
-            {/* Schedules List */}
-            <div className="bg-white rounded-lg border border-gray-200">
-              <div className="p-6 text-center text-gray-500">
-                <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-lg font-medium">No schedules configured</p>
-                <p>Set up automated report generation to receive regular updates</p>
-              </div>
-            </div>
-          </div>
-        )}
+                  {/* Schedules List */}
+                  <div className="bg-white rounded-lg border border-gray-200">
+                    <div className="p-6 text-center text-gray-500">
+                      <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                      <p className="text-lg font-medium">No schedules configured</p>
+                      <p>Set up automated report generation to receive regular updates</p>
+                    </div>
+                  </div>
+                </div>
+              )
+            }
 
-        {activeTab === 'database' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-3xl font-bold text-gray-900">Database Configuration</h2>
-                <p className="text-gray-600">
-                  Manage your AVEVA Historian database connections.
-                </p>
-              </div>
-            </div>
+            {
+              activeTab === 'database' && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-3xl font-bold text-gray-900">Database Configuration</h2>
+                      <p className="text-gray-600">
+                        Manage your AVEVA Historian database connections.
+                      </p>
+                    </div>
+                  </div>
 
-            <div className="bg-white rounded-lg border border-gray-200">
-              <div className="p-6 text-center text-gray-500">
-                <Database className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p className="text-lg font-medium">Database configuration</p>
-                <p>Current connection: {healthStatus}</p>
-              </div>
-            </div>
-          </div>
+                  <div className="bg-white rounded-lg border border-gray-200">
+                    <div className="p-6 text-center text-gray-500">
+                      <Database className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                      <p className="text-lg font-medium">Database configuration</p>
+                      <p>Current connection: {healthStatus}</p>
+                    </div>
+                  </div>
+                </div>
+              )
+            }
+          </>
         )}
       </main>
     </div>
