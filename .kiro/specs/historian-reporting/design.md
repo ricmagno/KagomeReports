@@ -17,11 +17,13 @@ graph TB
     API --> RP[Report Processor]
     API --> SC[Scheduler Service]
     API --> EM[Email Service]
+    API --> DCM[Database Config Manager]
     
     DB --> AH[(AVEVA Historian)]
     RP --> PDF[PDF Generator]
     SC --> RP
     EM --> SMTP[SMTP Server]
+    DCM --> CS[(Config Storage)]
     
     subgraph "Docker Container"
         UI
@@ -31,6 +33,8 @@ graph TB
         SC
         EM
         PDF
+        DCM
+        CS
     end
 ```
 
@@ -180,7 +184,70 @@ interface EmailConfig {
 }
 ```
 
-### 5. Web User Interface (User_Interface)
+### 6. Database Configuration Manager (Database_Configuration_Manager)
+
+**Purpose**: Manages database connection settings through a secure web interface
+
+**Key Interfaces**:
+```typescript
+interface DatabaseConfigManager {
+  saveConfiguration(config: DatabaseConfig): Promise<string>
+  loadConfiguration(configId: string): Promise<DatabaseConfig>
+  testConnection(config: DatabaseConfig): Promise<ConnectionTestResult>
+  deleteConfiguration(configId: string): Promise<void>
+  listConfigurations(): Promise<DatabaseConfigSummary[]>
+}
+
+interface DatabaseConfig {
+  id?: string
+  name: string
+  host: string
+  port: number
+  database: string
+  username: string
+  password: string
+  encrypt: boolean
+  trustServerCertificate: boolean
+  connectionTimeout: number
+  requestTimeout: number
+}
+
+interface ConnectionTestResult {
+  success: boolean
+  message: string
+  responseTime?: number
+  serverVersion?: string
+  error?: string
+}
+
+interface DatabaseConfigSummary {
+  id: string
+  name: string
+  host: string
+  database: string
+  isActive: boolean
+  lastTested: Date
+  status: 'connected' | 'disconnected' | 'error' | 'untested'
+}
+```
+
+**Security Features**:
+- AES-256 encryption for stored passwords
+- Role-based access control for configuration management
+- Audit logging for all configuration changes
+- Secure credential validation and sanitization
+
+**Configuration Management**:
+```typescript
+interface ConfigurationService {
+  encryptCredentials(config: DatabaseConfig): Promise<EncryptedConfig>
+  decryptCredentials(encryptedConfig: EncryptedConfig): Promise<DatabaseConfig>
+  validateConfiguration(config: DatabaseConfig): ValidationResult
+  switchActiveConfiguration(configId: string): Promise<void>
+}
+```
+
+### 7. Web User Interface (User_Interface)
 
 **Purpose**: Provides intuitive web-based interface for report management
 
@@ -192,6 +259,8 @@ interface EmailConfig {
 - Report preview with real-time data visualization
 - Schedule management interface
 - User authentication and role management
+- **Database configuration interface with connection testing**
+- **Secure credential management with encryption**
 
 **API Endpoints**:
 ```typescript
@@ -211,6 +280,14 @@ POST /api/schedules - Create schedule
 GET /api/schedules - List schedules
 PUT /api/schedules/:id - Update schedule
 DELETE /api/schedules/:id - Delete schedule
+
+// Database configuration endpoints
+GET /api/database/configs - List database configurations
+POST /api/database/configs - Create database configuration
+PUT /api/database/configs/:id - Update database configuration
+DELETE /api/database/configs/:id - Delete database configuration
+POST /api/database/test - Test database connection
+POST /api/database/activate/:id - Activate database configuration
 
 // System endpoints
 GET /api/health - Health check
@@ -272,6 +349,34 @@ interface StatisticsResult {
   count: number
   dataQuality: number
 }
+
+interface DatabaseConfiguration {
+  id: string
+  name: string
+  host: string
+  port: number
+  database: string
+  username: string
+  encryptedPassword: string
+  encrypt: boolean
+  trustServerCertificate: boolean
+  connectionTimeout: number
+  requestTimeout: number
+  isActive: boolean
+  createdBy: string
+  createdAt: Date
+  lastTested?: Date
+  status: 'connected' | 'disconnected' | 'error' | 'untested'
+}
+
+interface ConnectionTestResult {
+  success: boolean
+  message: string
+  responseTime?: number
+  serverVersion?: string
+  error?: string
+  testedAt: Date
+}
 ```
 
 ### Database Schema (SQLite for Application Data)
@@ -320,6 +425,40 @@ CREATE TABLE users (
   email TEXT,
   role TEXT DEFAULT 'user',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Database configurations
+CREATE TABLE database_configurations (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  host TEXT NOT NULL,
+  port INTEGER NOT NULL,
+  database_name TEXT NOT NULL,
+  username TEXT NOT NULL,
+  encrypted_password TEXT NOT NULL,
+  encrypt BOOLEAN DEFAULT true,
+  trust_server_certificate BOOLEAN DEFAULT false,
+  connection_timeout INTEGER DEFAULT 30000,
+  request_timeout INTEGER DEFAULT 30000,
+  is_active BOOLEAN DEFAULT false,
+  created_by TEXT REFERENCES users(id),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_tested DATETIME,
+  status TEXT DEFAULT 'untested'
+);
+
+-- Configuration test history
+CREATE TABLE connection_tests (
+  id TEXT PRIMARY KEY,
+  config_id TEXT REFERENCES database_configurations(id),
+  success BOOLEAN NOT NULL,
+  message TEXT,
+  response_time INTEGER,
+  server_version TEXT,
+  error_details TEXT,
+  tested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  tested_by TEXT REFERENCES users(id)
 );
 ```
 
@@ -410,6 +549,30 @@ Based on the prework analysis, I'll now convert the testable acceptance criteria
 ### Property 20: Performance Optimization
 *For any* database query or report generation operation, the system should apply appropriate optimizations (caching, query optimization, progress reporting) to maintain acceptable performance
 **Validates: Requirements 10.3, 10.4, 10.5**
+
+### Property 21: Database Configuration Encryption
+*For any* database configuration with credentials, the stored version should have encrypted passwords while the original plaintext passwords should be recoverable through decryption
+**Validates: Requirements 9.3**
+
+### Property 22: Database Configuration Round-Trip
+*For any* valid database configuration, saving then loading the configuration should produce an equivalent configuration with properly decrypted credentials
+**Validates: Requirements 9.4**
+
+### Property 23: Connection Testing Validation
+*For any* database configuration (valid or invalid), the connection test should return appropriate success/failure status with meaningful error messages for failures
+**Validates: Requirements 9.2**
+
+### Property 24: Active Configuration Switching
+*For any* database configuration switch, the active connection pool should be updated to use the new configuration settings
+**Validates: Requirements 9.5**
+
+### Property 25: Database Configuration Access Control
+*For any* user without administrator privileges, attempts to modify database configurations should be rejected with appropriate authorization errors
+**Validates: Requirements 9.6**
+
+### Property 26: Database Configuration Validation
+*For any* invalid database configuration (missing required fields, invalid ports, malformed hostnames), the system should prevent saving and return specific validation error messages
+**Validates: Requirements 9.7**
 
 ## Error Handling
 

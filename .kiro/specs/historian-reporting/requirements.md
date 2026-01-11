@@ -12,6 +12,7 @@ The Historian Reports Application is a comprehensive reporting system designed t
 - **Data_Processor**: Component that handles data extraction, filtering, and trend analysis
 - **User_Interface**: Web-based dashboard for report configuration and management
 - **Email_Delivery_System**: Component that handles automated report distribution via email
+- **Database_Configuration_Manager**: Component that manages database connection settings and credentials through the user interface
 
 ## Requirements
 
@@ -113,7 +114,21 @@ The Historian Reports Application is a comprehensive reporting system designed t
 4. WHEN email delivery fails, THE Email_Delivery_System SHALL log the failure and attempt retry with exponential backoff
 5. THE Email_Delivery_System SHALL support secure email protocols including TLS encryption
 
-### Requirement 9: Security and Authentication
+### Requirement 9: Database Configuration Management
+
+**User Story:** As a system administrator, I want to configure database connection settings through the web interface, so that I can easily connect to different AVEVA Historian databases without modifying environment files.
+
+#### Acceptance Criteria
+
+1. WHEN accessing database settings, THE User_Interface SHALL provide a configuration form for server hostname, port, database name, username, and password
+2. WHEN testing database connections, THE User_Interface SHALL validate the connection settings and display connection status with detailed error messages
+3. WHEN saving database configurations, THE User_Interface SHALL encrypt sensitive credentials before storing them securely
+4. WHEN loading database configurations, THE User_Interface SHALL decrypt and populate the configuration form with existing settings
+5. WHEN switching database configurations, THE Data_Processor SHALL update the active connection pool with the new settings
+6. WHEN configuration changes are made, THE User_Interface SHALL require administrator privileges to modify database settings
+7. WHEN invalid configurations are detected, THE User_Interface SHALL prevent saving and display specific validation errors
+
+### Requirement 10: Security and Authentication
 
 **User Story:** As a system administrator, I want secure access controls, so that I can protect sensitive process data.
 
