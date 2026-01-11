@@ -43,7 +43,7 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
     'Content-Type': 'application/json',
   };
 
-  // Add authentication header if token exists
+  // Add authentication header if token exists (but don't require it for public endpoints)
   if (authToken) {
     defaultHeaders['Authorization'] = `Bearer ${authToken}`;
   }

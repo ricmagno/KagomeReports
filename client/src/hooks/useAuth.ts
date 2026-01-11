@@ -107,6 +107,7 @@ export const useAuthState = () => {
       
       if (!token) {
         setUser(null);
+        setIsLoading(false);
         return;
       }
 
@@ -115,13 +116,23 @@ export const useAuthState = () => {
       setAuthToken(token);
 
       // Verify token and get current user data
-      const response = await apiService.getCurrentUser();
-      if (response.success && response.data) {
-        setUser(response.data);
-      } else {
+      try {
+        const response = await apiService.getCurrentUser();
+        if (response.success && response.data) {
+          setUser(response.data);
+        } else {
+          setUser(null);
+          localStorage.removeItem('authToken');
+          sessionStorage.removeItem('authToken');
+        }
+      } catch (error) {
+        // If getCurrentUser fails, just clear the token and continue without auth
+        console.warn('Failed to get current user, continuing without authentication:', error);
         setUser(null);
         localStorage.removeItem('authToken');
         sessionStorage.removeItem('authToken');
+        const { setAuthToken } = await import('../services/api');
+        setAuthToken(null);
       }
     } catch (error) {
       console.error('Failed to refresh user:', error);

@@ -1,11 +1,14 @@
 import React from 'react';
+import { AuthProvider } from './components/auth/AuthProvider';
 import { Dashboard } from './components/layout/Dashboard';
 import './styles/globals.css';
 
 function App() {
   return (
     <div className="App">
-      <Dashboard />
+      <AuthProvider>
+        <Dashboard />
+      </AuthProvider>
     </div>
   );
 }
