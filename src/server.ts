@@ -34,7 +34,7 @@ app.use(requestLogger);
 // Health check endpoint
 app.get('/health', async (req, res) => {
   const cacheHealth = await cacheManager.healthCheck();
-  
+
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -83,7 +83,7 @@ interface SystemHealth {
 async function validateStartupDependencies(): Promise<SystemHealth> {
   const startTime = Date.now();
   const components: ComponentHealth[] = [];
-  
+
   logger.info('Starting comprehensive dependency validation...');
 
   // Setup database configuration integration
@@ -117,14 +117,14 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
     cacheStart = Date.now();
     await cacheManager.initialize();
     const cacheHealth = await cacheManager.healthCheck();
-    
+
     components.push({
       name: 'Cache System',
       status: cacheHealth.cacheHealthy ? 'healthy' : 'degraded',
       required: false,
       duration: Date.now() - cacheStart
     });
-    
+
     if (cacheHealth.cacheHealthy) {
       logger.info('✓ Cache system initialized and healthy');
     } else {
@@ -147,14 +147,14 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
     dbStart = Date.now();
     await initializeDatabase();
     const dbHealthy = await testDatabaseConnection();
-    
+
     components.push({
       name: 'Application Database',
       status: dbHealthy ? 'healthy' : 'unhealthy',
       required: true,
       duration: Date.now() - dbStart
     });
-    
+
     if (dbHealthy) {
       logger.info('✓ Application database connection established and validated');
     } else {
@@ -176,19 +176,32 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
   try {
     historianStart = Date.now();
     const historianConnection = getHistorianConnection();
-    const historianHealthy = await historianConnection.validateConnection();
-    
+
+    // Attempt connection but don't block indefinitely
+    // The connect() method handles retries internally (unlimited by default)
+    // We wait a short time to see if it connects immediately
+    const connectPromise = historianConnection.connect();
+    const TIMEOUT_MS = 2000;
+
+    const connectedWithinTimeout = await Promise.race([
+      connectPromise.then(() => true).catch(() => false),
+      new Promise<boolean>(resolve => setTimeout(() => resolve(false), TIMEOUT_MS))
+    ]);
+
+    const statusInfo = historianConnection.getConnectionStatus();
+
     components.push({
       name: 'Historian Database',
-      status: historianHealthy ? 'healthy' : 'degraded',
+      status: connectedWithinTimeout ? 'healthy' : 'degraded',
       required: false, // Optional for development
-      duration: Date.now() - historianStart
+      duration: Date.now() - historianStart,
+      ...(connectedWithinTimeout ? {} : { error: `Connection ${statusInfo.state}` })
     });
-    
-    if (historianHealthy) {
+
+    if (connectedWithinTimeout) {
       logger.info('✓ Historian database connection established and validated');
     } else {
-      logger.warn('⚠ Historian database connection validation failed');
+      logger.warn(`⚠ Historian database connection pending (State: ${statusInfo.state}). Server starting, retrying in background.`);
     }
   } catch (error) {
     components.push({
@@ -205,14 +218,14 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
   try {
     const emailStart = Date.now();
     const emailHealthy = await emailService.validateConfiguration();
-    
+
     components.push({
       name: 'Email Service',
       status: emailHealthy ? 'healthy' : 'degraded',
       required: false,
       duration: Date.now() - emailStart
     });
-    
+
     if (emailHealthy) {
       logger.info('✓ Email service configuration validated');
     } else {
@@ -232,7 +245,7 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
   try {
     const schedulerStart = Date.now();
     await schedulerService.initialize();
-    
+
     components.push({
       name: 'Scheduler Service',
       status: 'healthy',
@@ -254,7 +267,7 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
   const requiredComponents = components.filter(c => c.required);
   const requiredHealthy = requiredComponents.every(c => c.status === 'healthy');
   const anyUnhealthy = components.some(c => c.status === 'unhealthy');
-  
+
   let overall: 'healthy' | 'unhealthy' | 'degraded';
   if (!requiredHealthy) {
     overall = 'unhealthy';
@@ -274,11 +287,11 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
   // Log startup summary
   logger.info(`Startup validation completed in ${systemHealth.startupTime}ms`);
   logger.info(`Overall system health: ${overall.toUpperCase()}`);
-  
+
   const healthyCount = components.filter(c => c.status === 'healthy').length;
   const degradedCount = components.filter(c => c.status === 'degraded').length;
   const unhealthyCount = components.filter(c => c.status === 'unhealthy').length;
-  
+
   logger.info(`Components: ${healthyCount} healthy, ${degradedCount} degraded, ${unhealthyCount} unhealthy`);
 
   return systemHealth;
@@ -289,7 +302,7 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
  */
 async function performGracefulShutdown(signal: string): Promise<void> {
   logger.info(`Received ${signal}. Starting graceful shutdown...`);
-  
+
   const shutdownStart = Date.now();
   const shutdownSteps: Array<{ name: string; success: boolean; duration: number; error?: string }> = [];
 
@@ -384,10 +397,10 @@ async function performGracefulShutdown(signal: string): Promise<void> {
   const totalShutdownTime = Date.now() - shutdownStart;
   const successfulSteps = shutdownSteps.filter(s => s.success).length;
   const failedSteps = shutdownSteps.filter(s => !s.success).length;
-  
+
   logger.info(`Graceful shutdown completed in ${totalShutdownTime}ms`);
   logger.info(`Shutdown steps: ${successfulSteps} successful, ${failedSteps} failed`);
-  
+
   if (failedSteps > 0) {
     logger.warn('Some shutdown steps failed, but continuing with process exit');
     shutdownSteps.filter(s => !s.success).forEach(step => {
@@ -401,65 +414,26 @@ async function performGracefulShutdown(signal: string): Promise<void> {
 async function startServer(): Promise<void> {
   try {
     logger.info('Starting Historian Reports Application...');
-    
-    // Perform comprehensive startup validation
-    const systemHealth = await validateStartupDependencies();
-    
-    // Check if system can start
-    if (systemHealth.overall === 'unhealthy') {
-      logger.error('System health check failed. Required components are unhealthy.');
-      logger.error('Cannot start server with unhealthy required components.');
-      
-      // Log failed required components
-      systemHealth.components
-        .filter(c => c.required && c.status === 'unhealthy')
-        .forEach(component => {
-          logger.error(`Required component failed: ${component.name} - ${component.error}`);
-        });
-      
-      process.exit(1);
-    }
-    
-    if (systemHealth.overall === 'degraded') {
-      logger.warn('System is starting in degraded mode. Some optional components are unavailable.');
-      logger.warn('Full functionality may not be available.');
-    }
-    
-    // Start HTTP server
+
+    // Start HTTP server IMMEDIATELY to respond to health checks
     const server = app.listen(env.PORT, () => {
       logger.info(`✓ HTTP server started on port ${env.PORT} in ${env.NODE_ENV} mode`);
-      logger.info(`✓ System health: ${systemHealth.overall.toUpperCase()}`);
-      logger.info('Available endpoints:');
-      logger.info('  GET  /health - Basic health check');
-      logger.info('  GET  /api - API information');
-      logger.info('  GET  /api/health - Comprehensive health check');
-      logger.info('  GET  /api/health/detailed - Detailed component health');
-      logger.info('  GET  /api/health/database - Database health check');
-      logger.info('  GET  /api/health/historian - Historian health check');
-      logger.info('  GET  /api/health/cache - Cache health check');
-      logger.info('  GET  /api/data/tags - Get available tags');
-      logger.info('  GET  /api/data/:tagName - Get time-series data');
-      logger.info('  POST /api/data/query - Custom data queries');
-      logger.info('  POST /api/reports/generate - Generate reports');
-      logger.info('  GET  /api/schedules - Manage schedules');
-      logger.info('  POST /api/auth/login - User authentication');
-      
-      logger.info('Historian Reports Application is ready to serve requests');
+      logger.info('Historian Reports Application is starting up...');
     });
 
     // Enhanced graceful shutdown handling
     const gracefulShutdown = async (signal: string) => {
       logger.info(`Received ${signal}. Initiating graceful shutdown sequence...`);
-      
+
       // Set a timeout for forced shutdown
       const forceShutdownTimeout = setTimeout(() => {
         logger.error('Graceful shutdown timeout exceeded. Forcing exit...');
         process.exit(1);
       }, 30000); // 30 second timeout
-      
+
       server.close(async () => {
         logger.info('✓ HTTP server stopped accepting new connections');
-        
+
         try {
           await performGracefulShutdown(signal);
           clearTimeout(forceShutdownTimeout);
@@ -471,7 +445,7 @@ async function startServer(): Promise<void> {
           process.exit(1);
         }
       });
-      
+
       // Handle server close timeout
       setTimeout(() => {
         logger.error('Server close timeout exceeded. Forcing shutdown...');
@@ -484,18 +458,61 @@ async function startServer(): Promise<void> {
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
     process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')); // For nodemon
-    
+
+    // Perform comprehensive startup validation
+    const systemHealth = await validateStartupDependencies();
+
+    // Check if system can start
+    if (systemHealth.overall === 'unhealthy') {
+      logger.error('System health check failed. Required components are unhealthy.');
+      logger.error('Cannot continue with unhealthy required components.');
+
+      // Log failed required components
+      systemHealth.components
+        .filter(c => c.required && c.status === 'unhealthy')
+        .forEach(component => {
+          logger.error(`Required component failed: ${component.name} - ${component.error}`);
+        });
+
+      // If validation fails, we must shut down the server we started
+      gracefulShutdown('STARTUP_FAILURE');
+      return;
+    }
+
+    if (systemHealth.overall === 'degraded') {
+      logger.warn('System is starting in degraded mode. Some optional components are unavailable.');
+      logger.warn('Full functionality may not be available.');
+    }
+
+    logger.info(`✓ System health: ${systemHealth.overall.toUpperCase()}`);
+    logger.info('Available endpoints:');
+    logger.info('  GET  /health - Basic health check');
+    logger.info('  GET  /api - API information');
+    logger.info('  GET  /api/health - Comprehensive health check');
+    logger.info('  GET  /api/health/detailed - Detailed component health');
+    logger.info('  GET  /api/health/database - Database health check');
+    logger.info('  GET  /api/health/historian - Historian health check');
+    logger.info('  GET  /api/health/cache - Cache health check');
+    logger.info('  GET  /api/data/tags - Get available tags');
+    logger.info('  GET  /api/data/:tagName - Get time-series data');
+    logger.info('  POST /api/data/query - Custom data queries');
+    logger.info('  POST /api/reports/generate - Generate reports');
+    logger.info('  GET  /api/schedules - Manage schedules');
+    logger.info('  POST /api/auth/login - User authentication');
+
+    logger.info('Historian Reports Application is ready to serve requests');
+
     // Handle uncaught exceptions and unhandled rejections
     process.on('uncaughtException', (error) => {
       logger.error('Uncaught Exception:', error);
       gracefulShutdown('UNCAUGHT_EXCEPTION');
     });
-    
+
     process.on('unhandledRejection', (reason, promise) => {
       logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
       gracefulShutdown('UNHANDLED_REJECTION');
     });
-    
+
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);

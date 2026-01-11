@@ -47,23 +47,69 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     template: 'default',
   });
 
-  // Simple health check without using the complex API hooks
+  // Health check with polling for reconnection countdown
   useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+
     const checkHealth = async () => {
       try {
-        const response = await fetch('http://localhost:3000/api/health');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s timeout
+
+        const response = await fetch('http://127.0.0.1:3000/api/health/historian', {
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
         if (response.ok) {
           const data = await response.json();
-          setHealthStatus(`✅ Backend connected - Status: ${data.status}`);
+
+          if (data.status === 'healthy') {
+            setHealthStatus('✅ Backend connected & Ready');
+          } else if (data.connection && data.connection.state === 'retrying' && data.connection.nextRetry) {
+            const nextRetry = new Date(data.connection.nextRetry);
+            const now = new Date();
+            const diff = Math.ceil((nextRetry.getTime() - now.getTime()) / 1000);
+            const seconds = diff > 0 ? diff : 0;
+            setHealthStatus(`⚠️ Connection lost. Retrying in ${seconds}s...`);
+          } else if (data.connection && data.connection.state === 'connecting') {
+            setHealthStatus('⚠️ Connecting to database...');
+          } else {
+            setHealthStatus(`❌ Backend Connected - Database: ${data.status} (${data.connection?.state || 'unknown'})`);
+          }
         } else {
-          setHealthStatus(`❌ Backend error - Status: ${response.status}`);
+          // If detailed check fails, try basic check
+          const controllerBasic = new AbortController();
+          const timeoutBasic = setTimeout(() => controllerBasic.abort(), 1000);
+
+          try {
+            const basicResponse = await fetch('http://127.0.0.1:3000/api/health', {
+              signal: controllerBasic.signal
+            });
+            clearTimeout(timeoutBasic);
+
+            if (basicResponse.ok) {
+              setHealthStatus('⚠️ Backend connected - Database status unknown');
+            } else {
+              setHealthStatus(`❌ Backend error - Status: ${response.status}`);
+            }
+          } catch (e) {
+            setHealthStatus(`❌ Backend error - Status: ${response.status}`);
+          }
         }
       } catch (error) {
-        setHealthStatus(`❌ Backend connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        if (error instanceof Error && error.name === 'AbortError') {
+          setHealthStatus('❌ Backend connection timed out');
+        } else {
+          setHealthStatus(`❌ Backend connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
       }
     };
 
     checkHealth();
+    intervalId = setInterval(checkHealth, 1000); // Poll every second to update countdown
+
+    return () => clearInterval(intervalId);
   }, []);
 
   // Check if user is already authenticated

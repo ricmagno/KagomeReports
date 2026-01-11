@@ -223,6 +223,7 @@ The system is designed specifically for integration with AVEVA Historian databas
 2. Quality code handling (192 = Good, 0 = Bad, etc.)
 3. Time-series data formats and timestamp handling
 4. Connection configuration for SQL Server (AVEVA Historian uses SQL Server)
+5. In case of connection failure, the system will retry up to unlimited times with a 30-second delay between each attempt showing the remaining seconds before the next attempt.
 
 ### Report Generation
 The system supports:

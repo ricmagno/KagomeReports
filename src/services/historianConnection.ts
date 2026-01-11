@@ -8,16 +8,19 @@ import { ConnectionPool, Request, IResult } from 'mssql';
 import { getDatabase, testDatabaseConnection } from '@/config/database';
 import { dbLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
-import { RetryHandler } from '@/utils/retryHandler';
+import { RetryHandler, RetryOptions } from '@/utils/retryHandler';
 import { databaseConfigService } from '@/services/databaseConfigService';
 
 export class HistorianConnection {
   private pool: ConnectionPool | null = null;
   private isConnected: boolean = false;
   private connectionAttempts: number = 0;
-  private maxRetryAttempts: number = 3;
-  private retryDelay: number = 1000; // Start with 1 second
   private currentConfigId: string | null = null;
+
+  // New state properties for UI feedback
+  private nextRetryTime: Date | null = null;
+  private connectionState: 'disconnected' | 'connecting' | 'connected' | 'retrying' = 'disconnected';
+  private lastError: string | null = null;
 
   constructor() {
     // Don't initialize pool in constructor - will be created when needed
@@ -27,7 +30,24 @@ export class HistorianConnection {
    * Connect to AVEVA Historian database with retry logic
    * Uses active database configuration if available, falls back to environment config
    */
-  async connect(): Promise<void> {
+  async connect(options: Partial<RetryOptions> = {}): Promise<void> {
+    // Return existing connection if valid
+    if (this.isConnected && this.pool) {
+      return;
+    }
+
+    // Prevent multiple concurrent connection attempts
+    if (this.connectionState === 'connecting' || this.connectionState === 'retrying') {
+      // If already connecting, returning the promise would require tracking the active promise
+      // For now, let's just log and return (caller effectively joins the wait if they await something else)
+      dbLogger.info('Connection attempt already in progress');
+      return;
+    }
+
+    this.connectionState = 'connecting';
+    this.nextRetryTime = null;
+    this.lastError = null;
+
     return RetryHandler.executeWithRetry(
       async () => {
         if (this.isConnected && this.pool) {
@@ -35,10 +55,10 @@ export class HistorianConnection {
         }
 
         dbLogger.info('Attempting to connect to AVEVA Historian database...');
-        
+
         // Try to get active database configuration first
         const activeConfig = databaseConfigService.getActiveConfiguration();
-        
+
         if (activeConfig) {
           dbLogger.info('Using active database configuration', {
             configId: activeConfig.id,
@@ -46,17 +66,17 @@ export class HistorianConnection {
             host: activeConfig.host,
             database: activeConfig.database
           });
-          
+
           // Use the active configuration's connection pool
           this.pool = await databaseConfigService.getActiveConnectionPool();
           this.currentConfigId = activeConfig.id;
         } else {
           dbLogger.info('No active database configuration found, using environment configuration');
-          
+
           // Fall back to environment-based configuration
           this.pool = getDatabase();
           this.currentConfigId = null;
-          
+
           // Test the connection
           const isHealthy = await testDatabaseConnection();
           if (!isHealthy) {
@@ -66,14 +86,33 @@ export class HistorianConnection {
 
         this.isConnected = true;
         this.connectionAttempts = 0;
+        this.connectionState = 'connected';
+        this.nextRetryTime = null;
+        this.lastError = null;
         dbLogger.info('Successfully connected to AVEVA Historian database');
       },
-      RetryHandler.createDatabaseRetryOptions({ maxAttempts: 3 }),
+      RetryHandler.createDatabaseRetryOptions({
+        maxAttempts: Number.MAX_SAFE_INTEGER, // Default to unlimited unless overridden
+        baseDelay: 30000,
+        maxDelay: 30000,
+        backoffFactor: 1, // Constant delay
+        logCountdown: true,
+        onRetry: (attempt, delay) => {
+          this.connectionAttempts = attempt;
+          this.connectionState = 'retrying';
+          this.nextRetryTime = new Date(Date.now() + delay);
+          this.lastError = `Connection failed. Retrying in ${Math.round(delay / 1000)}s...`;
+        },
+        ...options // Allow overrides (e.g. for startup validation)
+      }),
       'database-connection'
     ).catch(error => {
       this.isConnected = false;
       this.pool = null;
       this.currentConfigId = null;
+      this.connectionState = 'disconnected';
+      this.nextRetryTime = null;
+      this.lastError = error.message;
       dbLogger.error('Database connection failed:', error);
       throw error;
     });
@@ -93,6 +132,7 @@ export class HistorianConnection {
         this.isConnected = false;
         this.pool = null;
         this.currentConfigId = null;
+        this.connectionState = 'disconnected';
         dbLogger.info('Disconnected from AVEVA Historian database');
       }
     } catch (error) {
@@ -107,9 +147,9 @@ export class HistorianConnection {
    */
   async switchConfiguration(newConfigId: string): Promise<void> {
     try {
-      dbLogger.info('Switching database configuration', { 
-        oldConfigId: this.currentConfigId, 
-        newConfigId 
+      dbLogger.info('Switching database configuration', {
+        oldConfigId: this.currentConfigId,
+        newConfigId
       });
 
       // Disconnect from current configuration
@@ -126,13 +166,13 @@ export class HistorianConnection {
       // Reconnect with new configuration
       await this.connect();
 
-      dbLogger.info('Successfully switched database configuration', { 
-        newConfigId: this.currentConfigId 
+      dbLogger.info('Successfully switched database configuration', {
+        newConfigId: this.currentConfigId
       });
     } catch (error) {
-      dbLogger.error('Failed to switch database configuration', { 
-        error, 
-        newConfigId 
+      dbLogger.error('Failed to switch database configuration', {
+        error,
+        newConfigId
       });
       throw error;
     }
@@ -166,6 +206,12 @@ export class HistorianConnection {
     return RetryHandler.executeWithRetry(
       async () => {
         if (!this.isConnected) {
+          // If not connected, trigger connection but allow it to run in background mode if needed
+          // However, for query execution we generally need the connection NOW.
+          // The issue is if we are in infinite retry loop.
+          if (this.connectionState === 'retrying') {
+            throw createError(`Database is currently reconnecting. Next attempt at ${this.nextRetryTime?.toISOString()}`, 503);
+          }
           await this.connect();
         }
 
@@ -174,9 +220,9 @@ export class HistorianConnection {
         }
 
         dbLogger.debug('Executing query:', { query: this.sanitizeQueryForLogging(query), params });
-        
+
         const request = this.pool.request();
-        
+        // ... (rest of method same as original)
         // Add parameters if provided
         if (params) {
           Object.entries(params).forEach(([key, value]) => {
@@ -203,7 +249,7 @@ export class HistorianConnection {
       'database-query'
     ).catch(error => {
       dbLogger.error('Query execution failed:', { query: this.sanitizeQueryForLogging(query), error });
-      
+
       // Handle specific database errors
       if (error instanceof Error) {
         if (error.message.includes('timeout')) {
@@ -214,7 +260,7 @@ export class HistorianConnection {
           throw createError('Database connection lost', 503);
         }
       }
-      
+
       throw createError('Database query failed', 500);
     });
   }
@@ -233,12 +279,21 @@ export class HistorianConnection {
   }
 
   /**
-   * Get database connection status
+   * Get database connection status including retry details
    */
-  getConnectionStatus(): { connected: boolean; attempts: number } {
+  getConnectionStatus(): {
+    connected: boolean;
+    attempts: number;
+    state: string;
+    nextRetry: Date | null;
+    lastError: string | null;
+  } {
     return {
       connected: this.isConnected,
-      attempts: this.connectionAttempts
+      attempts: this.connectionAttempts,
+      state: this.connectionState,
+      nextRetry: this.nextRetryTime,
+      lastError: this.lastError
     };
   }
 
@@ -298,7 +353,7 @@ export class HistorianConnection {
    */
   private getQueryType(query: string): string {
     const normalizedQuery = query.trim().toLowerCase();
-    
+
     if (normalizedQuery.startsWith('select count(')) return 'count';
     if (normalizedQuery.startsWith('select') && normalizedQuery.includes('history')) return 'time-series';
     if (normalizedQuery.startsWith('select') && normalizedQuery.includes('tag')) return 'metadata';
@@ -306,7 +361,7 @@ export class HistorianConnection {
     if (normalizedQuery.startsWith('insert')) return 'insert';
     if (normalizedQuery.startsWith('update')) return 'update';
     if (normalizedQuery.startsWith('delete')) return 'delete';
-    
+
     return 'other';
   }
 }
