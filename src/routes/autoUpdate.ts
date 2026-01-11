@@ -32,7 +32,7 @@ const sessionIdSchema = z.object({
  * Start auto-update session
  * POST /api/auto-update/start
  */
-router.post('/start', 
+router.post('/start',
   validateBody(startAutoUpdateSchema),
   asyncHandler(async (req: Request, res: Response) => {
     const config: AutoUpdateConfig = {
@@ -43,14 +43,14 @@ router.post('/start',
 
     try {
       autoUpdateService.startAutoUpdate(config);
-      
+
       apiLogger.info('Auto-update session started via API', {
         sessionId: config.sessionId,
         tagCount: config.tagNames.length,
         interval: config.updateInterval
       });
 
-      return res.status(201).json({
+      res.status(201).json({
         success: true,
         message: 'Auto-update session started successfully',
         sessionId: config.sessionId,
@@ -64,7 +64,7 @@ router.post('/start',
       });
     } catch (error: any) {
       apiLogger.error('Failed to start auto-update session:', error);
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         message: error.message || 'Failed to start auto-update session'
       });
@@ -83,17 +83,17 @@ router.post('/stop',
 
     try {
       autoUpdateService.stopAutoUpdate(sessionId);
-      
+
       apiLogger.info('Auto-update session stopped via API', { sessionId });
 
-      return res.json({
+      res.json({
         success: true,
         message: 'Auto-update session stopped successfully',
         sessionId
       });
     } catch (error: any) {
       apiLogger.error('Failed to stop auto-update session:', error);
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: error.message || 'Failed to stop auto-update session'
       });
@@ -223,19 +223,21 @@ router.get('/stream/:sessionId',
     const { sessionId } = req.params;
 
     if (!sessionId) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         message: 'Session ID is required'
       });
+      return;
     }
 
     // Check if session exists
     const status = autoUpdateService.getSessionStatus(sessionId);
     if (!status) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: 'Session not found'
       });
+      return;
     }
 
     // Set up SSE headers
