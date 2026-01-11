@@ -32,15 +32,15 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
       setLoading(true);
       setError(null);
       try {
-        // Using mock data instead of API call
-        // const response = await apiService.getTags();
-        // if (response.success) {
-        //   setAvailableTags(response.data);
-        // } else {
-        //   setError('Failed to load tags');
-        // }
-        
-        // Use mock data instead
+        const response = await apiService.getTags();
+        if (response.success) {
+          setAvailableTags(response.data);
+        } else {
+          setError('Failed to load tags');
+        }
+      } catch (err) {
+        console.warn('Failed to load tags from API, using fallback:', err);
+        // Fallback to mock data if API fails
         const mockTags: TagInfo[] = [
           { name: 'Temperature_01', description: 'Temperature sensor 1', units: '°C', dataType: 'analog', lastUpdate: new Date() },
           { name: 'Pressure_01', description: 'Pressure sensor 1', units: 'PSI', dataType: 'analog', lastUpdate: new Date() },
@@ -49,8 +49,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
           { name: 'Status_01', description: 'Status indicator 1', units: '', dataType: 'discrete', lastUpdate: new Date() },
         ];
         setAvailableTags(mockTags);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load tags');
+        setError('Using fallback data - API connection failed');
       } finally {
         setLoading(false);
       }

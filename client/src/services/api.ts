@@ -157,7 +157,7 @@ export const apiService = {
     });
     
     // Set auth token for future requests
-    if (response.data?.token) {
+    if (response.success && response.data?.token) {
       setAuthToken(response.data.token);
     }
     

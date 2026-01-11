@@ -10,12 +10,16 @@ import {
   History,
   AlertCircle,
   Tag,
-  Database
+  Database,
+  LogIn,
+  LogOut
 } from 'lucide-react';
 import { ReportConfig } from '../../types/api';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Card, CardContent, CardHeader } from '../ui/Card';
+import { ReportPreview } from '../reports/ReportPreview';
+import { apiService, getAuthToken, setAuthToken } from '../../services/api';
 import { cn } from '../../utils/cn';
 
 interface DashboardProps {
@@ -25,13 +29,17 @@ interface DashboardProps {
 export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'categories' | 'database'>('create');
   const [healthStatus, setHealthStatus] = useState<string>('checking...');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [loginForm, setLoginForm] = useState({ username: 'admin', password: 'admin123' });
+  const [loginLoading, setLoginLoading] = useState(false);
   const [reportConfig, setReportConfig] = useState<Partial<ReportConfig>>({
     name: '',
     description: '',
     tags: [],
     timeRange: {
-      startTime: new Date(Date.now() - 24 * 60 * 60 * 1000), // 24 hours ago
-      endTime: new Date(),
+      startTime: new Date('2025-01-01T08:00:00'), // 8:00 AM with minute precision
+      endTime: new Date('2025-01-01T17:30:00'),   // 5:30 PM with minute precision
       relativeRange: 'last24h',
     },
     chartTypes: ['line'],
@@ -57,9 +65,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     checkHealth();
   }, []);
 
+  // Check if user is already authenticated
+  useEffect(() => {
+    const token = getAuthToken();
+    if (token) {
+      // Verify token is still valid
+      apiService.getCurrentUser()
+        .then(response => {
+          if (response.success) {
+            setIsAuthenticated(true);
+            setCurrentUser(response.data);
+          }
+        })
+        .catch(() => {
+          // Token is invalid, clear it
+          setAuthToken(null);
+        });
+    }
+  }, []);
+
+  const handleLogin = async () => {
+    if (!loginForm.username || !loginForm.password) {
+      alert('Please enter username and password');
+      return;
+    }
+
+    try {
+      setLoginLoading(true);
+      const response = await apiService.login({
+        username: loginForm.username,
+        password: loginForm.password
+      });
+
+      if (response.success && response.data) {
+        setIsAuthenticated(true);
+        setCurrentUser(response.data.user);
+        // Token is automatically set by apiService.login
+      } else {
+        alert('Login failed: ' + (response.data || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      alert('Login failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await apiService.logout();
+      setIsAuthenticated(false);
+      setCurrentUser(null);
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Clear local state anyway
+      setIsAuthenticated(false);
+      setCurrentUser(null);
+    }
+  };
+
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [realTimeEnabled, setRealTimeEnabled] = useState(false);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
 
   // Simplified state management without complex hooks to avoid API call issues
   const reportsData: any = null;
@@ -102,12 +171,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
   // Load initial data
   useEffect(() => {
-    // Temporarily disabled API calls
-    /*
-    loadReportsData();
-    loadCategories();
-    loadTagsData();
-    */
+    const loadTags = async () => {
+      try {
+        const response = await apiService.getTags();
+        if (response.success && Array.isArray(response.data)) {
+          setAvailableTags(response.data.map((tag: any) => tag.name));
+        } else {
+          // Fallback to known good tags if API fails
+          setAvailableTags(['SysSpaceMain', 'Temperature_01', 'Pressure_01', 'Flow_01', 'Level_01', 'Status_01']);
+        }
+      } catch (error) {
+        console.warn('Failed to load tags from API, using fallback:', error);
+        setAvailableTags(['SysSpaceMain', 'Temperature_01', 'Pressure_01', 'Flow_01', 'Level_01', 'Status_01']);
+      }
+    };
+
+    loadTags();
   }, []);
 
   // Update tags from API data
@@ -139,14 +218,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       return;
     }
 
+    if (!isAuthenticated) {
+      alert('Please log in to generate reports');
+      return;
+    }
+
     try {
       setIsLoading(true);
-      // Mock report generation for now
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      alert('Report generated successfully! (Mock implementation)');
+      
+      // Generate real report with authentication
+      const blob = await apiService.generateReport(reportConfig as ReportConfig);
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = `${reportConfig.name}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      alert('Report generated successfully!');
     } catch (error) {
       console.error('Failed to generate report:', error);
-      alert('Failed to generate report. Please try again.');
+      alert('Failed to generate report: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsLoading(false);
     }
@@ -159,6 +256,61 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     { id: 'categories', label: 'Categories', icon: Tag },
     { id: 'database', label: 'Database Config', icon: Database },
   ] as const;
+
+  // Show login form if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className={cn('min-h-screen bg-gray-50 flex items-center justify-center', className)}>
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <div className="text-center">
+              <BarChart3 className="h-12 w-12 text-primary-600 mx-auto mb-4" />
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">
+                Historian Reports
+              </h1>
+              <p className="text-gray-600">
+                Please log in to access the application
+              </p>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Input
+              label="Username"
+              placeholder="Enter username"
+              value={loginForm.username}
+              onChange={(e) => setLoginForm(prev => ({ ...prev, username: e.target.value }))}
+              onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+            />
+            <Input
+              label="Password"
+              type="password"
+              placeholder="Enter password"
+              value={loginForm.password}
+              onChange={(e) => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
+              onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+            />
+            <Button
+              onClick={handleLogin}
+              disabled={loginLoading}
+              loading={loginLoading}
+              className="w-full"
+            >
+              <LogIn className="h-4 w-4 mr-2" />
+              Log In
+            </Button>
+            <div className="text-center text-sm text-gray-500">
+              <p>Default credentials:</p>
+              <p>Username: <code>admin</code></p>
+              <p>Password: <code>admin123</code></p>
+            </div>
+            <div className="text-center text-sm text-gray-600">
+              Backend Status: {healthStatus}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className={cn('min-h-screen bg-gray-50', className)}>
@@ -184,6 +336,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 <Settings className="h-4 w-4 mr-2" />
                 Settings
               </Button>
+              
+              {/* User info and logout */}
+              {currentUser && (
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-600">
+                    Welcome, {currentUser.firstName || currentUser.username}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={handleLogout}>
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Logout
+                  </Button>
+                </div>
+              )}
               
               {/* System Health Indicator */}
               <div className="flex items-center space-x-2">
@@ -271,44 +436,111 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   </CardContent>
                 </Card>
 
-                {/* Simplified Time Range */}
                 <Card>
                   <CardHeader>
                     <h3 className="text-lg font-medium">Time Range</h3>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <Input
-                        label="Start Time"
-                        type="datetime-local"
-                        value={reportConfig.timeRange?.startTime?.toISOString().slice(0, 16) || ''}
-                        onChange={(e) => {
-                          const startTime = new Date(e.target.value);
-                          setReportConfig(prev => ({
-                            ...prev,
-                            timeRange: {
-                              ...prev.timeRange!,
-                              startTime,
-                            },
-                          }));
-                        }}
-                      />
-                      <Input
-                        label="End Time"
-                        type="datetime-local"
-                        value={reportConfig.timeRange?.endTime?.toISOString().slice(0, 16) || ''}
-                        onChange={(e) => {
-                          const endTime = new Date(e.target.value);
-                          setReportConfig(prev => ({
-                            ...prev,
-                            timeRange: {
-                              ...prev.timeRange!,
-                              endTime,
-                            },
-                          }));
-                        }}
-                      />
+                    {/* Start Date and Time */}
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">Start Date & Time</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          label="Date (YYYY-MM-DD)"
+                          type="text"
+                          placeholder="2025-01-01"
+                          value={reportConfig.timeRange?.startTime?.toISOString().slice(0, 10) || ''}
+                          onChange={(e) => {
+                            const dateStr = e.target.value;
+                            const currentTime = reportConfig.timeRange?.startTime || new Date();
+                            const timeStr = currentTime.toTimeString().slice(0, 8);
+                            const newDate = new Date(dateStr + 'T' + timeStr);
+                            
+                            setReportConfig(prev => ({
+                              ...prev,
+                              timeRange: {
+                                ...prev.timeRange!,
+                                startTime: isNaN(newDate.getTime()) ? currentTime : newDate,
+                              },
+                            }));
+                          }}
+                        />
+                        <Input
+                          label="Time (HH:MM)"
+                          type="time"
+                          step="60"
+                          value={reportConfig.timeRange?.startTime?.toTimeString().slice(0, 5) || ''}
+                          onChange={(e) => {
+                            const currentDate = reportConfig.timeRange?.startTime || new Date();
+                            const newDateTime = new Date(currentDate.toISOString().slice(0, 10) + 'T' + e.target.value + ':00');
+                            setReportConfig(prev => ({
+                              ...prev,
+                              timeRange: {
+                                ...prev.timeRange!,
+                                startTime: newDateTime,
+                              },
+                            }));
+                          }}
+                        />
+                      </div>
                     </div>
+
+                    {/* End Date and Time */}
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-700">End Date & Time</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          label="Date (YYYY-MM-DD)"
+                          type="text"
+                          placeholder="2025-01-01"
+                          value={reportConfig.timeRange?.endTime?.toISOString().slice(0, 10) || ''}
+                          onChange={(e) => {
+                            const dateStr = e.target.value;
+                            const currentTime = reportConfig.timeRange?.endTime || new Date();
+                            const timeStr = currentTime.toTimeString().slice(0, 8);
+                            const newDate = new Date(dateStr + 'T' + timeStr);
+                            
+                            setReportConfig(prev => ({
+                              ...prev,
+                              timeRange: {
+                                ...prev.timeRange!,
+                                endTime: isNaN(newDate.getTime()) ? currentTime : newDate,
+                              },
+                            }));
+                          }}
+                        />
+                        <Input
+                          label="Time (HH:MM)"
+                          type="time"
+                          step="60"
+                          value={reportConfig.timeRange?.endTime?.toTimeString().slice(0, 5) || ''}
+                          onChange={(e) => {
+                            const currentDate = reportConfig.timeRange?.endTime || new Date();
+                            const newDateTime = new Date(currentDate.toISOString().slice(0, 10) + 'T' + e.target.value + ':00');
+                            setReportConfig(prev => ({
+                              ...prev,
+                              timeRange: {
+                                ...prev.timeRange!,
+                                endTime: newDateTime,
+                              },
+                            }));
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Duration Display */}
+                    {reportConfig.timeRange?.startTime && reportConfig.timeRange?.endTime && (
+                      <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded-md">
+                        <div className="flex items-center justify-between">
+                          <span>Duration:</span>
+                          <span className="font-medium">
+                            {Math.ceil((reportConfig.timeRange.endTime.getTime() - reportConfig.timeRange.startTime.getTime()) / (1000 * 60 * 60 * 24))} days, {' '}
+                            {Math.ceil(((reportConfig.timeRange.endTime.getTime() - reportConfig.timeRange.startTime.getTime()) % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))} hours
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -335,7 +567,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                         <div className="space-y-2">
                           <h4 className="text-sm font-medium text-gray-700">Available Tags:</h4>
                           <div className="space-y-1 max-h-40 overflow-y-auto">
-                            {['Temperature_01', 'Pressure_01', 'Flow_01', 'Level_01', 'Status_01'].map((tag) => (
+                            {availableTags.map((tag) => (
                               <button
                                 key={tag}
                                 onClick={() => handleTagsChange([...(reportConfig.tags || []), tag])}
@@ -513,17 +745,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             {/* Report Preview */}
             {reportConfig.name && reportConfig.tags?.length && (
               <div className="mt-8">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Report Preview</h3>
-                <Card>
-                  <CardContent className="p-6">
-                    <div className="text-center py-8 text-gray-500">
-                      <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                      <p className="text-lg font-medium">Report: {reportConfig.name}</p>
-                      <p className="text-sm">Tags: {reportConfig.tags.join(', ')}</p>
-                      <p className="text-sm">Preview functionality coming soon</p>
-                    </div>
-                  </CardContent>
-                </Card>
+                <ReportPreview
+                  config={{
+                    id: 'preview',
+                    name: reportConfig.name,
+                    description: reportConfig.description || '',
+                    tags: reportConfig.tags,
+                    timeRange: reportConfig.timeRange!,
+                    chartTypes: reportConfig.chartTypes as any[],
+                    template: reportConfig.template || 'default'
+                  }}
+                  onGenerate={handleGenerateReport}
+                />
               </div>
             )}
           </div>

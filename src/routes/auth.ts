@@ -61,9 +61,11 @@ router.post('/login', asyncHandler(async (req: Request, res: Response) => {
   res.json({
     success: true,
     message: 'Login successful',
-    token: authResult.token,
-    expiresIn: authResult.expiresIn,
-    user: authResult.user
+    data: {
+      token: authResult.token,
+      user: authResult.user
+    },
+    expiresIn: authResult.expiresIn
   });
 }));
 
