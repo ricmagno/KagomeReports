@@ -9,7 +9,8 @@ import {
   Save,
   History,
   AlertCircle,
-  Tag
+  Tag,
+  Database
 } from 'lucide-react';
 import { ReportConfig, TimeRange } from '../../types/api';
 import { Button } from '../ui/Button';
@@ -19,6 +20,7 @@ import { TimeRangePicker } from '../forms/TimeRangePicker';
 import { TagSelector } from '../forms/TagSelector';
 import { ReportVersionHistoryComponent } from '../forms/ReportVersionHistory';
 import { VersionComparison } from '../forms/VersionComparison';
+import { DatabaseConfigManager } from '../forms/DatabaseConfigManager';
 import { ReportPreview } from '../reports/ReportPreview';
 import { ReportManager } from '../reports/ReportManager';
 import { ReportCategories, Category, TagInfo } from '../reports/ReportCategories';
@@ -33,7 +35,7 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
-  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'categories'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'categories' | 'database'>('create');
   const [reportConfig, setReportConfig] = useState<Partial<ReportConfig>>({
     name: '',
     description: '',
@@ -382,6 +384,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     { id: 'reports', label: 'My Reports', icon: FileText },
     { id: 'schedules', label: 'Schedules', icon: Calendar },
     { id: 'categories', label: 'Categories', icon: Tag },
+    { id: 'database', label: 'Database Config', icon: Database },
   ] as const;
 
   const changesSummary = versionControl.getChangesSummary(reportConfig as ReportConfig);
@@ -860,6 +863,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === 'database' && (
+          <DatabaseConfigManager className="space-y-6" />
         )}
       </main>
 

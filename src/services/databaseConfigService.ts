@@ -63,6 +63,7 @@ export class DatabaseConfigService {
 
       // Generate ID if not provided
       const configId = config.id || uuidv4();
+      const isUpdate = !!config.id && this.configurations.has(configId);
 
       // Encrypt password
       const encryptedPassword = encryptionService.encrypt(config.password);
@@ -97,8 +98,32 @@ export class DatabaseConfigService {
         name: config.name,
         host: config.host,
         database: config.database,
-        createdBy: userId
+        createdBy: userId,
+        isUpdate
       });
+
+      // Enhanced audit logging for configuration changes
+      const { authService } = await import('./authService');
+      const auditAction = isUpdate ? 'database_config_updated' : 'database_config_created';
+      const auditDetails = `${isUpdate ? 'Updated' : 'Created'} database configuration: ${config.name} (${config.host}:${config.port}/${config.database})`;
+      
+      try {
+        await authService.logAuditEvent(
+          userId,
+          auditAction,
+          'database_configuration',
+          auditDetails,
+          undefined,
+          undefined
+        );
+      } catch (auditError) {
+        apiLogger.error('Failed to log audit event for database configuration change', { 
+          error: auditError, 
+          configId, 
+          userId, 
+          action: auditAction 
+        });
+      }
 
       return configId;
     } catch (error) {
@@ -307,7 +332,7 @@ export class DatabaseConfigService {
   /**
    * Delete database configuration
    */
-  async deleteConfiguration(configId: string): Promise<void> {
+  async deleteConfiguration(configId: string, userId?: string): Promise<void> {
     try {
       const dbConfig = this.configurations.get(configId);
       if (!dbConfig) {
@@ -319,6 +344,13 @@ export class DatabaseConfigService {
         throw createError('Cannot delete active configuration', 400);
       }
 
+      // Store config details for audit logging before deletion
+      const configDetails = {
+        name: dbConfig.name,
+        host: dbConfig.host,
+        database: dbConfig.database
+      };
+
       this.configurations.delete(configId);
       await this.persistConfigurations();
 
@@ -326,8 +358,30 @@ export class DatabaseConfigService {
         configId,
         name: dbConfig.name,
         host: dbConfig.host,
-        database: dbConfig.database
+        database: dbConfig.database,
+        deletedBy: userId
       });
+
+      // Enhanced audit logging for configuration deletion
+      if (userId) {
+        const { authService } = await import('./authService');
+        try {
+          await authService.logAuditEvent(
+            userId,
+            'database_config_deleted',
+            'database_configuration',
+            `Deleted database configuration: ${configDetails.name} (${configDetails.host}/${configDetails.database})`,
+            undefined,
+            undefined
+          );
+        } catch (auditError) {
+          apiLogger.error('Failed to log audit event for database configuration deletion', { 
+            error: auditError, 
+            configId, 
+            userId 
+          });
+        }
+      }
     } catch (error) {
       apiLogger.error('Failed to delete database configuration', { error, configId });
       throw error;
@@ -360,12 +414,16 @@ export class DatabaseConfigService {
   /**
    * Activate a database configuration
    */
-  async activateConfiguration(configId: string): Promise<void> {
+  async activateConfiguration(configId: string, userId?: string): Promise<void> {
     try {
       const dbConfig = this.configurations.get(configId);
       if (!dbConfig) {
         throw createError('Configuration not found', 404);
       }
+
+      // Store previous active config for audit logging
+      const previousActiveId = this.activeConfigId;
+      const previousActive = previousActiveId ? this.configurations.get(previousActiveId) : null;
 
       // Deactivate current active configuration
       if (this.activeConfigId) {
@@ -404,8 +462,34 @@ export class DatabaseConfigService {
         configId,
         name: dbConfig.name,
         host: dbConfig.host,
-        database: dbConfig.database
+        database: dbConfig.database,
+        activatedBy: userId,
+        previousActiveId
       });
+
+      // Enhanced audit logging for configuration activation
+      if (userId) {
+        const { authService } = await import('./authService');
+        try {
+          const auditDetails = `Activated database configuration: ${dbConfig.name} (${dbConfig.host}/${dbConfig.database})` +
+            (previousActive ? ` - Previous: ${previousActive.name} (${previousActive.host}/${previousActive.database})` : '');
+          
+          await authService.logAuditEvent(
+            userId,
+            'database_config_activated',
+            'database_configuration',
+            auditDetails,
+            undefined,
+            undefined
+          );
+        } catch (auditError) {
+          apiLogger.error('Failed to log audit event for database configuration activation', { 
+            error: auditError, 
+            configId, 
+            userId 
+          });
+        }
+      }
     } catch (error) {
       apiLogger.error('Failed to activate database configuration', { error, configId });
       throw error;

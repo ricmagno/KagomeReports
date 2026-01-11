@@ -9,6 +9,11 @@ import {
   StatisticsResult, 
   TrendResult 
 } from '../types/api';
+import { 
+  DatabaseConfig, 
+  DatabaseConfigSummary, 
+  ConnectionTestResult 
+} from '../types/databaseConfig';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 
@@ -496,6 +501,52 @@ export const apiService = {
     version2: number
   ): Promise<ApiResponse<{ differences: any; version1: ReportVersion; version2: ReportVersion }>> {
     return fetchWithRetry(`/reports/${encodeURIComponent(reportId)}/compare/${version1}/${version2}`);
+  },
+
+  // Database configuration endpoints
+  async getDatabaseConfigurations(): Promise<ApiResponse<DatabaseConfigSummary[]>> {
+    return fetchWithRetry('/database/configs');
+  },
+
+  async getDatabaseConfiguration(id: string): Promise<ApiResponse<DatabaseConfig>> {
+    return fetchWithRetry(`/database/configs/${encodeURIComponent(id)}`);
+  },
+
+  async saveDatabaseConfiguration(config: Omit<DatabaseConfig, 'id'>): Promise<ApiResponse<{ id: string }>> {
+    return fetchWithRetry('/database/configs', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  },
+
+  async updateDatabaseConfiguration(id: string, config: Partial<DatabaseConfig>): Promise<ApiResponse<DatabaseConfig>> {
+    return fetchWithRetry(`/database/configs/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(config),
+    });
+  },
+
+  async deleteDatabaseConfiguration(id: string): Promise<ApiResponse<void>> {
+    return fetchWithRetry(`/database/configs/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async testDatabaseConnection(config: Omit<DatabaseConfig, 'id'>): Promise<ApiResponse<ConnectionTestResult>> {
+    return fetchWithRetry('/database/test', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  },
+
+  async activateDatabaseConfiguration(id: string): Promise<ApiResponse<void>> {
+    return fetchWithRetry(`/database/activate/${encodeURIComponent(id)}`, {
+      method: 'POST',
+    });
+  },
+
+  async getActiveDatabaseConfiguration(): Promise<ApiResponse<DatabaseConfigSummary | null>> {
+    return fetchWithRetry('/database/active');
   },
 };
 

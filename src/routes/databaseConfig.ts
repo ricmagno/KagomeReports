@@ -223,7 +223,7 @@ router.delete('/configs/:id', [
     });
   }
 
-  await databaseConfigService.deleteConfiguration(id);
+  await databaseConfigService.deleteConfiguration(id, req.user!.id);
   
   apiLogger.info('Database configuration deleted', {
     userId: req.user?.id,
@@ -314,7 +314,7 @@ router.post('/activate/:id', [
     });
   }
 
-  await databaseConfigService.activateConfiguration(id);
+  await databaseConfigService.activateConfiguration(id, req.user!.id);
   
   apiLogger.info('Database configuration activated', {
     userId: req.user?.id,
