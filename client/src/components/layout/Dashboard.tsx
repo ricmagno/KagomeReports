@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  BarChart3, 
-  FileText, 
-  Settings, 
+import {
+  BarChart3,
+  FileText,
+  Settings,
   Calendar,
   Download,
   Plus,
@@ -18,6 +18,7 @@ import { ReportConfig } from '../../types/api';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Card, CardContent, CardHeader } from '../ui/Card';
+import { TimeRangePicker } from '../forms/TimeRangePicker';
 import { ReportPreview } from '../reports/ReportPreview';
 import { apiService, getAuthToken, setAuthToken } from '../../services/api';
 import { cn } from '../../utils/cn';
@@ -38,9 +39,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     description: '',
     tags: [],
     timeRange: {
-      startTime: new Date('2025-01-01T08:00:00'), // 8:00 AM with minute precision
-      endTime: new Date('2025-01-01T17:30:00'),   // 5:30 PM with minute precision
-      relativeRange: 'last24h',
+      startTime: new Date(Date.now() - 60 * 60 * 1000), // Default: 1 hour ago
+      endTime: new Date(),   // Default: Current time
+      relativeRange: undefined,
     },
     chartTypes: ['line'],
     template: 'default',
@@ -61,7 +62,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         setHealthStatus(`❌ Backend connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     };
-    
+
     checkHealth();
   }, []);
 
@@ -134,13 +135,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const reportsData: any = null;
   const reportsLoading = false;
   const reportsError: any = null;
-  const loadReportsData = () => {};
+  const loadReportsData = () => { };
   const tagsData: any = null;
   const tagsLoading = false;
-  const loadTagsData = () => {};
+  const loadTagsData = () => { };
   const healthData: any = null;
   const healthLoading = false;
-  const checkHealth = () => {};
+  const checkHealth = () => { };
 
   // Mock real-time data state
   const realTimeData = {
@@ -155,7 +156,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   // Mock data refresh state
   const dataRefresh = {
     isRefreshing: false,
-    forceRefresh: () => {},
+    forceRefresh: () => { },
   };
 
   // Mock version control state
@@ -163,9 +164,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     hasUnsavedChanges: false,
     currentVersion: null,
     loading: false,
-    createVersion: async () => {},
-    rollbackToVersion: async () => {},
-    checkUnsavedChanges: () => {},
+    createVersion: async () => { },
+    rollbackToVersion: async () => { },
+    checkUnsavedChanges: () => { },
     getChangesSummary: () => [],
   };
 
@@ -331,7 +332,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           Backend Status: {healthStatus}
         </div>
       </div>
-      
+
       {/* Header */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -347,7 +348,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 <Settings className="h-4 w-4 mr-2" />
                 Settings
               </Button>
-              
+
               {/* User info and logout */}
               {currentUser && (
                 <div className="flex items-center space-x-2">
@@ -360,7 +361,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   </Button>
                 </div>
               )}
-              
+
               {/* System Health Indicator */}
               <div className="flex items-center space-x-2">
                 <div className={cn(
@@ -447,158 +448,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   </CardContent>
                 </Card>
 
-                <Card>
-                  <CardHeader>
-                    <h3 className="text-lg font-medium">Time Range</h3>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {/* Start Date and Time */}
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700">Start Date & Time</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          label="Date (YYYY-MM-DD)"
-                          type="date"
-                          value={reportConfig.timeRange?.startTime?.toISOString().split('T')[0] || ''}
-                          onChange={(e) => {
-                            const dateStr = e.target.value;
-                            const currentTime = reportConfig.timeRange?.startTime || new Date();
-                            const timeStr = currentTime.toTimeString().substring(0, 8);
-                            const newDate = new Date(dateStr + 'T' + timeStr);
-
-                            setReportConfig(prev => ({
-                              ...prev,
-                              timeRange: {
-                                ...prev.timeRange!,
-                                startTime: isNaN(newDate.getTime()) ? currentTime : newDate,
-                              },
-                            }));
-                          }}
-                        />
-                        <Input
-                          label="Time (HH:MM)"
-                          type="time"
-                          step="60"
-                          value={reportConfig.timeRange?.startTime ?
-                            reportConfig.timeRange.startTime.toTimeString().substring(0, 5) :
-                            '00:00'}
-                          onChange={(e) => {
-                            const currentDate = reportConfig.timeRange?.startTime || new Date();
-                            const newDateTime = new Date(currentDate.toISOString().substring(0, 10) + 'T' + e.target.value + ':00');
-
-                            // Validate that start time is not after end time
-                            if (reportConfig.timeRange?.endTime && newDateTime > reportConfig.timeRange.endTime) {
-                              alert('Start time cannot be after end time');
-                              return;
-                            }
-
-                            setReportConfig(prev => ({
-                              ...prev,
-                              timeRange: {
-                                ...prev.timeRange!,
-                                startTime: newDateTime,
-                              },
-                            }));
-                          }}
-                        />
+                <TimeRangePicker
+                  value={reportConfig.timeRange!}
+                  onChange={(newTimeRange) => setReportConfig(prev => ({
+                    ...prev,
+                    timeRange: newTimeRange
+                  }))}
+                />
+                {/* Validation Error Message - Handled inside TimeRangePicker but we check for button disable state */}
+                {reportConfig.timeRange?.startTime && reportConfig.timeRange?.endTime &&
+                  reportConfig.timeRange.startTime > reportConfig.timeRange.endTime && (
+                    <div className="mt-2 text-sm text-red-600 bg-red-50 p-3 rounded-md hidden">
+                      <div className="flex items-center">
+                        <AlertCircle className="h-4 w-4 mr-2" />
+                        <span>Warning: Start time is after end time</span>
                       </div>
                     </div>
-
-                    {/* End Date and Time */}
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-700">End Date & Time</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          label="Date (YYYY-MM-DD)"
-                          type="date"
-                          value={reportConfig.timeRange?.endTime?.toISOString().split('T')[0] || ''}
-                          onChange={(e) => {
-                            const dateStr = e.target.value;
-                            const currentTime = reportConfig.timeRange?.endTime || new Date();
-                            const timeStr = currentTime.toTimeString().substring(0, 8);
-                            const newDate = new Date(dateStr + 'T' + timeStr);
-
-                            // Validate that end time is not before start time
-                            if (reportConfig.timeRange?.startTime && newDate < reportConfig.timeRange.startTime) {
-                              alert('End time cannot be before start time');
-                              return;
-                            }
-
-                            setReportConfig(prev => ({
-                              ...prev,
-                              timeRange: {
-                                ...prev.timeRange!,
-                                endTime: isNaN(newDate.getTime()) ? currentTime : newDate,
-                              },
-                            }));
-                          }}
-                        />
-                        <Input
-                          label="Time (HH:MM)"
-                          type="time"
-                          step="60"
-                          value={reportConfig.timeRange?.endTime ?
-                            reportConfig.timeRange.endTime.toTimeString().substring(0, 5) :
-                            '23:59'}
-                          onChange={(e) => {
-                            const currentDate = reportConfig.timeRange?.endTime || new Date();
-                            const newDateTime = new Date(currentDate.toISOString().substring(0, 10) + 'T' + e.target.value + ':00');
-
-                            // Validate that end time is not before start time
-                            if (reportConfig.timeRange?.startTime && newDateTime < reportConfig.timeRange.startTime) {
-                              alert('End time cannot be before start time');
-                              return;
-                            }
-
-                            setReportConfig(prev => ({
-                              ...prev,
-                              timeRange: {
-                                ...prev.timeRange!,
-                                endTime: newDateTime,
-                              },
-                            }));
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Duration Display */}
-                    {reportConfig.timeRange?.startTime && reportConfig.timeRange?.endTime && (
-                      <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded-md">
-                        <div className="flex items-center justify-between">
-                          <span>Duration:</span>
-                          <span className="font-medium">
-                            {(() => {
-                              const diffMs = reportConfig.timeRange!.endTime.getTime() - reportConfig.timeRange!.startTime.getTime();
-                              const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                              const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                              const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
-                              if (diffDays > 0) {
-                                return `${diffDays} day${diffDays !== 1 ? 's' : ''}, ${diffHours} hour${diffHours !== 1 ? 's' : ''}`;
-                              } else if (diffHours > 0) {
-                                return `${diffHours} hour${diffHours !== 1 ? 's' : ''}, ${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''}`;
-                              } else {
-                                return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''}`;
-                              }
-                            })()}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Validation Error Message */}
-                    {reportConfig.timeRange?.startTime && reportConfig.timeRange?.endTime &&
-                     reportConfig.timeRange.startTime > reportConfig.timeRange.endTime && (
-                      <div className="text-sm text-red-600 bg-red-50 p-3 rounded-md">
-                        <div className="flex items-center">
-                          <AlertCircle className="h-4 w-4 mr-2" />
-                          <span>Warning: Start time is after end time</span>
-                        </div>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
+                  )}
               </div>
 
               {/* Tag Selection and Version History */}
@@ -719,7 +585,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                             ))}
                           </div>
                         </div>
-                        
+
                         {/* Real-time data controls */}
                         <div className="border-t pt-4">
                           <div className="space-y-3">
@@ -735,28 +601,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                                 Enable Real-time Updates
                               </span>
                             </label>
-                            
+
                             {realTimeEnabled && (
                               <div className="ml-6 space-y-2 text-sm text-gray-600">
                                 <div className="flex items-center justify-between">
                                   <span>Status:</span>
                                   <span className={cn(
                                     "font-medium",
-                                    realTimeData.connected ? "text-green-600" : 
-                                    realTimeData.loading ? "text-yellow-600" : "text-red-600"
+                                    realTimeData.connected ? "text-green-600" :
+                                      realTimeData.loading ? "text-yellow-600" : "text-red-600"
                                   )}>
                                     {realTimeData.loading ? 'Connecting...' :
-                                     realTimeData.connected ? 'Connected' : 'Disconnected'}
+                                      realTimeData.connected ? 'Connected' : 'Disconnected'}
                                   </span>
                                 </div>
-                                
+
                                 {realTimeData.lastUpdate && (
                                   <div className="flex items-center justify-between">
                                     <span>Last Update:</span>
                                     <span>{realTimeData.lastUpdate.toLocaleTimeString()}</span>
                                   </div>
                                 )}
-                                
+
                                 {realTimeData.error && (
                                   <div className="text-red-600 text-xs">
                                     Error: {realTimeData.error}
@@ -795,8 +661,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   !reportConfig.tags?.length ||
                   isLoading ||
                   (reportConfig.timeRange?.startTime &&
-                   reportConfig.timeRange?.endTime &&
-                   reportConfig.timeRange.startTime > reportConfig.timeRange.endTime)
+                    reportConfig.timeRange?.endTime &&
+                    reportConfig.timeRange.startTime > reportConfig.timeRange.endTime)
                 }
                 loading={isLoading}
               >

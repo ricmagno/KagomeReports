@@ -49,7 +49,7 @@ jspm_packages/
 .env.test
 
 # Reports and temp directories
-reports/
+/reports/
 temp/
 
 # IDE files
