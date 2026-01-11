@@ -80,8 +80,23 @@ export const TimeRangePicker: React.FC<TimeRangePickerProps> = ({
     const day = String(date.getDate()).padStart(2, '0');
     const hours = String(date.getHours()).padStart(2, '0');
     const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
     
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
+    return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+  };
+
+  const calculateDuration = (start: Date, end: Date) => {
+    const diff = end.getTime() - start.getTime();
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    
+    const parts = [];
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+    
+    return parts.join(' ');
   };
 
   return (
@@ -130,6 +145,7 @@ export const TimeRangePicker: React.FC<TimeRangePickerProps> = ({
               value={formatDateTimeLocal(value.startTime)}
               onChange={(e) => handleCustomTimeChange('startTime', e.target.value)}
               max={formatDateTimeLocal(value.endTime)}
+              step="1"
             />
             <Input
               type="datetime-local"
@@ -138,6 +154,7 @@ export const TimeRangePicker: React.FC<TimeRangePickerProps> = ({
               onChange={(e) => handleCustomTimeChange('endTime', e.target.value)}
               min={formatDateTimeLocal(value.startTime)}
               max={formatDateTimeLocal(new Date())}
+              step="1"
             />
           </div>
         )}
@@ -146,7 +163,7 @@ export const TimeRangePicker: React.FC<TimeRangePickerProps> = ({
           <p className="font-medium">Selected Range:</p>
           <p>From: {format(value.startTime, 'PPpp')}</p>
           <p>To: {format(value.endTime, 'PPpp')}</p>
-          <p>Duration: {Math.round((value.endTime.getTime() - value.startTime.getTime()) / (1000 * 60 * 60))} hours</p>
+          <p>Duration: {calculateDuration(value.startTime, value.endTime)}</p>
         </div>
       </CardContent>
     </Card>

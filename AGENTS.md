@@ -10,101 +10,114 @@ Historian Reports is a professional reporting application designed to generate p
 
 ```
 historian-reports/
-├── src/                    # Source code
+├── client/                # React frontend application (CRA + Tailwind)
+│   ├── public/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   └── ...
+│   └── package.json
+├── reports/               # Generated reports output directory
+├── scripts/               # Utility scripts (setup, testing)
+├── src/                   # Backend source code
 │   ├── server.ts          # Main application entry point
+│   ├── dev-server.ts      # Mock server for development
 │   ├── config/            # Configuration files
-│   │   ├── database.ts    # Database connection configuration
-│   │   └── environment.ts # Environment variable validation
-│   ├── types/             # TypeScript type definitions
-│   │   └── historian.ts   # AVEVA Historian specific types
-│   ├── utils/             # Utility functions
-│   │   ├── logger.ts      # Logging configuration
-│   │   └── retryHandler.ts# Retry logic for database operations
+│   ├── middleware/        # Express middleware
+│   ├── routes/            # API Route definitions
+│   │   ├── auth.ts        # Authentication
+│   │   ├── reports.ts     # Reports
+│   │   └── ...
 │   ├── services/          # Business logic services
-│   ├── dataFiltering.ts # Data filtering and transformation
-│   ├── dataRetrieval.ts # Time-series data retrieval from historian
-│   ├── historianConnection.ts # Database connection management
-│   └── statisticalAnalysis.ts # Statistical analysis and trend detection
-├── middleware/        # Express middleware
-│   ├── errorHandler.ts # Error handling
-│   └── requestLogger.ts # Request logging
+│   │   ├── authService.ts     # Auth & JWT
+│   │   ├── dataRetrieval.ts   # Historian Data
+│   │   ├── reportGeneration.ts # PDF Generation
+│   │   ├── schedulerService.ts # Cron Jobs
+│   │   └── ...
+│   ├── types/             # TypeScript type definitions
+│   └── utils/             # Utility functions
 ├── tests/                 # Test files
 │   └── properties/        # Property-based tests
-├── .gitignore             # Git ignore patterns
 ├── Dockerfile             # Container build configuration
 ├── docker-compose.yml     # Multi-container orchestration
-├── package.json           # Project dependencies and scripts
-├── tsconfig.json          # TypeScript configuration
-└── README.md              # Project documentation
+├── package.json           # Project dependencies
+└── tsconfig.json          # TypeScript configuration
 ```
 
 ## Essential Commands
 
 ### Development
 ```bash
-# Start development server with hot reloading
+# Start backend development server
 npm run dev
 
-# Build the application
+# Start backend with mock data
+npm run dev:mock
+
+# Start full stack (Backend + Frontend)
+npm run start:dev
+
+# Run database setup scripts
+npm run setup:db
+```
+
+### Build & Production
+```bash
+# Build backend
 npm run build
 
-# Start built application
+# Build frontend
+npm run build:client
+
+# Build everything
+npm run build:all
+
+# Start production server
 npm start
-
-# Run tests
-npm test
-
-# Run property-based tests
-npm run test:property
-
-# Run tests in watch mode
-npm run test:watch
-
-# Lint TypeScript code
-npm run lint
 ```
 
 ### Docker
 ```bash
-# Build Docker image for multiple architectures (AMD64 and ARM64)
+# Build Docker image
 npm run docker:build
 
-# Run with Docker Compose (development environment)
+# Run with Docker Compose
 npm run docker:dev
 ```
 
 ## Code Organization and Structure
 
 ### Architecture Pattern
-The project follows a modular architecture with services, configuration, and utilities properly separated:
+The project follows a modular Service-Oriented Architecture (SOA) within a monolith:
 
-1. **Configuration Layer**: Database and environment configuration in `src/config/`
-2. **Services Layer**: Business logic in `src/services/` with specific responsibilities:
-   - Data retrieval from AVEVA Historian database (`dataRetrieval.ts`)
-   - Database connection management (`historianConnection.ts`)
-   - Statistical analysis and trend detection (`statisticalAnalysis.ts`)
-3. **Types Layer**: Strong typing for AVEVA Historian data structures (`src/types/historian.ts`)
-4. **Utilities Layer**: Common functionality like logging and retry logic (`src/utils/`)
-5. **Middleware Layer**: Express middleware for error handling and request logging
+1.  **Frontend**: React application in `client/` communicating via REST API.
+2.  **API Layer**: Express routes in `src/routes/` delegating to services.
+3.  **Services Layer**: Business logic in `src/services/` handling core functionality.
+4.  **Data Layer**: Direct SQL connections to AVEVA Historian and local storage.
 
-### Key Services and Their Responsibilities
+### Key Services and Responsibilities
 
-- **DataRetrievalService**: Handles time-series data queries, tag information retrieval, and filtered data retrieval
-- **HistorianConnection**: Manages database connections with retry logic and connection pooling
-- **StatisticalAnalysisService**: Provides mathematical functions for trend analysis, statistics, and anomaly detection
+-   **DataRetrievalService**: Interfaces with AVEVA Historian for time-series data.
+-   **StatisticalAnalysisService**: Processes raw data into insights.
+-   **AuthService**: Handles JWT authentication and user management.
+-   **SchedulerService**: Manages automated report schedules with cron jobs.
+-   **ReportGeneration**: Orchestrates document creation (PDF/DOCX).
+-   **EmailService**: Handles report delivery via SMTP.
+-   **DatabaseConfigService**: Manages dynamic database connection settings.
+-   **EncryptionService**: Secures sensitive credentials.
 
 ### Middleware and Error Handling
 
-- **errorHandler.ts**: Contains centralized error handling middleware, `createError` function for operational errors, and `asyncHandler` wrapper for route handlers
-- **requestLogger.ts**: Provides request/response logging with timing information
+-   **auth.ts**: Verifies JWT tokens and permissions.
+-   **errorHandler.ts**: Centralized error interceptor.
+-   **requestLogger.ts**: structured logging for all incoming requests.
 
 ### Data Flow
-1. Environment variables are validated using Zod schemas in `environment.ts`
-2. Database connections are managed through the `database.ts` configuration and connection pool
-3. Data retrieval services query the AVEVA Historian database using SQL
-4. Results are transformed into standardized TypeScript types
-5. Statistical analysis is performed on the retrieved data
-6. Errors are handled through centralized error middleware
+1.  React Client makes API request.
+2.  Middleware validates auth token and inputs.
+3.  Routes dispatch to appropriate `Service`.
+4.  Service performs business logic (e.g., query Historian, generate PDF).
+5.  Results are returned to client or emailed.
 
 ## Naming Conventions and Style Patterns
 
@@ -134,13 +147,17 @@ The project follows a modular architecture with services, configuration, and uti
 
 ### Test Types
 1. **Unit Tests**: Individual function or service testing in `tests/`
-2. **Property-Based Tests**: Using FastCheck for comprehensive validation in `tests/properties/`, including:
-   - `data-filtering.property.test.ts`: Testing data filtering operations
-   - `database-authentication.property.test.ts`: Testing database connection scenarios
-   - `environment.property.test.ts`: Testing environment validation
-   - `error-handling.property.test.ts`: Testing error handling scenarios
-   - `statistical-calculations.property.test.ts`: Testing statistical functions
-   - `time-range-retrieval.property.test.ts`: Testing time range queries
+2. **Property-Based Tests**: Extensive validation using fast-check (25+ suites) in `tests/properties/`.
+   - **Critical Domains**:
+     - `anomaly-detection`: Statistical outlier finding.
+     - `concurrent-handling`: Race condition checks.
+     - `schedule-execution`: Timer and job logic.
+     - `memory-management`: Resource usage simulation.
+     - `security-encryption`: Crypto correctness.
+   - **Core Logic**:
+     - `data-filtering`, `time-range-retrieval`, `statistical-calculations`.
+   - **Infrastructure**:
+     - `database-config`, `email-delivery`, `connection-testing`.
 
 ### Test Configuration
 - Uses Jest as the test framework
@@ -213,11 +230,15 @@ The system supports:
 2. Customizable report templates
 3. Data visualization capabilities
 4. Professional formatting and styling
+5. Report preview before generation.
 
 ### Automation Features
 Support for scheduled report generation with various intervals:
 - Hourly, Every 6 hours, Every 8 hours, Every 12 hours, Daily (24 hours)
 - Weekly, Monthly intervals
+- Start and end date and time for report generation should be typed for precise window selection.
+- Date and time check should be validated to ensure start date is not greater than end date.
+- The duration (end date-time minus start date-time should be shown at all times) 
 - Email delivery capabilities
 
 ### Security Considerations
