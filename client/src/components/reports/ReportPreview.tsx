@@ -496,9 +496,8 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                     height={320}
                     showTrend={true}
                     showAxis={true}
-                    title={previewData.tagDescriptions[tagName]
-                      ? `${tagName} - ${previewData.tagDescriptions[tagName]}`
-                      : tagName}
+                    title={tagName}
+                    description={previewData.tagDescriptions[tagName]}
                     className="shadow-md border-gray-300"
                   />
                 ))}

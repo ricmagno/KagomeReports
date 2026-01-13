@@ -16,6 +16,7 @@ interface MiniChartProps {
   showTrend?: boolean;
   showAxis?: boolean;
   title?: string;
+  description?: string;
 }
 
 export const MiniChart: React.FC<MiniChartProps> = ({
@@ -27,7 +28,8 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   className = '',
   showTrend = true,
   showAxis = false,
-  title
+  title,
+  description
 }) => {
   const chartData = useMemo(() => {
     if (!data || data.length === 0) return null;
@@ -142,12 +144,19 @@ export const MiniChart: React.FC<MiniChartProps> = ({
 
   return (
     <div className={`relative bg-white border border-gray-200 rounded p-4 ${className}`}>
-      <div className="mb-2 flex items-center justify-between border-b border-gray-100 pb-2">
-        <span className="text-sm font-bold text-gray-800 truncate" title={title || tagName}>
-          {title || tagName}
-        </span>
+      <div className="mb-2 flex items-start justify-between border-b border-gray-100 pb-2">
+        <div className="flex flex-col min-w-0 flex-1">
+          <span className="text-sm font-bold text-gray-800 truncate" title={title || tagName}>
+            {title || tagName}
+          </span>
+          {description && (
+            <span className="text-xs font-normal text-gray-500 truncate" title={description}>
+              {description}
+            </span>
+          )}
+        </div>
         {showAxis && (
-          <span className="text-[10px] text-gray-400 font-mono">
+          <span className="text-[10px] text-gray-400 font-mono ml-4 flex-shrink-0">
             {chartData.validData.length} points
           </span>
         )}
