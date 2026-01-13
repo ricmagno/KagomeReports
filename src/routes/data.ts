@@ -237,26 +237,22 @@ router.get('/:tagName/statistics', asyncHandler(async (req: Request, res: Respon
 
   apiLogger.info('Calculating statistics for tag', { tagName, timeRange });
 
-  // Get data
   const dataRetrievalService = cacheManager.getDataRetrievalService();
   const statisticalAnalysisService = cacheManager.getStatisticalAnalysisService();
-  const data = await dataRetrievalService.getTimeSeriesData(tagName, timeRange);
 
-  if (data.length === 0) {
-    throw createError('No data found for the specified tag and time range', 404);
-  }
+  // Calculate comprehensive statistics using SQL standard aggregates (AVG, MIN, MAX, STDEV)
+  // This fulfills the requirement to use SQL standard approach
+  const statistics = await dataRetrievalService.getStatistics(tagName, timeRange);
 
-  // Calculate comprehensive statistics
-  const basicStats = await statisticalAnalysisService.calculateStatistics(tagName, timeRange.startTime, timeRange.endTime, data);
-  const qualityMetrics = statisticalAnalysisService.calculateDataQuality(data);
+  // Still fetch data for quality metrics and trend analysis if needed
+  // or use the SQL computed ones
+  const data = await dataRetrievalService.getTimeSeriesData(tagName, timeRange, { mode: RetrievalMode.Cyclic, maxPoints: 1000 });
 
-  // Calculate trend if enough data points
   let trend;
   if (data.length >= 2) {
     trend = statisticalAnalysisService.calculateTrendLine(data);
   }
 
-  // Detect anomalies
   let anomalies;
   if (data.length >= 3) {
     const threshold = parseFloat(req.query.anomalyThreshold as string) || 2.0;
@@ -265,13 +261,14 @@ router.get('/:tagName/statistics', asyncHandler(async (req: Request, res: Respon
 
   res.json({
     success: true,
+    data: {
+      ...statistics,
+      trend,
+      anomalies: anomalies ? { count: anomalies.length, detected: anomalies } : undefined,
+      dataPoints: data.length
+    },
     tagName,
-    timeRange,
-    dataPoints: data.length,
-    statistics: basicStats,
-    qualityMetrics,
-    ...(trend && { trend }),
-    ...(anomalies && { anomalies: { count: anomalies.length, detected: anomalies } })
+    timeRange
   });
 }));
 

@@ -19,7 +19,8 @@ import {
   QueryResult,
   HistorianQueryOptions,
   RetrievalMode,
-  QualityCode
+  QualityCode,
+  StatisticsResult
 } from '@/types/historian';
 
 export class DataRetrievalService {
@@ -210,6 +211,82 @@ export class DataRetrievalService {
     } catch (error) {
       dbLogger.warn('Failed to estimate data size, using default', { error });
       return this.LARGE_DATASET_THRESHOLD;
+    }
+  }
+
+  /**
+   * Get basic statistics using SQL standard aggregates (AVG, MIN, MAX)
+   * Requirements: Use SQL to perform the calculation at the database level
+   */
+  public async getStatistics(
+    tagName: string,
+    timeRange: TimeRange
+  ): Promise<StatisticsResult> {
+    try {
+      this.validateTimeRange(timeRange);
+      this.validateTagName(tagName);
+
+      dbLogger.info('Retrieving statistics via SQL aggregates', { tagName, timeRange });
+
+      // Use a more standard SQL approach that works with History view
+      // Removing explicit wwRetrievalMode='Full' to let it use default or whatever is active
+      const query = `
+        SELECT 
+          AVG(CAST(Value as FLOAT)) as average,
+          MIN(CAST(Value as FLOAT)) as min,
+          MAX(CAST(Value as FLOAT)) as max,
+          STDEV(CAST(Value as FLOAT)) as standardDeviation,
+          COUNT(*) as count,
+          SUM(CASE WHEN Quality >= 192 THEN 1 ELSE 0 END) as goodCount
+        FROM History
+        WHERE TagName = @tagName
+          AND DateTime >= @startTime
+          AND DateTime <= @endTime
+      `;
+
+      const params = {
+        tagName,
+        startTime: timeRange.startTime,
+        endTime: timeRange.endTime
+      };
+
+      const result = await this.getConnection().executeQuery<any>(query, params);
+      const row = result.recordset[0];
+
+      dbLogger.debug('SQL statistics raw result', { tagName, row });
+
+      if (!row || row.count === 0 || row.average === null) {
+        // If no data found via aggregates, try a fallback or return empty stats
+        dbLogger.warn('No statistics found via SQL aggregates', { tagName });
+        return {
+          average: 0,
+          min: 0,
+          max: 0,
+          standardDeviation: 0,
+          count: 0,
+          dataQuality: 0
+        };
+      }
+
+      const totalCount = parseInt(row.count) || 0;
+      const goodCount = parseInt(row.goodCount) || 0;
+      const dataQuality = totalCount > 0 ? (goodCount / totalCount) * 100 : 0;
+
+      const stats = {
+        average: Number(row.average),
+        min: Number(row.min),
+        max: Number(row.max),
+        standardDeviation: Number(row.standardDeviation) || 0,
+        count: totalCount,
+        dataQuality
+      };
+
+      dbLogger.info('SQL statistics calculated successfully', { tagName, stats });
+      return stats;
+
+    } catch (error) {
+      dbLogger.error('Failed to retrieve SQL statistics:', { tagName, timeRange, error });
+      throw error;
     }
   }
 

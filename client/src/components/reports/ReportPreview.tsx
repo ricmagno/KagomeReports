@@ -410,7 +410,8 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                   <div key={tagName} className="mb-1">
                     <div className="font-medium text-xs text-gray-700">{tagName}:</div>
                     <div className="text-xs">
-                      Avg: {stats?.average?.toFixed(2) || 'N/A'}, Range: {stats?.min?.toFixed(2) || 'N/A'}-{stats?.max?.toFixed(2) || 'N/A'}
+                      Avg: {typeof stats?.average === 'number' ? stats.average.toFixed(2) : 'N/A'},
+                      Range: {typeof stats?.min === 'number' ? stats.min.toFixed(2) : 'N/A'}-{typeof stats?.max === 'number' ? stats.max.toFixed(2) : 'N/A'}
                     </div>
                   </div>
                 ))}
