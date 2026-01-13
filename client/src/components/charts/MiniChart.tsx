@@ -45,7 +45,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
     const range = maxValue - minValue || 1; // Avoid division by zero
 
     // Create SVG path points
-    const leftPad = showAxis ? 35 : 10;
+    const leftPad = showAxis ? 50 : 10;
     const points = validData.map((point, index) => {
       const x = (index / (validData.length - 1)) * (width - leftPad - 15) + leftPad;
       const y = height - 20 - ((point.value - minValue) / range) * (height - 40);
@@ -141,163 +141,157 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   };
 
   return (
-    <div className={`relative bg-white border border-gray-200 rounded ${className}`}>
-      <div className="absolute top-1 left-2 bg-white bg-opacity-70 rounded px-1">
-        <span className="text-sm font-bold text-gray-800">
+    <div className={`relative bg-white border border-gray-200 rounded p-4 ${className}`}>
+      <div className="mb-2 flex items-center justify-between border-b border-gray-100 pb-2">
+        <span className="text-sm font-bold text-gray-800 truncate" title={title || tagName}>
           {title || tagName}
         </span>
+        {showAxis && (
+          <span className="text-[10px] text-gray-400 font-mono">
+            {chartData.validData.length} points
+          </span>
+        )}
       </div>
 
-      <svg width={width} height={height} className="overflow-visible">
-        {/* Y-Axis Line */}
-        {showAxis && (
-          <line x1="30" y1="10" x2="30" y2={height - 10} stroke="#94a3b8" strokeWidth="1" />
-        )}
+      <div className="relative">
+        <svg width={width} height={height} className="overflow-visible">
+          {/* Y-Axis Line */}
+          {showAxis && (
+            <line x1="45" y1="10" x2="45" y2={height - 10} stroke="#94a3b8" strokeWidth="1" />
+          )}
 
-        {/* X-Axis Line */}
-        {showAxis && (
-          <line x1="30" y1={height - 10} x2={width - 10} y2={height - 10} stroke="#94a3b8" strokeWidth="1" />
-        )}
+          {/* X-Axis Line */}
+          {showAxis && (
+            <line x1="45" y1={height - 10} x2={width - 10} y2={height - 10} stroke="#94a3b8" strokeWidth="1" />
+          )}
 
-        {/* Grid lines */}
-        {showAxis && chartData.subdivisions.map((sub, i) => (
-          <line
-            key={`sub-line-${i}`}
-            x1="30"
-            y1={sub.y}
-            x2={width - 10}
-            y2={sub.y}
-            stroke="#e2e8f0"
-            strokeWidth="0.5"
-            strokeDasharray="2 2"
-          />
-        ))}
+          {/* Grid lines */}
+          {showAxis && chartData.subdivisions.map((sub, i) => (
+            <line
+              key={`sub-line-${i}`}
+              x1="45"
+              y1={sub.y}
+              x2={width - 10}
+              y2={sub.y}
+              stroke="#e2e8f0"
+              strokeWidth="0.5"
+              strokeDasharray="2 2"
+            />
+          ))}
 
-        <defs>
-          <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f3f4f6" strokeWidth="1" />
-          </pattern>
-        </defs>
-        <rect width={width} height={height} fill="url(#grid)" opacity="0.5" />
+          <defs>
+            <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f3f4f6" strokeWidth="1" />
+            </pattern>
+          </defs>
+          <rect width={width} height={height} fill="url(#grid)" opacity="0.5" />
 
-        {/* Chart area */}
-        {type === 'bar' ? (
-          // Bar chart
-          chartData.points.map((point, index) => {
-            const barWidth = Math.max(2, (width - 20) / chartData.points.length - 1);
-            const barHeight = ((point.value - chartData.minValue) / chartData.range) * (height - 20);
-            return (
-              <rect
-                key={index}
-                x={point.x - barWidth / 2}
-                y={height - 10 - barHeight}
-                width={barWidth}
-                height={barHeight}
-                fill={getQualityColor()}
-                opacity="0.7"
-              />
-            );
-          })
-        ) : (
-          // Line or area chart
-          <path
-            d={createPath()}
-            fill={type === 'area' ? getQualityColor() : 'none'}
-            fillOpacity={type === 'area' ? 0.2 : 0}
-            stroke={getQualityColor()}
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        )}
+          {/* Chart area */}
+          {type === 'bar' ? (
+            // Bar chart
+            chartData.points.map((point, index) => {
+              const barWidth = Math.max(2, (width - 20) / chartData.points.length - 1);
+              const barHeight = ((point.value - chartData.minValue) / chartData.range) * (height - 20);
+              return (
+                <rect
+                  key={index}
+                  x={point.x - barWidth / 2}
+                  y={height - 10 - barHeight}
+                  width={barWidth}
+                  height={barHeight}
+                  fill={getQualityColor()}
+                  opacity="0.7"
+                />
+              );
+            })
+          ) : (
+            // Line or area chart
+            <path
+              d={createPath()}
+              fill={type === 'area' ? getQualityColor() : 'none'}
+              fillOpacity={type === 'area' ? 0.2 : 0}
+              stroke={getQualityColor()}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )}
 
-        {/* Trend Line */}
-        {showTrend && chartData.trendPoints && (
-          <line
-            x1={chartData.trendPoints.x1}
-            y1={chartData.trendPoints.y1}
-            x2={chartData.trendPoints.x2}
-            y2={chartData.trendPoints.y2}
-            stroke="#94a3b8"
-            strokeWidth="1.5"
-            strokeDasharray="4 2"
-            opacity="0.8"
-          />
-        )}
+          {/* Trend Line */}
+          {showTrend && chartData.trendPoints && (
+            <line
+              x1={chartData.trendPoints.x1}
+              y1={chartData.trendPoints.y1}
+              x2={chartData.trendPoints.x2}
+              y2={chartData.trendPoints.y2}
+              stroke="#94a3b8"
+              strokeWidth="1.5"
+              strokeDasharray="4 2"
+              opacity="0.8"
+            />
+          )}
 
-        {/* Data points */}
-        {type === 'line' && chartData.points.map((point, index) => (
-          <circle
-            key={index}
-            cx={point.x}
-            cy={point.y}
-            r="2"
-            fill={getQualityColor()}
-            className="opacity-60"
-          />
-        ))}
+          {/* Data points */}
+          {type === 'line' && chartData.points.map((point, index) => (
+            <circle
+              key={index}
+              cx={point.x}
+              cy={point.y}
+              r="2"
+              fill={getQualityColor()}
+              className="opacity-60"
+            />
+          ))}
 
-        {/* Value labels */}
-        <text
-          x={showAxis ? 5 : 10}
-          y="20"
-          className="text-[10px] fill-gray-500 font-medium"
-        >
-          {chartData.maxValue.toFixed(1)}
-        </text>
-
-        {showAxis && chartData.subdivisions.map((sub, i) => (
+          {/* Value labels */}
           <text
-            key={`sub-label-${i}`}
-            x="5"
-            y={sub.y + 3}
-            className="text-[10px] fill-gray-400 font-medium"
+            x={showAxis ? 5 : 10}
+            y="20"
+            className="text-[10px] fill-gray-500 font-medium"
           >
-            {sub.label}
+            {chartData.maxValue.toFixed(1)}
           </text>
-        ))}
 
-        <text
-          x={showAxis ? 5 : 10}
-          y={height - 15}
-          className="text-[10px] fill-gray-500 font-medium"
-        >
-          {chartData.minValue.toFixed(1)}
-        </text>
-
-        {/* Time labels */}
-        {showAxis && (
-          <>
+          {showAxis && chartData.subdivisions.map((sub, i) => (
             <text
-              x="35"
-              y={height - 2}
-              className="text-[8px] fill-gray-400"
+              key={`sub-label-${i}`}
+              x="5"
+              y={sub.y + 3}
+              className="text-[10px] fill-gray-400 font-medium"
             >
-              {new Date(chartData.validData[0].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {sub.label}
             </text>
-            <text
-              x={width - 40}
-              y={height - 2}
-              className="text-[8px] fill-gray-400"
-            >
-              {new Date(chartData.validData[chartData.validData.length - 1].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </text>
-          </>
-        )}
-      </svg>
+          ))}
 
-      {/* Chart info overlay */}
-      <div className="absolute top-1 right-1 bg-white bg-opacity-90 rounded px-1 py-0.5">
-        <span className="text-xs text-gray-600">
-          {chartData.validData.length} pts
-        </span>
-      </div>
+          <text
+            x={showAxis ? 5 : 10}
+            y={height - 15}
+            className="text-[10px] fill-gray-500 font-medium"
+          >
+            {chartData.minValue.toFixed(1)}
+          </text>
 
-      {/* Tag name */}
-      <div className="absolute bottom-1 left-1 bg-white bg-opacity-90 rounded px-1 py-0.5">
-        <span className="text-xs text-gray-700 font-medium truncate max-w-[120px]">
-          {tagName}
-        </span>
+          {/* Time labels */}
+          {showAxis && (
+            <>
+              <text
+                x="50"
+                y={height - 2}
+                className="text-[8px] fill-gray-400"
+              >
+                {new Date(chartData.validData[0].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </text>
+              <text
+                x={width - 40}
+                y={height - 2}
+                className="text-[8px] fill-gray-400"
+              >
+                {new Date(chartData.validData[chartData.validData.length - 1].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </text>
+            </>
+          )}
+        </svg>
+
       </div>
     </div>
   );
