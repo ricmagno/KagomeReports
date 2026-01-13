@@ -87,10 +87,12 @@ export const MiniChart: React.FC<MiniChartProps> = ({
     }
 
     // Calculate Y-axis subdivisions
-    const subdivisions = [0.25, 0.5, 0.75].map(ratio => {
+    const subdivisions = [0.25, 0.5, 0.75].map((ratio, index, arr) => {
       const value = minValue + (ratio * range);
       const y = height - 20 - (ratio * (height - 40));
-      return { value, y, label: value.toFixed(1) };
+      // Add units only to the highest subdivision (last item in our 0.25, 0.5, 0.75 array)
+      const label = value.toFixed(1) + (units && index === arr.length - 1 ? ` ${units}` : '');
+      return { value, y, label };
     });
 
     return {
@@ -271,14 +273,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
             />
           ))}
 
-          {/* Value labels */}
-          <text
-            x={showAxis ? 5 : 10}
-            y="20"
-            className="text-[10px] fill-gray-500 font-medium"
-          >
-            {chartData.maxValue.toFixed(1)}{units ? ` ${units}` : ''}
-          </text>
+
 
           {showAxis && chartData.subdivisions.map((sub, i) => (
             <text
