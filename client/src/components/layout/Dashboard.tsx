@@ -310,7 +310,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           name: loadedReport.config.name,
           description: loadedReport.config.description,
           tags: loadedReport.config.tags,
-          timeRange: loadedReport.config.timeRange,
+          timeRange: {
+            ...loadedReport.config.timeRange,
+            startTime: new Date(loadedReport.config.timeRange.startTime),
+            endTime: new Date(loadedReport.config.timeRange.endTime)
+          },
           chartTypes: loadedReport.config.chartTypes,
           template: loadedReport.config.template
         });
