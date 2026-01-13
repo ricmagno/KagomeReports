@@ -63,8 +63,8 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
     lastUpdated: null
   });
 
-  // Load preview data when manually triggered
-  const loadPreviewData = async () => {
+  // Load preview data
+  const loadPreviewData = React.useCallback(async () => {
     if (!config.tags || config.tags.length === 0 || !config.timeRange) {
       setPreviewData(prev => ({
         ...prev,
@@ -150,7 +150,27 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
         error: error instanceof Error ? error.message : 'Failed to load preview data'
       }));
     }
-  };
+  }, [config.tags, config.timeRange, config.name, config.description, config.chartTypes, config.template]);
+
+  // Auto-update preview data when report configuration changes
+  useEffect(() => {
+    // Only auto-update if we have at least one tag (the same condition that enables the Query Data button)
+    if (config.tags && config.tags.length > 0) {
+      const timer = setTimeout(() => {
+        loadPreviewData();
+      }, 1000); // 1 second debounce
+      return () => clearTimeout(timer);
+    }
+    // We want to clear data if tags are removed
+    else if (config.tags && config.tags.length === 0 && Object.keys(previewData.dataPoints).length > 0) {
+      setPreviewData(prev => ({
+        ...prev,
+        dataPoints: {},
+        statistics: {},
+        lastUpdated: null
+      }));
+    }
+  }, [loadPreviewData]);
 
   // Calculate data quality metrics
   const dataQuality = useMemo((): DataQualityInfo => {
