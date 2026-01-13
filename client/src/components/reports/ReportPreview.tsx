@@ -488,6 +488,8 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                 <MultiTrendChart
                   dataPoints={previewData.dataPoints}
                   tagDescriptions={previewData.tagDescriptions}
+                  title={config.name}
+                  description={config.description}
                   width={800}
                   height={320}
                   className="mb-4"

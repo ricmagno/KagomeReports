@@ -13,6 +13,7 @@ interface MultiTrendChartProps {
     height?: number;
     className?: string;
     title?: string;
+    description?: string;
 }
 
 const SERIES_COLORS = [
@@ -32,7 +33,8 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
     width = 800,
     height = 320,
     className = '',
-    title = 'Combined Data Preview'
+    title = 'Combined Data Preview',
+    description
 }) => {
     const chartData = useMemo(() => {
         const activeTags = Object.keys(dataPoints).filter(tag => dataPoints[tag].length > 0);
@@ -119,7 +121,9 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
             <div className="mb-4 border-b border-gray-100 pb-2 flex justify-between items-start">
                 <div>
                     <h3 className="text-lg font-bold text-gray-900">{title}</h3>
-                    <p className="text-xs text-gray-500 italic">Comparison of {chartData.series.length} tags</p>
+                    <p className="text-xs text-gray-500 italic">
+                        {description || `Comparison of ${chartData.series.length} tags`}
+                    </p>
                 </div>
             </div>
 
