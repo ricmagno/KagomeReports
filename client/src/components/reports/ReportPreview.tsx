@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { ReportConfig, TimeSeriesData, StatisticsResult } from '../../types/api';
 import { apiService } from '../../services/api';
-import { MiniChart } from '../charts/MiniChart';
+import { MiniChart, MultiTrendChart } from '../charts';
 
 interface ReportPreviewProps {
   config: ReportConfig;
@@ -483,6 +483,17 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
               Data Preview
             </h4>
             <div className="grid grid-cols-1 gap-8">
+              {/* Combined Multi-Trend View (only if multiple tags selected) */}
+              {Object.keys(previewData.dataPoints).filter(tag => previewData.dataPoints[tag].length > 0).length > 1 && (
+                <MultiTrendChart
+                  dataPoints={previewData.dataPoints}
+                  tagDescriptions={previewData.tagDescriptions}
+                  width={800}
+                  height={320}
+                  className="mb-4"
+                />
+              )}
+
               {Object.entries(previewData.dataPoints)
                 .filter(([_, data]) => data.length > 0)
                 .slice(0, 4) // Show top 4 tags in large format
