@@ -81,7 +81,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
             tagName,
             config.timeRange.startTime,
             config.timeRange.endTime,
-            { limit: 100 } // Limit for preview
+            { limit: 500 } // Limit for preview
           );
           return { tagName, data: response.success ? response.data : [] };
         } catch (error) {
@@ -462,20 +462,22 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
               <BarChart3 className="w-4 h-4 mr-2" />
               Data Preview
             </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-8">
               {Object.entries(previewData.dataPoints)
                 .filter(([_, data]) => data.length > 0)
-                .slice(0, 6) // Show max 6 charts
+                .slice(0, 4) // Show top 4 tags in large format
                 .map(([tagName, data]) => (
                   <MiniChart
                     key={tagName}
                     data={data}
                     tagName={tagName}
-                    type={config.chartTypes[0] === 'bar' ? 'bar' :
-                      config.chartTypes[0] === 'trend' ? 'area' : 'line'}
-                    width={200}
-                    height={120}
-                    className="shadow-sm"
+                    type="area"
+                    width={800}
+                    height={320}
+                    showTrend={true}
+                    showAxis={true}
+                    title={tagName}
+                    className="shadow-md border-gray-300"
                   />
                 ))}
             </div>

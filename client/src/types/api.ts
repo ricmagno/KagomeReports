@@ -69,6 +69,7 @@ export interface StatisticsResult {
   standardDeviation: number;
   count: number;
   dataQuality: number;
+  trend?: TrendResult;
 }
 
 export interface TrendResult {
