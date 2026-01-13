@@ -5,10 +5,12 @@
 
 import React, { useMemo } from 'react';
 import { TimeSeriesData } from '../../types/api';
+import { CHART_COLORS, getTagColor, getTagIndex } from './chartUtils';
 
 interface MultiTrendChartProps {
     dataPoints: Record<string, TimeSeriesData[]>;
     tagDescriptions: Record<string, string>;
+    tags?: string[];
     width?: number;
     height?: number;
     className?: string;
@@ -16,20 +18,10 @@ interface MultiTrendChartProps {
     description?: string;
 }
 
-const SERIES_COLORS = [
-    '#3b82f6', // blue
-    '#10b981', // emerald
-    '#f59e0b', // amber
-    '#f43f5e', // rose
-    '#6366f1', // indigo
-    '#f97316', // orange
-    '#06b6d4', // cyan
-    '#8b5cf6', // violet
-];
-
 export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
     dataPoints,
     tagDescriptions,
+    tags,
     width = 800,
     height = 320,
     className = '',
@@ -37,7 +29,10 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
     description
 }) => {
     const chartData = useMemo(() => {
-        const activeTags = Object.keys(dataPoints).filter(tag => dataPoints[tag].length > 0);
+        // Use provided tags or fallback to keys of dataPoints
+        const allTags = tags || Object.keys(dataPoints);
+        const activeTags = allTags.filter(tag => dataPoints[tag] && dataPoints[tag].length > 0);
+
         if (activeTags.length === 0) return null;
 
         // Calculate global min/max across all tags
@@ -64,7 +59,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
         const graphWidth = width - leftPad - rightPad;
         const graphHeight = height - topPad - bottomPad;
 
-        const series = activeTags.map((tag, seriesIndex) => {
+        const series = activeTags.map((tag) => {
             const data = dataPoints[tag].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
             const points = data.map((p, i) => {
@@ -78,10 +73,14 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
                 path += (i === 0 ? 'M' : 'L') + `${p.x} ${p.y}`;
             });
 
+            // Find original index for stable coloring (case-insensitive)
+            const originalIndex = getTagIndex(tag, allTags);
+            const color = getTagColor(originalIndex) || CHART_COLORS[0];
+
             return {
                 tag,
                 description: tagDescriptions[tag] || '',
-                color: SERIES_COLORS[seriesIndex % SERIES_COLORS.length],
+                color,
                 path,
                 points
             };
@@ -110,9 +109,10 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
             startTime,
             endTime,
             minValue,
-            maxValue
+            maxValue,
+            activeTags
         };
-    }, [dataPoints, tagDescriptions, width, height]);
+    }, [dataPoints, tagDescriptions, tags, width, height]);
 
     if (!chartData) return null;
 

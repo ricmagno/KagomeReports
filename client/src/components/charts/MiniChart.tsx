@@ -18,6 +18,7 @@ interface MiniChartProps {
   title?: string;
   description?: string;
   statistics?: StatisticsResult;
+  color?: string;
 }
 
 export const MiniChart: React.FC<MiniChartProps> = ({
@@ -31,7 +32,8 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   showAxis = false,
   title,
   description,
-  statistics
+  statistics,
+  color
 }) => {
   const chartData = useMemo(() => {
     if (!data || data.length === 0) return null;
@@ -144,6 +146,8 @@ export const MiniChart: React.FC<MiniChartProps> = ({
     return '#ef4444'; // red
   };
 
+  const baseColor = color || getQualityColor();
+
   return (
     <div className={`relative bg-white border border-gray-200 rounded p-4 ${className}`}>
       <div className="mb-2 flex items-start justify-between border-b border-gray-100 pb-2">
@@ -221,7 +225,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
                   y={height - 10 - barHeight}
                   width={barWidth}
                   height={barHeight}
-                  fill={getQualityColor()}
+                  fill={baseColor}
                   opacity="0.7"
                 />
               );
@@ -230,9 +234,9 @@ export const MiniChart: React.FC<MiniChartProps> = ({
             // Line or area chart
             <path
               d={createPath()}
-              fill={type === 'area' ? getQualityColor() : 'none'}
+              fill={type === 'area' ? baseColor : 'none'}
               fillOpacity={type === 'area' ? 0.2 : 0}
-              stroke={getQualityColor()}
+              stroke={baseColor}
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -260,7 +264,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
               cx={point.x}
               cy={point.y}
               r="2"
-              fill={getQualityColor()}
+              fill={baseColor}
               className="opacity-60"
             />
           ))}

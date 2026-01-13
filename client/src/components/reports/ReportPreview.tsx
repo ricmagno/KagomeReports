@@ -22,6 +22,7 @@ import {
 import { ReportConfig, TimeSeriesData, StatisticsResult } from '../../types/api';
 import { apiService } from '../../services/api';
 import { MiniChart, MultiTrendChart } from '../charts';
+import { CHART_COLORS, getTagColor, getTagIndex } from '../charts/chartUtils';
 
 interface ReportPreviewProps {
   config: ReportConfig;
@@ -204,6 +205,18 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
     const chartSize = config.chartTypes.length * 200; // ~200KB per chart
     return Math.max(baseSize + dataSize + chartSize, 50);
   }, [dataQuality.totalPoints, config.chartTypes.length]);
+
+  // Master color mapping for tags to ensure perfect synchronization
+  const tagColors = useMemo(() => {
+    const mapping: Record<string, string | undefined> = {};
+    if (!config.tags) return mapping;
+
+    config.tags.forEach((tag) => {
+      const tagIndex = getTagIndex(tag, config.tags);
+      mapping[tag] = getTagColor(tagIndex);
+    });
+    return mapping;
+  }, [config.tags]);
 
   const handleGenerate = async () => {
     if (!onGenerate) return;
@@ -508,6 +521,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                 <MultiTrendChart
                   dataPoints={previewData.dataPoints}
                   tagDescriptions={previewData.tagDescriptions}
+                  tags={config.tags}
                   title={config.name}
                   description={config.description}
                   width={800}
@@ -516,25 +530,30 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                 />
               )}
 
-              {Object.entries(previewData.dataPoints)
-                .filter(([_, data]) => data.length > 0)
+              {config.tags
+                .filter(tagName => previewData.dataPoints[tagName]?.length > 0)
                 .slice(0, 4) // Show top 4 tags in large format
-                .map(([tagName, data]) => (
-                  <MiniChart
-                    key={tagName}
-                    data={data}
-                    tagName={tagName}
-                    type="line"
-                    width={800}
-                    height={320}
-                    showTrend={true}
-                    showAxis={true}
-                    title={tagName}
-                    description={previewData.tagDescriptions[tagName]}
-                    statistics={previewData.statistics[tagName]}
-                    className="shadow-md border-gray-300"
-                  />
-                ))}
+                .map((tagName) => {
+                  const data = previewData.dataPoints[tagName];
+
+                  return (
+                    <MiniChart
+                      key={tagName}
+                      data={data}
+                      tagName={tagName}
+                      type="line"
+                      width={800}
+                      height={320}
+                      showTrend={true}
+                      showAxis={true}
+                      title={tagName}
+                      description={previewData.tagDescriptions[tagName]}
+                      statistics={previewData.statistics[tagName]}
+                      color={tagColors[tagName]}
+                      className="shadow-md border-gray-300"
+                    />
+                  );
+                })}
             </div>
             {Object.keys(previewData.dataPoints).length > 6 && (
               <p className="text-xs text-gray-500 mt-2 text-center">
