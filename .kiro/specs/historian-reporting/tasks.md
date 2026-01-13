@@ -564,13 +564,16 @@ This implementation plan breaks down the Historian Reports Application into disc
     - _Requirements: 6.1.1, 6.1.4, 6.1.5_
     - ✅ **COMPLETED**: Successfully implemented Save button functionality in Dashboard component
     - ✅ **BACKEND INTEGRATION**: Fixed SaveReportRequest type compatibility and validation logic
+    - ✅ **VALIDATION SCHEMA**: Updated backend validation to support all frontend preset ranges (last1h, last2h, last6h, last12h, last24h, last7d, last30d)
     - ✅ **API ENDPOINTS**: Save and load endpoints working correctly with proper authentication
     - ✅ **FRONTEND FEATURES**: 
       - ✅ Save button with proper validation (requires name and tags)
       - ✅ Success/error message handling with user feedback
       - ✅ Integration with My Reports tab for displaying saved reports
       - ✅ Load functionality to restore saved configurations to Create Report form
+      - ✅ Date conversion handling for proper time range restoration
     - ✅ **TESTING VERIFIED**: Manual testing confirms save/load workflow works end-to-end
+    - ✅ **ISSUE RESOLUTION**: Fixed "Invalid report configuration" error by updating backend enum validation to match frontend preset ranges
 
   - [x] 22.2 Enhance My Reports interface
     - Update My Reports tab to display saved report configurations

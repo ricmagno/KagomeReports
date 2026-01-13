@@ -10,7 +10,7 @@ import { apiLogger } from '@/utils/logger';
 import { asyncHandler, createError } from '@/middleware/errorHandler';
 import { authenticateToken, requirePermission } from '@/middleware/auth';
 import { dataFlowService } from '@/services/dataFlowService';
-import { ReportConfig } from '@/services/reportGeneration';
+import { ReportConfig } from '@/types/reports';
 import { ReportManagementService } from '@/services/reportManagementService';
 import { ReportVersionService } from '@/services/reportVersionService';
 import { SaveReportRequest } from '@/types/reports';
@@ -42,7 +42,7 @@ const reportConfigSchema = z.object({
   timeRange: z.object({
     startTime: z.string().datetime().transform(str => new Date(str)),
     endTime: z.string().datetime().transform(str => new Date(str)),
-    relativeRange: z.enum(['last1h', 'last24h', 'last7d', 'last30d']).optional()
+    relativeRange: z.enum(['last1h', 'last2h', 'last6h', 'last12h', 'last24h', 'last7d', 'last30d']).optional()
   }),
   chartTypes: z.array(z.enum(['line', 'bar', 'trend', 'scatter'])).default(['line']),
   template: z.string().default('default'),
@@ -77,7 +77,11 @@ const saveReportSchema = z.object({
   description: z.string().max(500).optional(),
   config: reportConfigSchema.omit({ name: true, description: true }),
   changeDescription: z.string().max(200).optional()
-});
+}).transform(data => ({
+  ...data,
+  description: data.description || undefined,
+  changeDescription: data.changeDescription || undefined
+}));
 
 const scheduleConfigSchema = z.object({
   reportId: z.string().uuid(),
@@ -103,13 +107,13 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
   const reportId = `report_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
   // Create full report config
-  const reportConfig: ReportConfig = {
+  const reportConfig: any = {
     id: reportId,
     name: config.name,
     description: config.description,
     tags: config.tags,
     timeRange: config.timeRange,
-    chartTypes: config.chartTypes as any[],
+    chartTypes: config.chartTypes,
     template: config.template,
     format: config.format,
     branding: config.branding,
@@ -257,7 +261,7 @@ router.post('/save', authenticateToken, requirePermission('reports', 'write'), a
     throw createError('Invalid report configuration', 400);
   }
 
-  const saveRequest: SaveReportRequest = requestResult.data;
+  const saveRequest = requestResult.data as any;
   const currentUserId = (req as any).user?.id || 'anonymous'; // Get from authentication middleware
 
   apiLogger.info('Saving report configuration', { 
@@ -294,12 +298,49 @@ router.post('/save', authenticateToken, requirePermission('reports', 'write'), a
 
 /**
  * POST /api/reports
- * Save a new report configuration (legacy endpoint)
+ * Save a new report configuration (legacy endpoint - redirects to /save)
  */
 router.post('/', authenticateToken, requirePermission('reports', 'write'), asyncHandler(async (req: Request, res: Response) => {
-  // Redirect to the new save endpoint
-  req.url = '/save';
-  return router.handle(req, res);
+  // Redirect to the new save endpoint by calling the same handler
+  const requestResult = saveReportSchema.safeParse(req.body);
+  if (!requestResult.success) {
+    apiLogger.error('Invalid save report request', { errors: requestResult.error.errors });
+    throw createError('Invalid report configuration', 400);
+  }
+
+  const saveRequest = requestResult.data as any;
+  const currentUserId = (req as any).user?.id || 'anonymous';
+
+  apiLogger.info('Saving report configuration (legacy endpoint)', { 
+    name: saveRequest.name, 
+    userId: currentUserId 
+  });
+
+  try {
+    const result = await reportManagementService.saveReport(saveRequest, currentUserId);
+
+    if (result.success) {
+      res.status(201).json({
+        success: true,
+        data: {
+          reportId: result.reportId,
+          version: result.version,
+          name: saveRequest.name,
+          description: saveRequest.description
+        },
+        message: result.message
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+  } catch (error) {
+    apiLogger.error('Error saving report:', error);
+    throw createError('Failed to save report', 500);
+  }
 }));
 
 /**
@@ -310,6 +351,10 @@ router.get('/:id', authenticateToken, requirePermission('reports', 'read'), asyn
   initializeServices();
   
   const { id } = req.params;
+
+  if (!id) {
+    throw createError('Report ID is required', 400);
+  }
 
   apiLogger.info('Retrieving report configuration', { id });
 
@@ -342,6 +387,10 @@ router.get('/:id/versions', authenticateToken, requirePermission('reports', 'rea
   initializeServices();
   
   const { id } = req.params;
+
+  if (!id) {
+    throw createError('Report ID is required', 400);
+  }
 
   apiLogger.info('Retrieving report version history', { reportId: id });
 
@@ -379,6 +428,11 @@ router.post('/:id/versions', authenticateToken, requirePermission('reports', 'wr
   initializeServices();
   
   const { id } = req.params;
+
+  if (!id) {
+    throw createError('Report ID is required', 400);
+  }
+
   const configResult = reportConfigSchema.safeParse(req.body);
   
   if (!configResult.success) {
@@ -423,6 +477,11 @@ router.put('/:id', authenticateToken, requirePermission('reports', 'write'), asy
   initializeServices();
   
   const { id } = req.params;
+
+  if (!id) {
+    throw createError('Report ID is required', 400);
+  }
+
   const configResult = reportConfigSchema.partial().safeParse(req.body);
   
   if (!configResult.success) {
@@ -441,12 +500,17 @@ router.put('/:id', authenticateToken, requirePermission('reports', 'write'), asy
       throw createError('Report not found', 404);
     }
 
-    // Merge updates with existing config
     const updatedConfig = {
       ...existingReport.config,
       ...updates,
+      name: updates.name || existingReport.config.name,
+      description: updates.description || existingReport.config.description,
+      tags: updates.tags || existingReport.config.tags,
+      timeRange: updates.timeRange || existingReport.config.timeRange,
+      chartTypes: updates.chartTypes || existingReport.config.chartTypes,
+      template: updates.template as any || existingReport.config.template,
       updatedAt: new Date()
-    };
+    } as ReportConfig;
 
     // Create new version with updates
     const newVersion = await reportManagementService.createNewVersion(
@@ -487,6 +551,11 @@ router.delete('/:id', authenticateToken, requirePermission('reports', 'delete'),
   initializeServices();
   
   const { id } = req.params;
+
+  if (!id) {
+    throw createError('Report ID is required', 400);
+  }
+
   const currentUserId = (req as any).user?.id || 'anonymous';
 
   apiLogger.info('Deleting report configuration', { id, userId: currentUserId });

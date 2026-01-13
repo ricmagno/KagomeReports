@@ -19,7 +19,7 @@ const router = Router();
 const timeRangeSchema = z.object({
   startTime: z.string().datetime().transform(str => new Date(str)),
   endTime: z.string().datetime().transform(str => new Date(str)),
-  relativeRange: z.enum(['last1h', 'last24h', 'last7d', 'last30d']).optional()
+  relativeRange: z.enum(['last1h', 'last2h', 'last6h', 'last12h', 'last24h', 'last7d', 'last30d']).optional()
 });
 
 const dataFilterSchema = z.object({

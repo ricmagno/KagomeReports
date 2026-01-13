@@ -196,17 +196,23 @@ export class ReportManagementService {
    */
   async saveReport(request: SaveReportRequest, userId: string): Promise<SaveReportResponse> {
     try {
-      // Create a complete ReportConfig for validation
-      const fullConfig: ReportConfig = {
+      const fullConfig = {
         id: '', // Will be set later
         name: request.name,
-        description: request.description || '',
-        ...request.config,
+        description: request.description,
+        tags: request.config.tags,
+        timeRange: request.config.timeRange,
+        chartTypes: request.config.chartTypes,
+        template: request.config.template,
+        format: request.config.format,
+        filters: request.config.filters,
+        branding: request.config.branding,
+        metadata: request.config.metadata,
         createdBy: userId,
         createdAt: new Date(),
         updatedAt: new Date(),
         version: 1 // Will be updated later
-      };
+      } as ReportConfig;
 
       // Validate the report configuration
       const validation = this.validateReportConfig(fullConfig);

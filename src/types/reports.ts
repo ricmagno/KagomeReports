@@ -14,12 +14,26 @@ export type ReportTemplate = 'default' | 'executive' | 'technical' | 'summary';
 export interface ReportConfig {
   id?: string;
   name: string;
-  description: string;
+  description?: string;
   tags: string[];
   timeRange: TimeRange;
   chartTypes: ChartType[];
   template: ReportTemplate;
+  format?: 'pdf' | 'docx';
   filters?: DataFilter[];
+  branding?: {
+    companyName?: string | undefined;
+    logo?: string | undefined;
+    colors?: {
+      primary?: string | undefined;
+      secondary?: string | undefined;
+    } | undefined;
+  } | undefined;
+  metadata?: {
+    author?: string | undefined;
+    subject?: string | undefined;
+    keywords?: string[] | undefined;
+  } | undefined;
   createdBy?: string;
   createdAt?: Date;
   updatedAt?: Date;
@@ -76,9 +90,9 @@ export interface ReportListItem {
 // Report save request
 export interface SaveReportRequest {
   name: string;
-  description?: string;
-  config: Omit<ReportConfig, 'id' | 'createdBy' | 'createdAt' | 'updatedAt' | 'version'>;
-  changeDescription?: string;
+  description?: string | undefined;
+  config: Omit<ReportConfig, 'id' | 'name' | 'description' | 'createdBy' | 'createdAt' | 'updatedAt' | 'version'>;
+  changeDescription?: string | undefined;
 }
 
 // Report save response
