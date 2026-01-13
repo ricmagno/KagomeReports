@@ -35,6 +35,7 @@ interface PreviewData {
   statistics: Record<string, StatisticsResult>;
   loading: boolean;
   error: string | null;
+  tagDescriptions: Record<string, string>;
   lastUpdated: Date | null;
 }
 
@@ -58,6 +59,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
     statistics: {},
     loading: false,
     error: null,
+    tagDescriptions: {},
     lastUpdated: null
   });
 
@@ -116,9 +118,27 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
         }
       }
 
+      // Load tag descriptions
+      const tagDescriptions: Record<string, string> = {};
+      await Promise.all(config.tags.map(async (tagName) => {
+        try {
+          const response = await apiService.getTags(tagName);
+          if (response.success && response.data) {
+            // Find exact match
+            const tagInfo = response.data.find(t => t.name === tagName);
+            if (tagInfo) {
+              tagDescriptions[tagName] = tagInfo.description;
+            }
+          }
+        } catch (error) {
+          console.warn(`Failed to fetch tag info for ${tagName}:`, error);
+        }
+      }));
+
       setPreviewData({
         dataPoints,
         statistics,
+        tagDescriptions,
         loading: false,
         error: null,
         lastUpdated: new Date()
@@ -476,7 +496,9 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                     height={320}
                     showTrend={true}
                     showAxis={true}
-                    title={tagName}
+                    title={previewData.tagDescriptions[tagName]
+                      ? `${tagName} - ${previewData.tagDescriptions[tagName]}`
+                      : tagName}
                     className="shadow-md border-gray-300"
                   />
                 ))}
