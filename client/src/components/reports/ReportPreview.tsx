@@ -37,6 +37,7 @@ interface PreviewData {
   loading: boolean;
   error: string | null;
   tagDescriptions: Record<string, string>;
+  tagUnits: Record<string, string>;
   lastUpdated: Date | null;
 }
 
@@ -61,6 +62,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
     loading: false,
     error: null,
     tagDescriptions: {},
+    tagUnits: {},
     lastUpdated: null
   });
 
@@ -119,8 +121,9 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
         }
       }
 
-      // Load tag descriptions
+      // Load tag descriptions and units
       const tagDescriptions: Record<string, string> = {};
+      const tagUnits: Record<string, string> = {};
       await Promise.all(config.tags.map(async (tagName) => {
         try {
           const response = await apiService.getTags(tagName);
@@ -129,6 +132,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
             const tagInfo = response.data.find(t => t.name === tagName);
             if (tagInfo) {
               tagDescriptions[tagName] = tagInfo.description;
+              tagUnits[tagName] = tagInfo.units;
             }
           }
         } catch (error) {
@@ -140,6 +144,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
         dataPoints,
         statistics,
         tagDescriptions,
+        tagUnits,
         loading: false,
         error: null,
         lastUpdated: new Date()
@@ -548,6 +553,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                       showAxis={true}
                       title={tagName}
                       description={previewData.tagDescriptions[tagName]}
+                      units={previewData.tagUnits[tagName]}
                       statistics={previewData.statistics[tagName]}
                       color={tagColors[tagName]}
                       className="shadow-md border-gray-300"

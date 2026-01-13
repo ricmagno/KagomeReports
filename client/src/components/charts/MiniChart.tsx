@@ -19,6 +19,7 @@ interface MiniChartProps {
   description?: string;
   statistics?: StatisticsResult;
   color?: string;
+  units?: string;
 }
 
 export const MiniChart: React.FC<MiniChartProps> = ({
@@ -33,7 +34,8 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   title,
   description,
   statistics,
-  color
+  color,
+  units
 }) => {
   const chartData = useMemo(() => {
     if (!data || data.length === 0) return null;
@@ -166,9 +168,9 @@ export const MiniChart: React.FC<MiniChartProps> = ({
             <div className="flex items-center space-x-3 text-[10px] font-mono mb-1">
               {statistics && (
                 <>
-                  <span className="text-gray-500">AVG: <span className="font-bold text-blue-600">{statistics.average.toFixed(2)}</span></span>
-                  <span className="text-gray-500">MIN: <span className="font-bold text-emerald-600">{statistics.min.toFixed(2)}</span></span>
-                  <span className="text-gray-500">MAX: <span className="font-bold text-amber-600">{statistics.max.toFixed(2)}</span></span>
+                  <span className="text-gray-500">AVG: <span className="font-bold text-blue-600">{statistics.average.toFixed(2)}{units ? ` ${units}` : ''}</span></span>
+                  <span className="text-gray-500">MIN: <span className="font-bold text-emerald-600">{statistics.min.toFixed(2)}{units ? ` ${units}` : ''}</span></span>
+                  <span className="text-gray-500">MAX: <span className="font-bold text-amber-600">{statistics.max.toFixed(2)}{units ? ` ${units}` : ''}</span></span>
                 </>
               )}
             </div>
@@ -275,7 +277,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
             y="20"
             className="text-[10px] fill-gray-500 font-medium"
           >
-            {chartData.maxValue.toFixed(1)}
+            {chartData.maxValue.toFixed(1)}{units ? ` ${units}` : ''}
           </text>
 
           {showAxis && chartData.subdivisions.map((sub, i) => (
