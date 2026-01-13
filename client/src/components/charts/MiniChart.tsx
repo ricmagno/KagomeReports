@@ -56,7 +56,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
     const leftPad = showAxis ? 50 : 10;
     const points = validData.map((point, index) => {
       const x = (index / (validData.length - 1)) * (width - leftPad - 15) + leftPad;
-      const y = height - 20 - ((point.value - minValue) / range) * (height - 40);
+      const y = (height - 10) - ((point.value - minValue) / range) * (height - 20);
       return { x, y, value: point.value, timestamp: point.timestamp };
     });
 
@@ -87,10 +87,10 @@ export const MiniChart: React.FC<MiniChartProps> = ({
     }
 
     // Calculate Y-axis subdivisions
-    const subdivisions = [0.25, 0.5, 0.75].map((ratio, index, arr) => {
+    const subdivisions = [0.25, 0.5, 0.75, 1.0].map((ratio, index, arr) => {
       const value = minValue + (ratio * range);
-      const y = height - 20 - (ratio * (height - 40));
-      // Add units only to the highest subdivision (last item in our 0.25, 0.5, 0.75 array)
+      const y = (height - 10) - (ratio * (height - 20));
+      // Add units only to the highest subdivision (last item in our array)
       const label = value.toFixed(1) + (units && index === arr.length - 1 ? ` ${units}` : '');
       return { value, y, label };
     });
@@ -132,10 +132,10 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       for (let i = 1; i < chartData.points.length; i++) {
         path += ` L ${chartData.points[i].x} ${chartData.points[i].y}`;
       }
-      // Close the path to bottom
+      // Close the path to bottom (X-axis)
       const lastPoint = chartData.points[chartData.points.length - 1];
       const firstPoint = chartData.points[0];
-      path += ` L ${lastPoint.x} ${height - 20} L ${firstPoint.x} ${height - 20} Z`;
+      path += ` L ${lastPoint.x} ${height - 10} L ${firstPoint.x} ${height - 10} Z`;
     }
 
     return path;
