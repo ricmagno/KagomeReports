@@ -1,9 +1,9 @@
 import React from 'react';
 import { format } from 'date-fns';
-import { 
-  GitCompare, 
-  Plus, 
-  Minus, 
+import {
+  GitCompare,
+  Plus,
+  Minus,
   Edit3,
   Calendar,
   Tag,
@@ -49,7 +49,7 @@ export const VersionComparison: React.FC<VersionComparisonProps> = ({
     basicFields.forEach(field => {
       const oldValue = config1[field.key as keyof ReportConfig];
       const newValue = config2[field.key as keyof ReportConfig];
-      
+
       if (oldValue !== newValue) {
         differences.push({
           field: field.key,
@@ -65,11 +65,11 @@ export const VersionComparison: React.FC<VersionComparisonProps> = ({
     // Compare tags
     const oldTags = config1.tags || [];
     const newTags = config2.tags || [];
-    
+
     if (JSON.stringify(oldTags.sort()) !== JSON.stringify(newTags.sort())) {
       const addedTags = newTags.filter(tag => !oldTags.includes(tag));
       const removedTags = oldTags.filter(tag => !newTags.includes(tag));
-      
+
       differences.push({
         field: 'tags',
         label: 'Tags',
@@ -83,7 +83,7 @@ export const VersionComparison: React.FC<VersionComparisonProps> = ({
     // Compare chart types
     const oldChartTypes = config1.chartTypes || [];
     const newChartTypes = config2.chartTypes || [];
-    
+
     if (JSON.stringify(oldChartTypes.sort()) !== JSON.stringify(newChartTypes.sort())) {
       differences.push({
         field: 'chartTypes',
@@ -98,13 +98,13 @@ export const VersionComparison: React.FC<VersionComparisonProps> = ({
     // Compare time range
     const oldTimeRange = config1.timeRange;
     const newTimeRange = config2.timeRange;
-    
+
     if (oldTimeRange && newTimeRange) {
-      const timeRangeChanged = 
-        oldTimeRange.startTime.getTime() !== newTimeRange.startTime.getTime() ||
-        oldTimeRange.endTime.getTime() !== newTimeRange.endTime.getTime() ||
+      const timeRangeChanged =
+        new Date(oldTimeRange.startTime).getTime() !== new Date(newTimeRange.startTime).getTime() ||
+        new Date(oldTimeRange.endTime).getTime() !== new Date(newTimeRange.endTime).getTime() ||
         oldTimeRange.relativeRange !== newTimeRange.relativeRange;
-      
+
       if (timeRangeChanged) {
         differences.push({
           field: 'timeRange',
@@ -244,7 +244,7 @@ export const VersionComparison: React.FC<VersionComparisonProps> = ({
                     {diff.type}
                   </span>
                 </div>
-                
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <div className="text-xs font-medium text-gray-500 mb-2">

@@ -2,7 +2,7 @@
 export interface TimeSeriesData {
   timestamp: Date;
   value: number;
-  quality: 'Good' | 'Bad' | 'Uncertain';
+  quality: 'Good' | 'Bad' | 'Uncertain' | number;
   tagName: string;
 }
 

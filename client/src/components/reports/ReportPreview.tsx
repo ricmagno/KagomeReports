@@ -5,14 +5,14 @@
  */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Eye, 
-  Download, 
-  FileText, 
-  BarChart3, 
-  Calendar, 
-  Clock, 
-  TrendingUp, 
+import {
+  Eye,
+  Download,
+  FileText,
+  BarChart3,
+  Calendar,
+  Clock,
+  TrendingUp,
   Activity,
   AlertCircle,
   CheckCircle,
@@ -64,9 +64,9 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
   // Load preview data when manually triggered
   const loadPreviewData = async () => {
     if (!config.tags || config.tags.length === 0 || !config.timeRange) {
-      setPreviewData(prev => ({ 
-        ...prev, 
-        error: 'Please select tags and time range before querying data' 
+      setPreviewData(prev => ({
+        ...prev,
+        error: 'Please select tags and time range before querying data'
       }));
       return;
     }
@@ -92,7 +92,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
 
       const results = await Promise.all(dataPromises);
       const dataPoints: Record<string, TimeSeriesData[]> = {};
-      
+
       results.forEach(({ tagName, data }) => {
         dataPoints[tagName] = data;
       });
@@ -142,8 +142,8 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
     Object.values(previewData.dataPoints).forEach(data => {
       data.forEach(point => {
         totalPoints++;
-        if (point.quality === 'Good') goodQuality++;
-        else if (point.quality === 'Bad') badQuality++;
+        if (point.quality === 'Good' || point.quality === 192) goodQuality++;
+        else if (point.quality === 'Bad' || point.quality === 0) badQuality++;
         else uncertainQuality++;
       });
     });
@@ -167,7 +167,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
 
   const handleGenerate = async () => {
     if (!onGenerate) return;
-    
+
     setIsGenerating(true);
     try {
       onGenerate(config);
@@ -180,8 +180,9 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
     loadPreviewData();
   };
 
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+  const formatDate = (date: Date | string) => {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
   };
 
   const getChartIcon = (chartTypes: string[]) => {
@@ -222,28 +223,27 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                 <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
               )}
             </div>
-            
+
             {config.description && (
               <p className="text-gray-600 text-sm mb-3">
                 {config.description}
               </p>
             )}
-            
+
             {/* Tags */}
             {config.tags && config.tags.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-3">
                 {config.tags.map((tag, index) => {
                   const tagData = previewData.dataPoints[tag] || [];
                   const hasData = tagData.length > 0;
-                  
+
                   return (
                     <span
                       key={index}
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        hasData 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-600'
-                      }`}
+                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${hasData
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-gray-100 text-gray-600'
+                        }`}
                     >
                       {tag}
                       {!previewData.loading && (
@@ -297,7 +297,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                 </>
               )}
             </button>
-            
+
             <button
               onClick={handleRefresh}
               disabled={previewData.loading || dataQuality.totalPoints === 0}
@@ -306,7 +306,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
             >
               <RefreshCw className={`w-4 h-4 ${previewData.loading ? 'animate-spin' : ''}`} />
             </button>
-            
+
             {onEdit && (
               <button
                 onClick={() => onEdit(config)}
@@ -315,7 +315,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                 Edit
               </button>
             )}
-            
+
             <button
               onClick={handleGenerate}
               disabled={isGenerating || previewData.loading || dataQuality.totalPoints === 0}
@@ -347,10 +347,10 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
               Time Range
             </h4>
             <div className="text-sm text-gray-600">
-              <div>From: {formatDate(config.timeRange.startTime)}</div>
-              <div>To: {formatDate(config.timeRange.endTime)}</div>
+              <div>From: {formatDate(new Date(config.timeRange.startTime))}</div>
+              <div>To: {formatDate(new Date(config.timeRange.endTime))}</div>
               <div className="text-xs text-gray-500 mt-1">
-                Duration: {Math.ceil((config.timeRange.endTime.getTime() - config.timeRange.startTime.getTime()) / (1000 * 60 * 60 * 24))} days
+                Duration: {Math.ceil((new Date(config.timeRange.endTime).getTime() - new Date(config.timeRange.startTime).getTime()) / (1000 * 60 * 60 * 24))} days
               </div>
             </div>
           </div>
@@ -410,7 +410,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                   <div key={tagName} className="mb-1">
                     <div className="font-medium text-xs text-gray-700">{tagName}:</div>
                     <div className="text-xs">
-                      Avg: {stats.average.toFixed(2)}, Range: {stats.min.toFixed(2)}-{stats.max.toFixed(2)}
+                      Avg: {stats?.average?.toFixed(2) || 'N/A'}, Range: {stats?.min?.toFixed(2) || 'N/A'}-{stats?.max?.toFixed(2) || 'N/A'}
                     </div>
                   </div>
                 ))}
@@ -470,8 +470,8 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                     key={tagName}
                     data={data}
                     tagName={tagName}
-                    type={config.chartTypes[0] === 'bar' ? 'bar' : 
-                          config.chartTypes[0] === 'trend' ? 'area' : 'line'}
+                    type={config.chartTypes[0] === 'bar' ? 'bar' :
+                      config.chartTypes[0] === 'trend' ? 'area' : 'line'}
                     width={200}
                     height={120}
                     className="shadow-sm"
@@ -509,7 +509,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
               <div>
                 <h4 className="text-sm font-medium text-yellow-800">No Data Found</h4>
                 <p className="text-sm text-yellow-700 mt-1">
-                  No data found for the selected tags in the specified time range. 
+                  No data found for the selected tags in the specified time range.
                   Try adjusting the time range or selecting different tags.
                 </p>
               </div>

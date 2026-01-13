@@ -33,7 +33,7 @@ const dataFilterSchema = z.object({
 });
 
 const queryOptionsSchema = z.object({
-  mode: z.nativeEnum(RetrievalMode).default(RetrievalMode.Full),
+  mode: z.nativeEnum(RetrievalMode).default(RetrievalMode.Cyclic),
   interval: z.number().positive().optional(),
   tolerance: z.number().positive().optional(),
   maxPoints: z.number().positive().max(10000).optional(),

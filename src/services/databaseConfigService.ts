@@ -6,14 +6,14 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { ConnectionPool } from 'mssql';
-import { 
-  DatabaseConfiguration, 
-  DatabaseConfig, 
-  ConnectionTestResult, 
-  DatabaseConfigSummary, 
-  ValidationResult, 
+import {
+  DatabaseConfiguration,
+  DatabaseConfig,
+  ConnectionTestResult,
+  DatabaseConfigSummary,
+  ValidationResult,
   ValidationError,
-  EncryptedConfig 
+  EncryptedConfig
 } from '@/types/databaseConfig';
 import { encryptionService } from '@/services/encryptionService';
 import { apiLogger } from '@/utils/logger';
@@ -106,7 +106,7 @@ export class DatabaseConfigService {
       const { authService } = await import('./authService');
       const auditAction = isUpdate ? 'database_config_updated' : 'database_config_created';
       const auditDetails = `${isUpdate ? 'Updated' : 'Created'} database configuration: ${config.name} (${config.host}:${config.port}/${config.database})`;
-      
+
       try {
         await authService.logAuditEvent(
           userId,
@@ -117,11 +117,11 @@ export class DatabaseConfigService {
           undefined
         );
       } catch (auditError) {
-        apiLogger.error('Failed to log audit event for database configuration change', { 
-          error: auditError, 
-          configId, 
-          userId, 
-          action: auditAction 
+        apiLogger.error('Failed to log audit event for database configuration change', {
+          error: auditError,
+          configId,
+          userId,
+          action: auditAction
         });
       }
 
@@ -179,7 +179,7 @@ export class DatabaseConfigService {
    */
   async testConnection(config: DatabaseConfig): Promise<ConnectionTestResult> {
     const startTime = Date.now();
-    
+
     try {
       // Validate configuration first
       const validation = this.validateConfiguration(config);
@@ -232,10 +232,10 @@ export class DatabaseConfigService {
           });
 
           await testPool.connect();
-          
+
           // Test with multiple diagnostic queries
           const request = testPool.request();
-          
+
           // Get server version and basic info
           const versionResult = await request.query(`
             SELECT 
@@ -247,7 +247,7 @@ export class DatabaseConfigService {
               @@LANGUAGE as Language,
               @@SPID as ProcessId
           `);
-          
+
           // Test AVEVA Historian specific tables if they exist
           let historianTablesExist = false;
           try {
@@ -262,17 +262,17 @@ export class DatabaseConfigService {
             // Historian tables don't exist, which is fine for testing
             apiLogger.debug('AVEVA Historian tables not found, continuing with basic connection test');
           }
-          
+
           await testPool.close();
-          
+
           const responseTime = Date.now() - startTime;
           const serverInfo = versionResult.recordset[0];
           const serverVersion = this.extractServerVersion(serverInfo?.ServerVersion || 'Unknown');
-          
-          const message = historianTablesExist 
+
+          const message = historianTablesExist
             ? 'Connection successful - AVEVA Historian database detected'
             : 'Connection successful - Standard SQL Server database';
-          
+
           apiLogger.info('Database connection test completed successfully', {
             host: config.host,
             database: config.database,
@@ -280,7 +280,7 @@ export class DatabaseConfigService {
             serverVersion,
             historianTablesExist
           });
-          
+
           return {
             success: true,
             message,
@@ -307,7 +307,7 @@ export class DatabaseConfigService {
     } catch (error) {
       const responseTime = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
+
       // Update configuration status if it exists
       if (config.id) {
         const dbConfig = this.configurations.get(config.id);
@@ -382,10 +382,10 @@ export class DatabaseConfigService {
             undefined
           );
         } catch (auditError) {
-          apiLogger.error('Failed to log audit event for database configuration deletion', { 
-            error: auditError, 
-            configId, 
-            userId 
+          apiLogger.error('Failed to log audit event for database configuration deletion', {
+            error: auditError,
+            configId,
+            userId
           });
         }
       }
@@ -453,7 +453,7 @@ export class DatabaseConfigService {
       // Test the configuration before activating
       const config = await this.loadConfiguration(configId);
       const testResult = await this.testConnection(config);
-      
+
       if (!testResult.success) {
         dbConfig.isActive = false;
         this.activeConfigId = null;
@@ -480,7 +480,7 @@ export class DatabaseConfigService {
         try {
           const auditDetails = `Activated database configuration: ${dbConfig.name} (${dbConfig.host}/${dbConfig.database})` +
             (previousActive ? ` - Previous: ${previousActive.name} (${previousActive.host}/${previousActive.database})` : '');
-          
+
           await authService.logAuditEvent(
             userId,
             'database_config_activated',
@@ -490,10 +490,10 @@ export class DatabaseConfigService {
             undefined
           );
         } catch (auditError) {
-          apiLogger.error('Failed to log audit event for database configuration activation', { 
-            error: auditError, 
-            configId, 
-            userId 
+          apiLogger.error('Failed to log audit event for database configuration activation', {
+            error: auditError,
+            configId,
+            userId
           });
         }
       }
@@ -521,39 +521,67 @@ export class DatabaseConfigService {
       throw createError('No active database configuration', 500);
     }
 
-    if (!this.activePool) {
-      const config = await this.loadConfiguration(this.activeConfigId);
-      this.activePool = new ConnectionPool({
-        server: config.host,
-        port: config.port,
-        database: config.database,
-        user: config.username,
-        password: config.password,
-        options: {
-          // For IP addresses with encryption, we need special handling
-          encrypt: config.encrypt && !this.isIPAddress(config.host),
-          trustServerCertificate: config.trustServerCertificate || this.isIPAddress(config.host),
-          enableArithAbort: true,
-          // Only set cryptoCredentialsDetails for hostnames
-          ...(config.encrypt && !this.isIPAddress(config.host) && {
-            cryptoCredentialsDetails: {
-              minVersion: 'TLSv1.2'
-            }
-          })
-        },
-        connectionTimeout: config.connectionTimeout,
-        requestTimeout: config.requestTimeout,
-        pool: {
-          min: 2,
-          max: 10,
-          idleTimeoutMillis: 30000
-        }
-      });
-
-      await this.activePool.connect();
+    if (this.activePool && this.activePool.connected) {
+      return this.activePool;
     }
 
-    return this.activePool;
+    // If pool exists but not connected, close it just in case
+    if (this.activePool) {
+      try {
+        await this.activePool.close();
+      } catch (err) {
+        // Ignore close errors
+      }
+      this.activePool = null;
+    }
+
+    const config = await this.loadConfiguration(this.activeConfigId);
+    apiLogger.info('Creating new connection pool for active configuration', {
+      configId: this.activeConfigId,
+      host: config.host,
+      database: config.database
+    });
+
+    const pool = new ConnectionPool({
+      server: config.host,
+      port: config.port,
+      database: config.database,
+      user: config.username,
+      password: config.password,
+      options: {
+        encrypt: config.encrypt && !this.isIPAddress(config.host),
+        trustServerCertificate: config.trustServerCertificate || this.isIPAddress(config.host),
+        enableArithAbort: true,
+        ...(config.encrypt && !this.isIPAddress(config.host) && {
+          cryptoCredentialsDetails: {
+            minVersion: 'TLSv1.2'
+          }
+        })
+      },
+      connectionTimeout: config.connectionTimeout,
+      requestTimeout: config.requestTimeout,
+      pool: {
+        min: 2,
+        max: 10,
+        idleTimeoutMillis: 30000
+      }
+    });
+
+    try {
+      await pool.connect();
+      this.activePool = pool;
+      return this.activePool;
+    } catch (error) {
+      apiLogger.error('Failed to connect to active database configuration', {
+        error,
+        configId: this.activeConfigId
+      });
+      // Ensure we don't leave a broken pool object
+      try {
+        await pool.close();
+      } catch (e) { }
+      throw error;
+    }
   }
 
   /**
@@ -621,7 +649,7 @@ export class DatabaseConfigService {
    */
   async encryptCredentials(config: DatabaseConfig): Promise<EncryptedConfig> {
     const encryptedPassword = encryptionService.encrypt(config.password);
-    
+
     return {
       id: config.id || uuidv4(),
       name: config.name,
@@ -643,7 +671,7 @@ export class DatabaseConfigService {
   async decryptCredentials(encryptedConfig: EncryptedConfig): Promise<DatabaseConfig> {
     const encryptedData = JSON.parse(encryptedConfig.encryptedPassword);
     const decryptedPassword = encryptionService.decrypt(encryptedData);
-    
+
     return {
       id: encryptedConfig.id,
       name: encryptedConfig.name,
@@ -666,18 +694,18 @@ export class DatabaseConfigService {
     try {
       const fs = await import('fs/promises');
       const path = await import('path');
-      
+
       const configDir = path.join(process.cwd(), 'data');
       const configFile = path.join(configDir, 'database-configs.json');
-      
+
       try {
         // Ensure data directory exists
         await fs.mkdir(configDir, { recursive: true });
-        
+
         // Try to read existing configurations
         const data = await fs.readFile(configFile, 'utf-8');
         const savedConfigs = JSON.parse(data);
-        
+
         // Load configurations into memory
         this.configurations.clear();
         for (const config of savedConfigs.configurations || []) {
@@ -688,15 +716,15 @@ export class DatabaseConfigService {
           }
           this.configurations.set(config.id, config);
         }
-        
+
         // Restore active configuration ID
         this.activeConfigId = savedConfigs.activeConfigId || null;
-        
+
         apiLogger.info('Database configurations loaded from storage', {
           count: this.configurations.size,
           activeConfigId: this.activeConfigId
         });
-        
+
       } catch (error: any) {
         if (error.code === 'ENOENT') {
           // File doesn't exist yet, that's fine
@@ -717,24 +745,24 @@ export class DatabaseConfigService {
     try {
       const fs = await import('fs/promises');
       const path = await import('path');
-      
+
       const configDir = path.join(process.cwd(), 'data');
       const configFile = path.join(configDir, 'database-configs.json');
-      
+
       // Ensure data directory exists
       await fs.mkdir(configDir, { recursive: true });
-      
+
       // Convert Map to array for serialization
       const configurations = Array.from(this.configurations.values());
-      
+
       const dataToSave = {
         configurations,
         activeConfigId: this.activeConfigId,
         lastUpdated: new Date().toISOString()
       };
-      
+
       await fs.writeFile(configFile, JSON.stringify(dataToSave, null, 2), 'utf-8');
-      
+
       apiLogger.debug('Database configurations persisted to storage', {
         count: configurations.length,
         activeConfigId: this.activeConfigId
@@ -760,7 +788,7 @@ export class DatabaseConfigService {
     // Allow IP addresses and domain names
     const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
     const domainRegex = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
-    
+
     return ipRegex.test(hostname) || domainRegex.test(hostname) || hostname === 'localhost';
   }
 
@@ -824,7 +852,7 @@ export function setupDatabaseConfigIntegration(): void {
     // Import here to avoid circular dependency
     const { getHistorianConnection } = await import('@/services/historianConnection');
     const connection = getHistorianConnection();
-    
+
     // Switch to the new configuration
     await connection.switchConfiguration(configId);
   });

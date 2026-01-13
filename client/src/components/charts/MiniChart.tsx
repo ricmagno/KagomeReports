@@ -29,7 +29,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
     // Filter out null values and sort by timestamp
     const validData = data
       .filter(point => point.value !== null && !isNaN(point.value))
-      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
     if (validData.length === 0) return null;
 
@@ -56,7 +56,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
 
   if (!chartData) {
     return (
-      <div 
+      <div
         className={`flex items-center justify-center bg-gray-50 border border-gray-200 rounded ${className}`}
         style={{ width, height }}
       >
@@ -69,7 +69,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
     if (chartData.points.length === 0) return '';
 
     let path = `M ${chartData.points[0].x} ${chartData.points[0].y}`;
-    
+
     if (type === 'line') {
       // Simple line chart
       for (let i = 1; i < chartData.points.length; i++) {
@@ -90,9 +90,9 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   };
 
   const getQualityColor = () => {
-    const goodQualityCount = data.filter(point => point.quality === 'Good').length;
+    const goodQualityCount = data.filter(point => point.quality === 'Good' || point.quality === 192).length;
     const qualityPercentage = (goodQualityCount / data.length) * 100;
-    
+
     if (qualityPercentage >= 90) return '#10b981'; // green
     if (qualityPercentage >= 70) return '#f59e0b'; // yellow
     return '#ef4444'; // red
@@ -104,11 +104,11 @@ export const MiniChart: React.FC<MiniChartProps> = ({
         {/* Grid lines */}
         <defs>
           <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f3f4f6" strokeWidth="1"/>
+            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#f3f4f6" strokeWidth="1" />
           </pattern>
         </defs>
         <rect width={width} height={height} fill="url(#grid)" opacity="0.5" />
-        
+
         {/* Chart area */}
         {type === 'bar' ? (
           // Bar chart

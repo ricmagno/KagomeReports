@@ -205,18 +205,20 @@ export class HistorianConnection {
   async executeQuery<T = any>(query: string, params?: Record<string, any>): Promise<IResult<T>> {
     return RetryHandler.executeWithRetry(
       async () => {
-        if (!this.isConnected) {
-          // If not connected, trigger connection but allow it to run in background mode if needed
-          // However, for query execution we generally need the connection NOW.
-          // The issue is if we are in infinite retry loop.
-          if (this.connectionState === 'retrying') {
-            throw createError(`Database is currently reconnecting. Next attempt at ${this.nextRetryTime?.toISOString()}`, 503);
-          }
+        // Robust check for connection state
+        if (!this.isConnected || !this.pool || !this.pool.connected) {
+          dbLogger.info('Database connection lost or not initialized, reconnecting...', {
+            isConnected: this.isConnected,
+            hasPool: !!this.pool,
+            poolConnected: this.pool?.connected
+          });
+
+          this.isConnected = false;
           await this.connect();
         }
 
-        if (!this.pool) {
-          throw createError('Database connection not available', 503);
+        if (!this.pool || !this.pool.connected) {
+          throw createError('Database connection not available after reconnection attempt', 503);
         }
 
         dbLogger.debug('Executing query:', { query: this.sanitizeQueryForLogging(query), params });

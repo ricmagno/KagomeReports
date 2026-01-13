@@ -224,12 +224,13 @@ export class DataRetrievalService {
     const includeQuality = options?.includeQuality !== false;
 
     // Use the native AVEVA Historian History view with wwRetrievalMode parameters
+    // We use the exact column names from the user's example but with aliases for our code
     let query = `
       SELECT 
         DateTime as timestamp,
+        TagName as tagName,
         Value as value,
-        ${includeQuality ? 'Quality as quality,' : ''}
-        TagName as tagName
+        ${includeQuality ? 'Quality as quality' : 'NULL as quality'}
       FROM History
       WHERE TagName = @tagName
         AND DateTime >= @startTime
@@ -237,8 +238,9 @@ export class DataRetrievalService {
         AND wwRetrievalMode = @mode
     `;
 
-    // Add resolution if specified or for Cyclic mode
-    if (options?.resolution || options?.interval) {
+    // Add resolution if specified or for Cyclic/Average modes
+    const mode = options?.mode || RetrievalMode.Cyclic;
+    if (mode === RetrievalMode.Cyclic || mode === RetrievalMode.Average || options?.resolution || options?.interval) {
       query += ` AND wwResolution = @resolution`;
     }
 
@@ -248,7 +250,7 @@ export class DataRetrievalService {
     }
 
     // Add query optimization
-    query += ` ORDER BY DateTime`;
+    query += ` ORDER BY DateTime ASC`;
 
     return query;
   }
@@ -538,17 +540,24 @@ export class DataRetrievalService {
     timeRange: TimeRange,
     options?: HistorianQueryOptions
   ): Record<string, any> {
+    const mode = options?.mode || RetrievalMode.Cyclic;
     const params: Record<string, any> = {
       tagName,
       startTime: timeRange.startTime,
       endTime: timeRange.endTime,
-      mode: options?.mode || RetrievalMode.Full
+      mode: mode
     };
 
+    // Calculate or use provided resolution
     if (options?.resolution) {
       params.resolution = options.resolution;
     } else if (options?.interval) {
       params.resolution = options.interval * 1000; // Convert seconds to milliseconds
+    } else if (mode === RetrievalMode.Cyclic || mode === RetrievalMode.Average) {
+      // Default resolution: Calculate based on time range to get roughly 100 points if not specified
+      const durationMs = timeRange.endTime.getTime() - timeRange.startTime.getTime();
+      const defaultPoints = options?.maxPoints || 100;
+      params.resolution = Math.max(1000, Math.floor(durationMs / defaultPoints)); // At least 1 second
     }
 
     if (options?.maxPoints) {
