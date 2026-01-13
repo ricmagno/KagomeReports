@@ -516,7 +516,10 @@ export class DataRetrievalService {
       const params: Record<string, any> = {};
 
       if (filter) {
-        query += ` AND (t.TagName LIKE @filter OR t.Description LIKE @filter)`;
+        dbLogger.debug(`Applying tag filter: ${filter}`);
+        // Use UPPER for case-insensitive search regardless of collation
+        // and COALESCE to safely handle NULL descriptions
+        query += ` AND (UPPER(t.TagName) LIKE UPPER(@filter) OR UPPER(COALESCE(t.Description, '')) LIKE UPPER(@filter))`;
         params.filter = `%${filter}%`;
       }
 

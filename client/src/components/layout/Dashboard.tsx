@@ -366,7 +366,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           <div className="space-y-1 max-h-40 overflow-y-auto">
                             {availableTags
                               .filter(tag => tag.name.toLowerCase().includes(tagSearchTerm.toLowerCase()) ||
-                                tag.description.toLowerCase().includes(tagSearchTerm.toLowerCase()))
+                                (tag.description || '').toLowerCase().includes(tagSearchTerm.toLowerCase()))
                               .map((tag) => (
                                 <button
                                   key={tag.name}
