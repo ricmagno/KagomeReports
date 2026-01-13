@@ -54,9 +54,15 @@ export const MiniChart: React.FC<MiniChartProps> = ({
 
     // Create SVG path points
     const leftPad = showAxis ? 50 : 10;
+    const bottomPad = showAxis ? 30 : 10;
+    const topPad = 10;
+    const rightPad = 15;
+    const graphHeight = height - topPad - bottomPad;
+    const graphWidth = width - leftPad - rightPad;
+
     const points = validData.map((point, index) => {
-      const x = (index / (validData.length - 1)) * (width - leftPad - 15) + leftPad;
-      const y = (height - 10) - ((point.value - minValue) / range) * (height - 20);
+      const x = (index / (validData.length - 1)) * graphWidth + leftPad;
+      const y = (height - bottomPad) - ((point.value - minValue) / range) * graphHeight;
       return { x, y, value: point.value, timestamp: point.timestamp };
     });
 
@@ -75,8 +81,8 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       const intercept = (sumY - slope * sumX) / n;
 
       // Calculate start and end Y for the trend line
-      const trendYStart = height - 10 - ((intercept - minValue) / range) * (height - 20);
-      const trendYEnd = height - 10 - (((slope * (n - 1) + intercept) - minValue) / range) * (height - 20);
+      const trendYStart = (height - bottomPad) - ((intercept - minValue) / range) * graphHeight;
+      const trendYEnd = (height - bottomPad) - (((slope * (n - 1) + intercept) - minValue) / range) * graphHeight;
 
       trendPoints = {
         x1: points[0].x,
@@ -89,11 +95,39 @@ export const MiniChart: React.FC<MiniChartProps> = ({
     // Calculate Y-axis subdivisions
     const subdivisions = [0.25, 0.5, 0.75, 1.0].map((ratio, index, arr) => {
       const value = minValue + (ratio * range);
-      const y = (height - 10) - (ratio * (height - 20));
+      const y = (height - bottomPad) - (ratio * graphHeight);
       // Add units only to the highest subdivision (last item in our array)
       const label = value.toFixed(1) + (units && index === arr.length - 1 ? ` ${units}` : '');
       return { value, y, label };
     });
+
+    // Calculate X-axis time subdivisions
+    const timeSubdivisions: { x: number; label: string }[] = [];
+    if (showAxis && validData.length > 1) {
+      const start = new Date(validData[0].timestamp).getTime();
+      const end = new Date(validData[validData.length - 1].timestamp).getTime();
+      const durationMin = (end - start) / (1000 * 60);
+
+      // Determine interval (1, 5, 10, 15, 25, 30, or 60/120... for longer ranges)
+      const potentialIntervals = [1, 5, 10, 15, 25, 30, 60, 120, 240, 480, 720, 1440];
+      let interval = potentialIntervals[0];
+      for (const i of potentialIntervals) {
+        interval = i;
+        if (durationMin / i <= 8) break;
+      }
+
+      // Calculate nice start time (rounded to interval)
+      const intervalMs = interval * 60 * 1000;
+      let currentTick = Math.ceil(start / intervalMs) * intervalMs;
+
+      while (currentTick <= end) {
+        const ratio = (currentTick - start) / (end - start);
+        const x = ratio * graphWidth + leftPad;
+        const timeLabel = new Date(currentTick).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        timeSubdivisions.push({ x, label: timeLabel });
+        currentTick += intervalMs;
+      }
+    }
 
     return {
       points,
@@ -102,9 +136,14 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       range,
       validData,
       trendPoints,
-      subdivisions
+      subdivisions,
+      timeSubdivisions,
+      bottomPad,
+      leftPad,
+      graphWidth,
+      graphHeight
     };
-  }, [data, width, height, showTrend, showAxis]);
+  }, [data, width, height, showTrend, showAxis, units]);
 
   if (!chartData) {
     return (
@@ -135,9 +174,8 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       // Close the path to bottom (X-axis)
       const lastPoint = chartData.points[chartData.points.length - 1];
       const firstPoint = chartData.points[0];
-      path += ` L ${lastPoint.x} ${height - 10} L ${firstPoint.x} ${height - 10} Z`;
+      path += ` L ${lastPoint.x} ${height - chartData.bottomPad} L ${firstPoint.x} ${height - chartData.bottomPad} Z`;
     }
-
     return path;
   };
 
@@ -187,19 +225,19 @@ export const MiniChart: React.FC<MiniChartProps> = ({
         <svg width={width} height={height} className="overflow-visible">
           {/* Y-Axis Line */}
           {showAxis && (
-            <line x1="45" y1="10" x2="45" y2={height - 10} stroke="#94a3b8" strokeWidth="1" />
+            <line x1={chartData.leftPad - 5} y1="10" x2={chartData.leftPad - 5} y2={height - chartData.bottomPad} stroke="#94a3b8" strokeWidth="1" />
           )}
 
           {/* X-Axis Line */}
           {showAxis && (
-            <line x1="45" y1={height - 10} x2={width - 10} y2={height - 10} stroke="#94a3b8" strokeWidth="1" />
+            <line x1={chartData.leftPad - 5} y1={height - chartData.bottomPad} x2={width - 10} y2={height - chartData.bottomPad} stroke="#94a3b8" strokeWidth="1" />
           )}
 
           {/* Grid lines */}
           {showAxis && chartData.subdivisions.map((sub, i) => (
             <line
               key={`sub-line-${i}`}
-              x1="45"
+              x1={chartData.leftPad - 5}
               y1={sub.y}
               x2={width - 10}
               y2={sub.y}
@@ -221,12 +259,12 @@ export const MiniChart: React.FC<MiniChartProps> = ({
             // Bar chart
             chartData.points.map((point, index) => {
               const barWidth = Math.max(2, (width - 20) / chartData.points.length - 1);
-              const barHeight = ((point.value - chartData.minValue) / chartData.range) * (height - 20);
+              const barHeight = ((point.value - chartData.minValue) / chartData.range) * (chartData.graphHeight);
               return (
                 <rect
                   key={index}
                   x={point.x - barWidth / 2}
-                  y={height - 10 - barHeight}
+                  y={height - chartData.bottomPad - barHeight}
                   width={barWidth}
                   height={barHeight}
                   fill={baseColor}
@@ -273,8 +311,6 @@ export const MiniChart: React.FC<MiniChartProps> = ({
             />
           ))}
 
-
-
           {showAxis && chartData.subdivisions.map((sub, i) => (
             <text
               key={`sub-label-${i}`}
@@ -288,31 +324,24 @@ export const MiniChart: React.FC<MiniChartProps> = ({
 
           <text
             x={showAxis ? 5 : 10}
-            y={height - 15}
+            y={height - chartData.bottomPad - 5}
             className="text-[10px] fill-gray-500 font-medium"
           >
             {chartData.minValue.toFixed(1)}
           </text>
 
           {/* Time labels */}
-          {showAxis && (
-            <>
-              <text
-                x="50"
-                y={height - 2}
-                className="text-[8px] fill-gray-400"
-              >
-                {new Date(chartData.validData[0].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </text>
-              <text
-                x={width - 40}
-                y={height - 2}
-                className="text-[8px] fill-gray-400"
-              >
-                {new Date(chartData.validData[chartData.validData.length - 1].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </text>
-            </>
-          )}
+          {showAxis && chartData.timeSubdivisions.map((sub, i) => (
+            <text
+              key={`time-sub-${i}`}
+              x={sub.x}
+              y={height - 10}
+              className="text-[9px] fill-gray-500 font-medium"
+              textAnchor="middle"
+            >
+              {sub.label}
+            </text>
+          ))}
         </svg>
 
       </div>

@@ -318,12 +318,41 @@ export const apiService = {
     return fetchWithRetry(`/reports?${params}`);
   },
 
-  async getReport(id: string): Promise<ApiResponse<ReportConfig>> {
-    return fetchWithRetry(`/reports/${encodeURIComponent(id)}`);
+  async getSavedReports(): Promise<ApiResponse<Array<{
+    id: string;
+    name: string;
+    description: string;
+    version: number;
+    createdBy: string;
+    createdAt: string;
+    updatedAt: string;
+    isLatestVersion: boolean;
+    totalVersions: number;
+  }>>> {
+    return fetchWithRetry('/reports');
   },
 
-  async saveReport(report: Omit<ReportConfig, 'id'>): Promise<ApiResponse<ReportConfig>> {
-    return fetchWithRetry('/reports', {
+  async loadSavedReport(reportId: string): Promise<ApiResponse<{
+    id: string;
+    name: string;
+    description: string;
+    config: ReportConfig;
+    version: number;
+    createdBy: string;
+    createdAt: string;
+    updatedAt: string;
+    isLatestVersion: boolean;
+  }>> {
+    return fetchWithRetry(`/reports/${encodeURIComponent(reportId)}`);
+  },
+
+  async saveReport(report: {
+    name: string;
+    description: string;
+    config: Omit<ReportConfig, 'id' | 'createdBy' | 'createdAt' | 'updatedAt' | 'version'>;
+    changeDescription?: string;
+  }): Promise<ApiResponse<{ reportId: string; version: number; message: string }>> {
+    return fetchWithRetry('/reports/save', {
       method: 'POST',
       body: JSON.stringify(report),
     });

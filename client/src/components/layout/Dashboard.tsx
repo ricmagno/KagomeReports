@@ -213,6 +213,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     error: null as string | null
   });
 
+  const [savedReports, setSavedReports] = useState<Array<{
+    id: string;
+    name: string;
+    description: string;
+    version: number;
+    createdBy: string;
+    createdAt: string;
+    updatedAt: string;
+    isLatestVersion: boolean;
+    totalVersions: number;
+  }>>([]);
+  const [savedReportsLoading, setSavedReportsLoading] = useState(false);
+
   const handleTagsChange = (tags: string[]) => {
     setReportConfig(prev => ({ ...prev, tags }));
   };
@@ -226,6 +239,87 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       setActiveTab('reports');
     } catch (error) {
       console.error('Failed to generate report:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveReport = async () => {
+    if (!reportConfig.name || !reportConfig.tags?.length) {
+      alert('Please provide a report name and select at least one tag');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      
+      const saveRequest = {
+        name: reportConfig.name,
+        description: reportConfig.description || '',
+        config: {
+          name: reportConfig.name,
+          description: reportConfig.description || '',
+          tags: reportConfig.tags,
+          timeRange: reportConfig.timeRange!,
+          chartTypes: reportConfig.chartTypes || ['line'],
+          template: reportConfig.template || 'default'
+        }
+      };
+
+      const response = await apiService.saveReport(saveRequest);
+      
+      if (response.success) {
+        alert(`Report "${reportConfig.name}" saved successfully as version ${response.data.version}`);
+        console.log('Report saved:', response.data);
+        // Refresh saved reports list if we're on the reports tab
+        if (activeTab === 'reports') {
+          loadSavedReports();
+        }
+      } else {
+        alert('Failed to save report: ' + response.data);
+      }
+    } catch (error) {
+      console.error('Failed to save report:', error);
+      alert('Failed to save report: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadSavedReports = async () => {
+    try {
+      setSavedReportsLoading(true);
+      const response = await apiService.getSavedReports();
+      if (response.success && response.data) {
+        setSavedReports(response.data);
+      }
+    } catch (error) {
+      console.error('Failed to load saved reports:', error);
+    } finally {
+      setSavedReportsLoading(false);
+    }
+  };
+
+  const handleLoadReport = async (reportId: string) => {
+    try {
+      setIsLoading(true);
+      const response = await apiService.loadSavedReport(reportId);
+      if (response.success && response.data) {
+        const loadedReport = response.data;
+        setReportConfig({
+          name: loadedReport.config.name,
+          description: loadedReport.config.description,
+          tags: loadedReport.config.tags,
+          timeRange: loadedReport.config.timeRange,
+          chartTypes: loadedReport.config.chartTypes,
+          template: loadedReport.config.template
+        });
+        setActiveTab('create');
+        alert(`Report "${loadedReport.name}" loaded successfully`);
+      }
+    } catch (error) {
+      console.error('Failed to load report:', error);
+      alert('Failed to load report: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsLoading(false);
     }
@@ -298,7 +392,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               ].map(tab => (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => {
+                    setActiveTab(tab.id as any);
+                    if (tab.id === 'reports') {
+                      loadSavedReports();
+                    }
+                  }}
                   className={cn(
                     "flex items-center px-4 py-2 border-b-2 font-medium text-sm whitespace-nowrap transition-colors",
                     activeTab === tab.id
@@ -541,6 +640,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 {/* Action Buttons */}
                 <div className="flex justify-end space-x-4">
                   <Button
+                    variant="outline"
+                    onClick={handleSaveReport}
+                    disabled={
+                      !reportConfig.name ||
+                      !reportConfig.tags?.length ||
+                      isLoading ||
+                      (reportConfig.timeRange?.startTime &&
+                        reportConfig.timeRange?.endTime &&
+                        reportConfig.timeRange.startTime > reportConfig.timeRange.endTime)
+                    }
+                    loading={isLoading}
+                  >
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Report
+                  </Button>
+                  <Button
                     onClick={handleGenerateReport}
                     disabled={
                       !reportConfig.name ||
@@ -590,14 +705,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                       </p>
                     </div>
                     <div className="flex items-center space-x-4">
-                      {/* Temporarily disabled loading indicator
-                {reportsLoading && (
-                  <div className="flex items-center space-x-2 text-blue-600">
-                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                    <span className="text-sm">Loading reports...</span>
-                  </div>
-                )}
-                */}
+                      {savedReportsLoading && (
+                        <div className="flex items-center space-x-2 text-blue-600">
+                          <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                          <span className="text-sm">Loading reports...</span>
+                        </div>
+                      )}
                       <Button onClick={() => setActiveTab('create')}>
                         <Plus className="h-4 w-4 mr-2" />
                         New Report
@@ -605,29 +718,81 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                     </div>
                   </div>
 
-                  {/* Temporarily disabled error display
-            {reportsError && (
-              <Card className="border-red-200 bg-red-50">
-                <CardContent className="p-4">
-                  <div className="flex items-center space-x-3">
-                    <AlertCircle className="h-5 w-5 text-red-500" />
-                    <div>
-                      <h4 className="font-medium text-red-800">Failed to load reports</h4>
-                      <p className="text-sm text-red-700">{reportsError.message}</p>
+                  {savedReports.length > 0 ? (
+                    <div className="bg-white rounded-lg border border-gray-200">
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Report Name
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Description
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Version
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Created
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Actions
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {savedReports.map((report) => (
+                              <tr key={report.id} className="hover:bg-gray-50">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm font-medium text-gray-900">{report.name}</div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="text-sm text-gray-500 max-w-xs truncate">
+                                    {report.description || 'No description'}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm text-gray-900">v{report.version}</div>
+                                  {report.totalVersions > 1 && (
+                                    <div className="text-xs text-gray-500">
+                                      {report.totalVersions} versions
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm text-gray-500">
+                                    {new Date(report.createdAt).toLocaleDateString()}
+                                  </div>
+                                  <div className="text-xs text-gray-400">
+                                    by {report.createdBy}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleLoadReport(report.id)}
+                                    disabled={isLoading}
+                                  >
+                                    Load
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-            */}
-
-                  <div className="bg-white rounded-lg border border-gray-200">
-                    <div className="p-6 text-center text-gray-500">
-                      <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                      <p className="text-lg font-medium">No reports yet</p>
-                      <p>Create your first report to get started</p>
+                  ) : (
+                    <div className="bg-white rounded-lg border border-gray-200">
+                      <div className="p-6 text-center text-gray-500">
+                        <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                        <p className="text-lg font-medium">No reports yet</p>
+                        <p>Create your first report to get started</p>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )
             }

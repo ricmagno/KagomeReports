@@ -517,4 +517,129 @@ This implementation plan breaks down the Historian Reports Application into disc
 - ✅ Report download with proper file handling
 - ✅ System health monitoring and connection status
 
-**COMPLETION STATUS**: 🎉 **100% COMPLETE - READY FOR PRODUCTION USE**
+- [-] 21. Report Saving and Management System
+  - [x] 21.1 Implement report saving backend service
+    - Create ReportManagementService with save, load, list, and delete operations
+    - Implement automatic version numbering for reports with the same name
+    - Add report configuration validation before saving
+    - Create database operations for report storage and retrieval
+    - _Requirements: 6.1.1, 6.1.2, 6.1.3, 6.1.4, 6.1.5_
+
+  - [x] 21.2 Implement report versioning system
+    - Create version tracking for report configurations
+    - Implement version history retrieval and management
+    - Add version comparison and rollback functionality
+    - Create cleanup policies for old versions
+    - _Requirements: 6.1.2, 6.1.3, 6.3.1, 6.3.2, 6.3.3_
+
+  - [x] 21.3 Create report management API endpoints
+    - Implement POST /api/reports/save for saving report configurations
+    - Create GET /api/reports for listing saved reports
+    - Add GET /api/reports/:id for loading specific report configurations
+    - Implement GET /api/reports/:id/versions for version history
+    - Add PUT /api/reports/:id for updating existing reports
+    - _Requirements: 6.1.1, 6.2.1, 6.3.1_
+
+  - [x] 21.4 Write property test for report saving
+    - **Property 27: Report Configuration Saving**
+    - **Validates: Requirements 6.1.1, 6.1.2, 6.1.3**
+    - ✅ **COMPLETED**: Created comprehensive property-based tests in `tests/properties/report-saving.property.test.ts`
+    - ✅ **TESTS PASSING**: All 7 property tests passing with robust validation:
+      - Property 27.1: Valid report configurations save successfully
+      - Property 27.2: Same report name creates incremental versions  
+      - Property 27.3: Report round-trip consistency
+      - Property 27.4: Invalid configurations are rejected
+      - Property 27.5: Report listing completeness
+      - Property 27.6: Report deletion completeness
+      - Property 27.7: Version statistics accuracy
+    - ✅ **DATABASE SCHEMA**: Fixed database schema compatibility with proper table creation and date deserialization
+    - ✅ **TYPE SAFETY**: Resolved all TypeScript type issues with proper type definitions and generators
+
+- [ ] 22. Report Management User Interface
+  - [x] 22.1 Add Save button to Create Report interface
+    - Create Save button in the Create Report form
+    - Implement save functionality with validation
+    - Add confirmation messages for successful saves
+    - Handle validation errors and display appropriate messages
+    - _Requirements: 6.1.1, 6.1.4, 6.1.5_
+    - ✅ **COMPLETED**: Successfully implemented Save button functionality in Dashboard component
+    - ✅ **BACKEND INTEGRATION**: Fixed SaveReportRequest type compatibility and validation logic
+    - ✅ **API ENDPOINTS**: Save and load endpoints working correctly with proper authentication
+    - ✅ **FRONTEND FEATURES**: 
+      - ✅ Save button with proper validation (requires name and tags)
+      - ✅ Success/error message handling with user feedback
+      - ✅ Integration with My Reports tab for displaying saved reports
+      - ✅ Load functionality to restore saved configurations to Create Report form
+    - ✅ **TESTING VERIFIED**: Manual testing confirms save/load workflow works end-to-end
+
+  - [x] 22.2 Enhance My Reports interface
+    - Update My Reports tab to display saved report configurations
+    - Show Report Name, Description, version number, and saved date
+    - Implement sorting and filtering options for saved reports
+    - Add empty state message when no reports are saved
+    - _Requirements: 6.2.1, 6.2.2, 6.2.3, 6.2.4, 6.2.5_
+    - ✅ **COMPLETED**: Enhanced My Reports tab with comprehensive report display
+    - ✅ **FEATURES IMPLEMENTED**:
+      - ✅ Table display with Report Name, Description, Version, Created Date, and Created By
+      - ✅ Load button for each report to restore configuration
+      - ✅ Empty state message when no reports are saved
+      - ✅ Loading indicator while fetching reports
+      - ✅ Automatic refresh when switching to My Reports tab
+      - ✅ Version information display (version number and total versions)
+    - ✅ **BACKEND INTEGRATION**: Connected to GET /api/reports endpoint with proper authentication
+
+  - [x] 22.3 Implement report loading functionality
+    - Add click handlers to load saved report configurations
+    - Populate Create Report form with loaded configuration data
+    - Implement automatic tab switching when loading reports
+    - Add error handling for failed report loading
+    - _Requirements: 6.3.1, 6.3.2, 6.3.3, 6.3.4, 6.3.5_
+    - ✅ **COMPLETED**: Implemented comprehensive report loading functionality
+    - ✅ **FEATURES IMPLEMENTED**:
+      - ✅ Load button click handlers in My Reports table
+      - ✅ Complete form population with loaded report configuration
+      - ✅ Automatic tab switching from My Reports to Create Report
+      - ✅ Success confirmation messages for loaded reports
+      - ✅ Error handling with user-friendly error messages
+      - ✅ Loading states during report loading operations
+    - ✅ **BACKEND INTEGRATION**: Connected to GET /api/reports/:id endpoint with proper data transformation
+
+  - [ ] 22.4 Write property test for report management UI
+    - **Property 28: Report Management Interface**
+    - **Validates: Requirements 6.2.1, 6.2.2, 6.3.1, 6.3.2**
+
+- [ ] 23. Report Versioning Interface
+  - [ ] 23.1 Create version history display
+    - Add version history view for saved reports
+    - Display version numbers, creation dates, and change descriptions
+    - Implement version comparison functionality
+    - Add version rollback capabilities
+    - _Requirements: 6.3.1, 6.3.2, 6.3.3_
+
+  - [ ] 23.2 Implement version management controls
+    - Add version navigation controls
+    - Create version deletion functionality for cleanup
+    - Implement version export and import features
+    - Add version notes and change descriptions
+    - _Requirements: 6.3.1, 6.3.2, 6.3.3_
+
+- [ ] 24. Final Integration and Testing
+  - [ ] 24.1 Integrate report saving with existing workflow
+    - Connect Save button to backend report management service
+    - Update report generation to work with saved configurations
+    - Ensure proper authentication and authorization for report operations
+    - Test complete workflow from creation to saving to loading
+    - _Requirements: 6.1.1, 6.2.1, 6.3.1_
+
+  - [ ] 24.2 Write comprehensive integration tests
+    - Test complete report saving and loading workflow
+    - Verify version management functionality
+    - Test error handling and edge cases
+    - Validate user interface interactions
+    - _Requirements: 6.1.1, 6.2.1, 6.3.1_
+
+  - [ ] 24.3 Final checkpoint - Report Management Complete
+    - Ensure all report saving functionality works correctly
+    - Verify version management and history tracking
+    - Test user interface for intuitive report management
+    - Validate all requirements are met and tested

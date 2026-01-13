@@ -90,6 +90,42 @@ The Historian Reports Application is a comprehensive reporting system designed t
 4. WHEN organizing reports, THE User_Interface SHALL support categorization and tagging of saved reports
 5. THE User_Interface SHALL allow users to export and import report configuration files
 
+### Requirement 6.1: Report Configuration Saving
+
+**User Story:** As a report user, I want to save my current report configuration with a Save button, so that I can preserve my work and reuse configurations later.
+
+#### Acceptance Criteria
+
+1. WHEN clicking the Save button, THE User_Interface SHALL save the current report configuration using the Report Name field as the identifier
+2. WHEN saving a report configuration, THE User_Interface SHALL automatically assign an incremental version number starting from version 1
+3. WHEN saving a report with an existing name, THE User_Interface SHALL create a new version with an incremented version number
+4. WHEN saving is successful, THE User_Interface SHALL display a confirmation message with the saved report name and version number
+5. WHEN the Report Name field is empty, THE User_Interface SHALL prevent saving and display a validation error message
+
+### Requirement 6.2: Saved Reports Display
+
+**User Story:** As a report user, I want to view my saved reports in the My Reports section, so that I can see what configurations I have available.
+
+#### Acceptance Criteria
+
+1. WHEN accessing My Reports, THE User_Interface SHALL display a list of all saved report configurations
+2. WHEN displaying saved reports, THE User_Interface SHALL show the Report Name, Report Description, version number, and saved date for each configuration
+3. WHEN multiple versions of the same report exist, THE User_Interface SHALL group them by report name and show the latest version prominently
+4. WHEN no saved reports exist, THE User_Interface SHALL display an empty state message encouraging users to save their first report
+5. THE User_Interface SHALL provide sorting options for saved reports by name, date saved, and version number
+
+### Requirement 6.3: Report Configuration Retrieval
+
+**User Story:** As a report user, I want to select and load a saved report configuration, so that I can continue working with previously saved settings.
+
+#### Acceptance Criteria
+
+1. WHEN selecting a saved report from My Reports, THE User_Interface SHALL load the complete report configuration into the Create Report form
+2. WHEN loading a saved report, THE User_Interface SHALL populate all fields including Report Name, Description, tags, time range, and chart types
+3. WHEN a saved report is loaded, THE User_Interface SHALL switch to the Create Report tab automatically
+4. WHEN loading fails due to missing data or corruption, THE User_Interface SHALL display an error message and remain on the My Reports tab
+5. THE User_Interface SHALL preserve the original saved configuration while allowing modifications without affecting the saved version
+
 ### Requirement 7: Automated Scheduling
 
 **User Story:** As a supervisor, I want to schedule automatic report generation, so that I can receive regular updates without manual intervention.

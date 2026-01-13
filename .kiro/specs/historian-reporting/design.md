@@ -163,7 +163,35 @@ interface ScheduleConfig {
 - Error handling and retry mechanisms
 - Execution logging and monitoring
 
-### 4. Email Delivery System (Email_Delivery_System)
+### 5. Report Management Service (Report_Management_Service)
+
+**Purpose**: Handles saving, versioning, and retrieval of report configurations
+
+**Key Interfaces**:
+```typescript
+interface ReportManagementService {
+  saveReport(config: ReportConfig, userId: string): Promise<SavedReport>
+  loadReport(reportId: string): Promise<SavedReport>
+  listReports(userId?: string): Promise<SavedReport[]>
+  deleteReport(reportId: string, userId: string): Promise<void>
+  getReportVersions(reportId: string): Promise<ReportVersionHistory>
+  createNewVersion(reportId: string, config: ReportConfig, userId: string): Promise<ReportVersion>
+}
+
+interface ReportVersionService {
+  getNextVersionNumber(reportName: string): Promise<number>
+  archiveOldVersion(reportId: string, version: number): Promise<void>
+  restoreVersion(reportId: string, version: number): Promise<ReportConfig>
+}
+```
+
+**Version Management**:
+- Automatic version incrementing for reports with the same name
+- Version history tracking with change descriptions
+- Ability to restore previous versions
+- Cleanup of old versions based on retention policies
+
+### 6. Email Delivery System (Email_Delivery_System)
 
 **Purpose**: Handles automated report distribution via email
 
@@ -274,6 +302,10 @@ POST /api/reports/generate - Generate report
 GET /api/reports/:id - Get saved report
 POST /api/reports/save - Save report configuration
 DELETE /api/reports/:id - Delete saved report
+GET /api/reports - List all saved reports
+GET /api/reports/:id/versions - Get report version history
+POST /api/reports/:id/versions - Create new version of existing report
+PUT /api/reports/:id - Update existing report configuration
 
 // Schedule endpoints
 POST /api/schedules - Create schedule
@@ -325,6 +357,38 @@ interface ReportConfig {
   filters: DataFilter[]
   createdBy: string
   createdAt: Date
+  version?: number
+  parentId?: string // For version tracking
+}
+
+interface SavedReport {
+  id: string
+  name: string
+  description: string
+  config: ReportConfig
+  version: number
+  createdBy: string
+  createdAt: Date
+  updatedAt: Date
+  isLatestVersion: boolean
+}
+
+interface ReportVersion {
+  id: string
+  reportId: string
+  version: number
+  config: ReportConfig
+  createdAt: Date
+  createdBy: string
+  changeDescription?: string
+  isActive: boolean
+}
+
+interface ReportVersionHistory {
+  reportId: string
+  reportName: string
+  versions: ReportVersion[]
+  totalVersions: number
 }
 
 interface TimeRange {
@@ -388,10 +452,30 @@ CREATE TABLE reports (
   name TEXT NOT NULL,
   description TEXT,
   config JSON NOT NULL,
+  version INTEGER DEFAULT 1,
+  parent_id TEXT, -- For version tracking
+  is_latest_version BOOLEAN DEFAULT true,
   created_by TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Report versions for version history tracking
+CREATE TABLE report_versions (
+  id TEXT PRIMARY KEY,
+  report_id TEXT NOT NULL, -- Links to the base report name
+  version INTEGER NOT NULL,
+  config JSON NOT NULL,
+  change_description TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_by TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(report_id, version)
+);
+
+-- Index for efficient version queries
+CREATE INDEX idx_report_versions_report_id ON report_versions(report_id);
+CREATE INDEX idx_report_versions_version ON report_versions(report_id, version DESC);
 
 -- Scheduled reports
 CREATE TABLE schedules (

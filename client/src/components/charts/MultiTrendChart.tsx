@@ -93,21 +93,39 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
             return { value, y, label: value.toFixed(1) };
         });
 
-        // Get time range
+        // Calculate X-axis time subdivisions
+        const timeSubdivisions: { x: number; label: string }[] = [];
         const firstTag = activeTags[0];
-        const sortedData = dataPoints[firstTag].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-        const startTime = new Date(sortedData[0].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const endTime = new Date(sortedData[sortedData.length - 1].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const sortedData = [...dataPoints[firstTag]].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        const start = new Date(sortedData[0].timestamp).getTime();
+        const end = new Date(sortedData[sortedData.length - 1].timestamp).getTime();
+        const durationMin = (end - start) / (1000 * 60);
+
+        const potentialIntervals = [1, 5, 10, 15, 25, 30, 60, 120, 240, 480, 720, 1440];
+        let interval = potentialIntervals[0];
+        for (const i of potentialIntervals) {
+            interval = i;
+            if (durationMin / i <= 8) break;
+        }
+
+        const intervalMs = interval * 60 * 1000;
+        let currentTick = Math.ceil(start / intervalMs) * intervalMs;
+        while (currentTick <= end) {
+            const ratio = (currentTick - start) / (end - start);
+            const x = ratio * graphWidth + leftPad;
+            const timeLabel = new Date(currentTick).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            timeSubdivisions.push({ x, label: timeLabel });
+            currentTick += intervalMs;
+        }
 
         return {
             series,
             subdivisions,
+            timeSubdivisions,
             leftPad,
             rightPad,
             topPad,
             bottomPad,
-            startTime,
-            endTime,
             minValue,
             maxValue,
             activeTags
@@ -171,21 +189,17 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
                     />
 
                     {/* Time Labels */}
-                    <text
-                        x={chartData.leftPad}
-                        y={height - 10}
-                        className="text-[10px] fill-gray-500"
-                    >
-                        {chartData.startTime}
-                    </text>
-                    <text
-                        x={width - chartData.rightPad - 90}
-                        y={height - 10}
-                        className="text-[10px] fill-gray-500"
-                        textAnchor="end"
-                    >
-                        {chartData.endTime}
-                    </text>
+                    {chartData.timeSubdivisions.map((sub, i) => (
+                        <text
+                            key={`time-sub-${i}`}
+                            x={sub.x}
+                            y={height - 10}
+                            className="text-[10px] fill-gray-500 font-medium"
+                            textAnchor="middle"
+                        >
+                            {sub.label}
+                        </text>
+                    ))}
 
                     {/* Data Lines */}
                     {chartData.series.map((s, i) => (

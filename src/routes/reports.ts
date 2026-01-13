@@ -11,10 +11,28 @@ import { asyncHandler, createError } from '@/middleware/errorHandler';
 import { authenticateToken, requirePermission } from '@/middleware/auth';
 import { dataFlowService } from '@/services/dataFlowService';
 import { ReportConfig } from '@/services/reportGeneration';
+import { ReportManagementService } from '@/services/reportManagementService';
+import { ReportVersionService } from '@/services/reportVersionService';
+import { SaveReportRequest } from '@/types/reports';
+import { Database } from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
 
 const router = Router();
+
+// Initialize services (will be properly injected in production)
+let reportManagementService: ReportManagementService;
+let reportVersionService: ReportVersionService;
+
+// Initialize services with database
+const initializeServices = () => {
+  if (!reportManagementService) {
+    const dbPath = process.env.DATABASE_PATH || './data/reports.db';
+    const db = new Database(dbPath);
+    reportManagementService = new ReportManagementService(db);
+    reportVersionService = new ReportVersionService(db);
+  }
+};
 
 // Validation schemas
 const reportConfigSchema = z.object({
@@ -52,6 +70,13 @@ const reportConfigSchema = z.object({
   includeStatistics: z.boolean().default(true),
   includeTrends: z.boolean().default(true),
   includeAnomalies: z.boolean().default(false)
+});
+
+const saveReportSchema = z.object({
+  name: z.string().min(1).max(100),
+  description: z.string().max(500).optional(),
+  config: reportConfigSchema.omit({ name: true, description: true }),
+  changeDescription: z.string().max(200).optional()
 });
 
 const scheduleConfigSchema = z.object({
@@ -174,206 +199,316 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
  * Get list of saved report configurations
  */
 router.get('/', authenticateToken, requirePermission('reports', 'read'), asyncHandler(async (req: Request, res: Response) => {
-  const { page = 1, limit = 10, search, category } = req.query;
+  initializeServices();
+  
+  const { page = 1, limit = 10, search, userId } = req.query;
+  const currentUserId = (req as any).user?.id; // Get from authentication middleware
 
-  apiLogger.info('Retrieving saved reports', { page, limit, search, category });
+  apiLogger.info('Retrieving saved reports', { page, limit, search, userId: currentUserId });
 
-  // TODO: Implement actual database query
-  // For now, return mock data
-  const mockReports = [
-    {
-      id: 'report-001',
-      name: 'Daily Temperature Report',
-      description: 'Daily temperature trends for all sensors',
-      tags: ['TEMP001', 'TEMP002', 'TEMP003'],
-      template: 'temperature-dashboard',
-      createdBy: 'user@example.com',
-      createdAt: '2023-01-01T00:00:00Z',
-      updatedAt: '2023-01-01T00:00:00Z',
-      category: 'temperature'
-    },
-    {
-      id: 'report-002',
-      name: 'Pressure Analysis',
-      description: 'Pressure system analysis with anomaly detection',
-      tags: ['PRESS001', 'PRESS002'],
-      template: 'pressure-analysis',
-      createdBy: 'user@example.com',
-      createdAt: '2023-01-02T00:00:00Z',
-      updatedAt: '2023-01-02T00:00:00Z',
-      category: 'pressure'
-    }
-  ];
-
-  // Apply search filter if provided
-  let filteredReports = mockReports;
-  if (search) {
-    const searchTerm = (search as string).toLowerCase();
-    filteredReports = mockReports.filter(report =>
-      report.name.toLowerCase().includes(searchTerm) ||
-      report.description?.toLowerCase().includes(searchTerm)
+  try {
+    // Get reports from database
+    const reports = await reportManagementService.listReports(
+      userId as string || currentUserId
     );
-  }
 
-  // Apply category filter if provided
-  if (category) {
-    filteredReports = filteredReports.filter(report => report.category === category);
-  }
-
-  // Apply pagination
-  const startIndex = (Number(page) - 1) * Number(limit);
-  const endIndex = startIndex + Number(limit);
-  const paginatedReports = filteredReports.slice(startIndex, endIndex);
-
-  res.json({
-    success: true,
-    data: paginatedReports,
-    pagination: {
-      page: Number(page),
-      limit: Number(limit),
-      total: filteredReports.length,
-      pages: Math.ceil(filteredReports.length / Number(limit))
+    // Apply search filter if provided
+    let filteredReports = reports;
+    if (search) {
+      const searchTerm = (search as string).toLowerCase();
+      filteredReports = reports.filter(report =>
+        report.name.toLowerCase().includes(searchTerm) ||
+        report.description?.toLowerCase().includes(searchTerm)
+      );
     }
+
+    // Apply pagination
+    const startIndex = (Number(page) - 1) * Number(limit);
+    const endIndex = startIndex + Number(limit);
+    const paginatedReports = filteredReports.slice(startIndex, endIndex);
+
+    res.json({
+      success: true,
+      data: paginatedReports,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total: filteredReports.length,
+        pages: Math.ceil(filteredReports.length / Number(limit))
+      }
+    });
+
+  } catch (error) {
+    apiLogger.error('Error retrieving reports:', error);
+    throw createError('Failed to retrieve reports', 500);
+  }
+}));
+
+/**
+ * POST /api/reports/save
+ * Save a new report configuration with versioning
+ */
+router.post('/save', authenticateToken, requirePermission('reports', 'write'), asyncHandler(async (req: Request, res: Response) => {
+  initializeServices();
+  
+  const requestResult = saveReportSchema.safeParse(req.body);
+  if (!requestResult.success) {
+    apiLogger.error('Invalid save report request', { errors: requestResult.error.errors });
+    throw createError('Invalid report configuration', 400);
+  }
+
+  const saveRequest: SaveReportRequest = requestResult.data;
+  const currentUserId = (req as any).user?.id || 'anonymous'; // Get from authentication middleware
+
+  apiLogger.info('Saving report configuration', { 
+    name: saveRequest.name, 
+    userId: currentUserId 
   });
+
+  try {
+    const result = await reportManagementService.saveReport(saveRequest, currentUserId);
+
+    if (result.success) {
+      res.status(201).json({
+        success: true,
+        data: {
+          reportId: result.reportId,
+          version: result.version,
+          name: saveRequest.name,
+          description: saveRequest.description
+        },
+        message: result.message
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: result.message
+      });
+    }
+
+  } catch (error) {
+    apiLogger.error('Error saving report:', error);
+    throw createError('Failed to save report', 500);
+  }
 }));
 
 /**
  * POST /api/reports
- * Save a new report configuration
+ * Save a new report configuration (legacy endpoint)
  */
 router.post('/', authenticateToken, requirePermission('reports', 'write'), asyncHandler(async (req: Request, res: Response) => {
-  const configResult = reportConfigSchema.safeParse(req.body);
-  if (!configResult.success) {
-    throw createError('Invalid report configuration', 400);
-  }
-
-  const config = configResult.data;
-
-  apiLogger.info('Saving new report configuration', { config });
-
-  // TODO: Implement actual database save
-  // For now, return mock response
-  const reportId = `report_${Date.now()}`;
-
-  const savedReport = {
-    id: reportId,
-    ...config,
-    createdBy: 'current-user@example.com', // TODO: Get from authentication
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-
-  res.status(201).json({
-    success: true,
-    data: savedReport,
-    message: 'Report configuration saved successfully'
-  });
+  // Redirect to the new save endpoint
+  req.url = '/save';
+  return router.handle(req, res);
 }));
 
 /**
  * GET /api/reports/:id
  * Get a specific report configuration
  */
-router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id', authenticateToken, requirePermission('reports', 'read'), asyncHandler(async (req: Request, res: Response) => {
+  initializeServices();
+  
   const { id } = req.params;
 
   apiLogger.info('Retrieving report configuration', { id });
 
-  // TODO: Implement actual database query
-  // For now, return mock data
-  if (id === 'report-001') {
-    const report = {
-      id: 'report-001',
-      name: 'Daily Temperature Report',
-      description: 'Daily temperature trends for all sensors',
-      tags: ['TEMP001', 'TEMP002', 'TEMP003'],
-      timeRange: {
-        startTime: '2023-01-01T00:00:00Z',
-        endTime: '2023-01-02T00:00:00Z',
-        relativeRange: 'last24h'
-      },
-      chartTypes: ['line', 'trend'],
-      template: 'temperature-dashboard',
-      format: 'pdf',
-      createdBy: 'user@example.com',
-      createdAt: '2023-01-01T00:00:00Z',
-      updatedAt: '2023-01-01T00:00:00Z'
-    };
+  try {
+    const report = await reportManagementService.loadReport(id);
+
+    if (!report) {
+      throw createError('Report not found', 404);
+    }
 
     res.json({
       success: true,
       data: report
     });
-  } else {
-    throw createError('Report not found', 404);
+
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('not found')) {
+      throw error;
+    }
+    apiLogger.error('Error retrieving report:', error);
+    throw createError('Failed to retrieve report', 500);
   }
 }));
 
 /**
- * PUT /api/reports/:id
- * Update a report configuration
+ * GET /api/reports/:id/versions
+ * Get version history for a report
  */
-router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id/versions', authenticateToken, requirePermission('reports', 'read'), asyncHandler(async (req: Request, res: Response) => {
+  initializeServices();
+  
   const { id } = req.params;
 
+  apiLogger.info('Retrieving report version history', { reportId: id });
+
+  try {
+    const versionHistory = await reportVersionService.getVersionStatistics(id);
+
+    if (!versionHistory) {
+      throw createError('Report not found', 404);
+    }
+
+    const fullHistory = await reportManagementService.getReportVersions(id);
+
+    res.json({
+      success: true,
+      data: {
+        ...versionHistory,
+        versions: fullHistory?.versions || []
+      }
+    });
+
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('not found')) {
+      throw error;
+    }
+    apiLogger.error('Error retrieving version history:', error);
+    throw createError('Failed to retrieve version history', 500);
+  }
+}));
+
+/**
+ * POST /api/reports/:id/versions
+ * Create new version of existing report
+ */
+router.post('/:id/versions', authenticateToken, requirePermission('reports', 'write'), asyncHandler(async (req: Request, res: Response) => {
+  initializeServices();
+  
+  const { id } = req.params;
+  const configResult = reportConfigSchema.safeParse(req.body);
+  
+  if (!configResult.success) {
+    apiLogger.error('Invalid report configuration for new version', { errors: configResult.error.errors });
+    throw createError('Invalid report configuration', 400);
+  }
+
+  const config = configResult.data;
+  const currentUserId = (req as any).user?.id || 'anonymous';
+  const changeDescription = req.body.changeDescription || `Version created on ${new Date().toISOString()}`;
+
+  apiLogger.info('Creating new version of report', { reportId: id, userId: currentUserId });
+
+  try {
+    const newVersion = await reportManagementService.createNewVersion(
+      id, 
+      config as any, 
+      currentUserId, 
+      changeDescription
+    );
+
+    if (!newVersion) {
+      throw createError('Failed to create new version', 500);
+    }
+
+    res.status(201).json({
+      success: true,
+      data: newVersion,
+      message: `New version ${newVersion.version} created successfully`
+    });
+
+  } catch (error) {
+    apiLogger.error('Error creating new version:', error);
+    throw createError('Failed to create new version', 500);
+  }
+}));
+/**
+ * PUT /api/reports/:id
+ * Update a report configuration (creates new version)
+ */
+router.put('/:id', authenticateToken, requirePermission('reports', 'write'), asyncHandler(async (req: Request, res: Response) => {
+  initializeServices();
+  
+  const { id } = req.params;
   const configResult = reportConfigSchema.partial().safeParse(req.body);
+  
   if (!configResult.success) {
     throw createError('Invalid report configuration', 400);
   }
 
   const updates = configResult.data;
+  const currentUserId = (req as any).user?.id || 'anonymous';
 
-  apiLogger.info('Updating report configuration', { id, updates });
+  apiLogger.info('Updating report configuration', { id, updates, userId: currentUserId });
 
-  // TODO: Implement actual database update
-  // For now, return mock response
-  if (id === 'report-001') {
-    const updatedReport = {
-      id: 'report-001',
-      name: 'Daily Temperature Report',
-      description: 'Daily temperature trends for all sensors',
-      tags: ['TEMP001', 'TEMP002', 'TEMP003'],
-      timeRange: {
-        startTime: '2023-01-01T00:00:00Z',
-        endTime: '2023-01-02T00:00:00Z'
-      },
-      chartTypes: ['line', 'trend'],
-      template: 'temperature-dashboard',
-      format: 'pdf',
-      createdBy: 'user@example.com',
-      createdAt: '2023-01-01T00:00:00Z',
-      updatedAt: new Date().toISOString(),
-      ...updates
+  try {
+    // Load existing report
+    const existingReport = await reportManagementService.loadReport(id);
+    if (!existingReport) {
+      throw createError('Report not found', 404);
+    }
+
+    // Merge updates with existing config
+    const updatedConfig = {
+      ...existingReport.config,
+      ...updates,
+      updatedAt: new Date()
     };
+
+    // Create new version with updates
+    const newVersion = await reportManagementService.createNewVersion(
+      existingReport.name,
+      updatedConfig,
+      currentUserId,
+      req.body.changeDescription || 'Updated configuration'
+    );
+
+    if (!newVersion) {
+      throw createError('Failed to update report', 500);
+    }
 
     res.json({
       success: true,
-      data: updatedReport,
+      data: {
+        id: newVersion.id,
+        version: newVersion.version,
+        config: newVersion.config
+      },
       message: 'Report configuration updated successfully'
     });
-  } else {
-    throw createError('Report not found', 404);
+
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('not found')) {
+      throw error;
+    }
+    apiLogger.error('Error updating report:', error);
+    throw createError('Failed to update report', 500);
   }
 }));
 
 /**
  * DELETE /api/reports/:id
- * Delete a report configuration
+ * Delete a report configuration and all its versions
  */
 router.delete('/:id', authenticateToken, requirePermission('reports', 'delete'), asyncHandler(async (req: Request, res: Response) => {
+  initializeServices();
+  
   const { id } = req.params;
+  const currentUserId = (req as any).user?.id || 'anonymous';
 
-  apiLogger.info('Deleting report configuration', { id });
+  apiLogger.info('Deleting report configuration', { id, userId: currentUserId });
 
-  // TODO: Implement actual database deletion
-  // For now, return mock response
-  if (id === 'report-001') {
-    res.json({
-      success: true,
-      message: 'Report configuration deleted successfully'
-    });
-  } else {
-    throw createError('Report not found', 404);
+  try {
+    const success = await reportManagementService.deleteReport(id, currentUserId);
+
+    if (success) {
+      res.json({
+        success: true,
+        message: 'Report configuration deleted successfully'
+      });
+    } else {
+      throw createError('Report not found or access denied', 404);
+    }
+
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('not found')) {
+      throw error;
+    }
+    apiLogger.error('Error deleting report:', error);
+    throw createError('Failed to delete report', 500);
   }
 }));
 
