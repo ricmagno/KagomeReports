@@ -41,7 +41,7 @@ export interface TagInfo {
 export interface TimeRange {
   startTime: Date;
   endTime: Date;
-  relativeRange?: 'last1h' | 'last24h' | 'last7d' | 'last30d' | undefined;
+  relativeRange?: 'last1h' | 'last2h' | 'last6h' | 'last12h' | 'last24h' | 'last7d' | 'last30d' | undefined;
 }
 
 // Data filter options

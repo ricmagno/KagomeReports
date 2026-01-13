@@ -51,7 +51,7 @@ export interface ReportVersionHistory {
 export interface TimeRange {
   startTime: Date;
   endTime: Date;
-  relativeRange?: 'last1h' | 'last24h' | 'last7d' | 'last30d';
+  relativeRange?: 'last1h' | 'last2h' | 'last6h' | 'last12h' | 'last24h' | 'last7d' | 'last30d';
 }
 
 export interface DataFilter {

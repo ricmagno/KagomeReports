@@ -16,6 +16,9 @@ interface TimeRangePickerProps {
 
 const PRESET_RANGES = [
   { value: 'last1h', label: 'Last 1 Hour' },
+  { value: 'last2h', label: 'Last 2 Hours' },
+  { value: 'last6h', label: 'Last 6 Hours' },
+  { value: 'last12h', label: 'Last 12 Hours' },
   { value: 'last24h', label: 'Last 24 Hours' },
   { value: 'last7d', label: 'Last 7 Days' },
   { value: 'last30d', label: 'Last 30 Days' },
@@ -158,6 +161,15 @@ export const TimeRangePicker: React.FC<TimeRangePickerProps> = ({
     switch (preset) {
       case 'last1h':
         startTime = new Date(now.getTime() - 60 * 60 * 1000);
+        break;
+      case 'last2h':
+        startTime = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+        break;
+      case 'last6h':
+        startTime = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+        break;
+      case 'last12h':
+        startTime = new Date(now.getTime() - 12 * 60 * 60 * 1000);
         break;
       case 'last24h':
         startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);

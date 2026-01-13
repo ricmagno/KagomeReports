@@ -41,7 +41,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     timeRange: {
       startTime: new Date(Date.now() - 60 * 60 * 1000), // Default: 1 hour ago
       endTime: new Date(),   // Default: Current time
-      relativeRange: undefined,
+      relativeRange: 'last1h',
     },
     chartTypes: ['line'],
     template: 'default',
