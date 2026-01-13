@@ -36,8 +36,9 @@ const queryOptionsSchema = z.object({
   mode: z.nativeEnum(RetrievalMode).default(RetrievalMode.Cyclic),
   interval: z.number().positive().optional(),
   tolerance: z.number().positive().optional(),
-  maxPoints: z.number().positive().max(10000).optional(),
-  includeQuality: z.boolean().default(true)
+  maxPoints: z.preprocess((val) => val === undefined ? undefined : Number(val), z.number().positive().max(10000).optional()),
+  limit: z.preprocess((val) => val === undefined ? undefined : Number(val), z.number().positive().max(10000).optional()),
+  includeQuality: z.preprocess((val) => val === 'false' ? false : true, z.boolean().default(true))
 });
 
 const paginationSchema = z.object({
@@ -101,7 +102,10 @@ router.get('/:tagName',
         endTime: timeRangeResult.data.endTime,
         relativeRange: timeRangeResult.data.relativeRange
       };
-      const options = optionsResult.data;
+      const options = {
+        ...optionsResult.data,
+        maxPoints: optionsResult.data.maxPoints || optionsResult.data.limit
+      };
 
       apiLogger.info('Retrieving time-series data', { tagName, timeRange, options });
 

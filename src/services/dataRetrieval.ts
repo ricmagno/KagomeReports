@@ -315,15 +315,13 @@ export class DataRetrievalService {
         AND wwRetrievalMode = @mode
     `;
 
-    // Add resolution if specified or for Cyclic/Average modes
+    // Add resolution or cycle count based on options
+    // prioritizing maxPoints (wwCycleCount) over resolution (wwResolution)
     const mode = options?.mode || RetrievalMode.Cyclic;
-    if (mode === RetrievalMode.Cyclic || mode === RetrievalMode.Average || options?.resolution || options?.interval) {
-      query += ` AND wwResolution = @resolution`;
-    }
-
-    // Use wwCycleCount for point limiting if specified
     if (options?.maxPoints) {
       query += ` AND wwCycleCount = @maxPoints`;
+    } else if (mode === RetrievalMode.Cyclic || mode === RetrievalMode.Average || options?.resolution || options?.interval) {
+      query += ` AND wwResolution = @resolution`;
     }
 
     // Add query optimization
