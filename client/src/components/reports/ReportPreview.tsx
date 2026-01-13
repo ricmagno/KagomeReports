@@ -491,13 +491,14 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                     key={tagName}
                     data={data}
                     tagName={tagName}
-                    type="area"
+                    type="line"
                     width={800}
                     height={320}
                     showTrend={true}
                     showAxis={true}
                     title={tagName}
                     description={previewData.tagDescriptions[tagName]}
+                    statistics={previewData.statistics[tagName]}
                     className="shadow-md border-gray-300"
                   />
                 ))}

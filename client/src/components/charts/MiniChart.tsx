@@ -4,7 +4,7 @@
  */
 
 import React, { useMemo } from 'react';
-import { TimeSeriesData } from '../../types/api';
+import { TimeSeriesData, StatisticsResult } from '../../types/api';
 
 interface MiniChartProps {
   data: TimeSeriesData[];
@@ -17,6 +17,7 @@ interface MiniChartProps {
   showAxis?: boolean;
   title?: string;
   description?: string;
+  statistics?: StatisticsResult;
 }
 
 export const MiniChart: React.FC<MiniChartProps> = ({
@@ -29,7 +30,8 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   showTrend = true,
   showAxis = false,
   title,
-  description
+  description,
+  statistics
 }) => {
   const chartData = useMemo(() => {
     if (!data || data.length === 0) return null;
@@ -156,9 +158,20 @@ export const MiniChart: React.FC<MiniChartProps> = ({
           )}
         </div>
         {showAxis && (
-          <span className="text-[10px] text-gray-400 font-mono ml-4 flex-shrink-0">
-            {chartData.validData.length} points
-          </span>
+          <div className="flex flex-col items-end flex-shrink-0 ml-4">
+            <div className="flex items-center space-x-3 text-[10px] font-mono mb-1">
+              {statistics && (
+                <>
+                  <span className="text-gray-500">AVG: <span className="font-bold text-blue-600">{statistics.average.toFixed(2)}</span></span>
+                  <span className="text-gray-500">MIN: <span className="font-bold text-emerald-600">{statistics.min.toFixed(2)}</span></span>
+                  <span className="text-gray-500">MAX: <span className="font-bold text-amber-600">{statistics.max.toFixed(2)}</span></span>
+                </>
+              )}
+            </div>
+            <span className="text-[10px] text-gray-400 font-mono italic">
+              {chartData.validData.length} data points
+            </span>
+          </div>
         )}
       </div>
 
