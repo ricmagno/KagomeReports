@@ -14,7 +14,7 @@ import {
   LogIn,
   LogOut
 } from 'lucide-react';
-import { ReportConfig } from '../../types/api';
+import { ReportConfig, TagInfo } from '../../types/api';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Card, CardContent, CardHeader } from '../ui/Card';
@@ -185,7 +185,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [realTimeEnabled, setRealTimeEnabled] = useState(false);
   const [tagSearchTerm, setTagSearchTerm] = useState('');
-  const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [availableTags, setAvailableTags] = useState<TagInfo[]>([]);
 
   // Fetch tags from API when search term changes
   useEffect(() => {
@@ -193,7 +193,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       try {
         const response = await apiService.getTags(tagSearchTerm);
         if (response.success && response.data) {
-          setAvailableTags(response.data.map(tag => tag.name));
+          setAvailableTags(response.data);
         }
       } catch (error) {
         console.error('Failed to fetch tags:', error);
@@ -365,25 +365,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           <h4 className="text-sm font-medium text-gray-700">Available Tags:</h4>
                           <div className="space-y-1 max-h-40 overflow-y-auto">
                             {availableTags
-                              .filter(tag => tag.toLowerCase().includes(tagSearchTerm.toLowerCase()))
+                              .filter(tag => tag.name.toLowerCase().includes(tagSearchTerm.toLowerCase()) ||
+                                tag.description.toLowerCase().includes(tagSearchTerm.toLowerCase()))
                               .map((tag) => (
                                 <button
-                                  key={tag}
-                                  onClick={() => handleTagsChange([...(reportConfig.tags || []), tag])}
-                                  disabled={reportConfig.tags?.includes(tag)}
+                                  key={tag.name}
+                                  onClick={() => handleTagsChange([...(reportConfig.tags || []), tag.name])}
+                                  disabled={reportConfig.tags?.includes(tag.name)}
                                   className={cn(
                                     'w-full text-left px-3 py-2 text-sm rounded-md transition-colors',
-                                    reportConfig.tags?.includes(tag)
+                                    reportConfig.tags?.includes(tag.name)
                                       ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                       : 'hover:bg-gray-50 text-gray-700'
                                   )}
                                 >
-                                  {tag}
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">{tag.name}</span>
+                                    {tag.description && (
+                                      <span className="text-xs text-gray-500 truncate">{tag.description}</span>
+                                    )}
+                                  </div>
                                 </button>
                               ))}
-                            {availableTags.filter(tag => tag.toLowerCase().includes(tagSearchTerm.toLowerCase())).length === 0 && (
-                              <div className="px-3 py-2 text-sm text-gray-500 italic">No tags found</div>
-                            )}
+                            {availableTags.filter(tag => tag.name.toLowerCase().includes(tagSearchTerm.toLowerCase()) ||
+                              tag.description.toLowerCase().includes(tagSearchTerm.toLowerCase())).length === 0 && (
+                                <div className="px-3 py-2 text-sm text-gray-500 italic">No tags found</div>
+                              )}
                           </div>
                         </div>
 
