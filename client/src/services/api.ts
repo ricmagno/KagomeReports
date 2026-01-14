@@ -14,6 +14,12 @@ import {
   DatabaseConfigSummary, 
   ConnectionTestResult 
 } from '../types/databaseConfig';
+import {
+  SystemStatusResponse,
+  CategoryStatusResponse,
+  HealthCheckResponse,
+  StatusCategory
+} from '../types/systemStatus';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 
@@ -582,6 +588,45 @@ export const apiService = {
 
   async getActiveDatabaseConfiguration(): Promise<ApiResponse<DatabaseConfigSummary | null>> {
     return fetchWithRetry('/database/active');
+  },
+
+  // System Status endpoints
+  async getSystemStatus(params?: { category?: StatusCategory; refresh?: boolean }): Promise<SystemStatusResponse | CategoryStatusResponse> {
+    const queryParams = new URLSearchParams();
+    if (params?.category) {
+      queryParams.append('category', params.category);
+    }
+    if (params?.refresh) {
+      queryParams.append('refresh', 'true');
+    }
+    const queryString = queryParams.toString();
+    return fetchWithRetry(`/status/database${queryString ? `?${queryString}` : ''}`);
+  },
+
+  async getSystemStatusByCategory(category: StatusCategory): Promise<CategoryStatusResponse> {
+    return fetchWithRetry(`/status/database?category=${encodeURIComponent(category)}`);
+  },
+
+  async getDatabaseStatusHealth(): Promise<HealthCheckResponse> {
+    return fetchWithRetry('/status/database/health');
+  },
+
+  async refreshSystemStatus(): Promise<SystemStatusResponse> {
+    return fetchWithRetry('/status/database?refresh=true');
+  },
+
+  async exportSystemStatus(format: 'csv' | 'json'): Promise<Blob> {
+    const response = await fetch(`${API_BASE_URL}/status/database/export?format=${format}`, {
+      headers: {
+        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+      },
+    });
+
+    if (!response.ok) {
+      throw new ApiError(response.status, `Failed to export status data: ${response.status}`);
+    }
+
+    return response.blob();
   },
 };
 

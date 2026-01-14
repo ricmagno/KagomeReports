@@ -2,17 +2,16 @@ import React, { useState, useEffect } from 'react';
 import {
   BarChart3,
   FileText,
-  Settings,
   Calendar,
   Download,
   Plus,
   Save,
   History,
-  AlertCircle,
   Tag,
   Database,
   LogIn,
-  LogOut
+  LogOut,
+  Activity
 } from 'lucide-react';
 import { ReportConfig, TagInfo, ReportVersion } from '../../types/api';
 import { Button } from '../ui/Button';
@@ -21,6 +20,7 @@ import { Card, CardContent, CardHeader } from '../ui/Card';
 import { TimeRangePicker } from '../forms/TimeRangePicker';
 import { ReportPreview } from '../reports/ReportPreview';
 import { VersionHistory } from '../reports/VersionHistory';
+import { StatusDashboard } from '../status/StatusDashboard';
 import { apiService, getAuthToken, setAuthToken } from '../../services/api';
 import { cn } from '../../utils/cn';
 
@@ -29,7 +29,7 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
-  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'categories' | 'database'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'categories' | 'database' | 'status'>('create');
   const [healthStatus, setHealthStatus] = useState<string>('checking...');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -477,6 +477,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 { id: 'reports', label: 'My Reports', icon: FileText },
                 { id: 'schedules', label: 'Schedules', icon: Calendar },
                 { id: 'categories', label: 'Categories', icon: Tag },
+                { id: 'status', label: 'Status', icon: Activity },
                 { id: 'database', label: 'Database', icon: Database },
               ].map(tab => (
                 <button
@@ -961,6 +962,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                     </div>
                   </div>
                 </div>
+              )
+            }
+
+            {
+              activeTab === 'status' && (
+                <StatusDashboard />
               )
             }
 

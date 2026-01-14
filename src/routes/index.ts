@@ -14,6 +14,7 @@ import cacheRoutes from './cache';
 import progressRoutes from './progress';
 import autoUpdateRoutes from './autoUpdate';
 import databaseConfigRoutes from './databaseConfig';
+import statusRoutes from './status';
 
 const router = Router();
 
@@ -28,6 +29,7 @@ router.use('/cache', cacheRoutes);
 router.use('/progress', progressRoutes);
 router.use('/auto-update', autoUpdateRoutes);
 router.use('/database', databaseConfigRoutes);
+router.use('/status', statusRoutes);
 
 // API info endpoint
 router.get('/', (req, res) => {
@@ -45,7 +47,8 @@ router.get('/', (req, res) => {
       cache: '/api/cache',
       progress: '/api/progress',
       autoUpdate: '/api/auto-update',
-      database: '/api/database'
+      database: '/api/database',
+      status: '/api/status'
     }
   });
 });
