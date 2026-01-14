@@ -14,12 +14,13 @@ import {
   LogIn,
   LogOut
 } from 'lucide-react';
-import { ReportConfig, TagInfo } from '../../types/api';
+import { ReportConfig, TagInfo, ReportVersion } from '../../types/api';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Card, CardContent, CardHeader } from '../ui/Card';
 import { TimeRangePicker } from '../forms/TimeRangePicker';
 import { ReportPreview } from '../reports/ReportPreview';
+import { VersionHistory } from '../reports/VersionHistory';
 import { apiService, getAuthToken, setAuthToken } from '../../services/api';
 import { cn } from '../../utils/cn';
 
@@ -182,6 +183,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   };
 
   const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [selectedReportForHistory, setSelectedReportForHistory] = useState<{ id: string; name: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [realTimeEnabled, setRealTimeEnabled] = useState(false);
   const [tagSearchTerm, setTagSearchTerm] = useState('');
@@ -329,6 +331,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     }
   };
 
+  const handleShowVersionHistory = (reportId: string, reportName: string) => {
+    setSelectedReportForHistory({ id: reportId, name: reportName });
+  };
+
+  const handleVersionLoad = (versionInfo: ReportVersion) => {
+    setReportConfig({
+      name: versionInfo.config.name,
+      description: versionInfo.config.description,
+      tags: versionInfo.config.tags,
+      timeRange: {
+        ...versionInfo.config.timeRange!,
+        startTime: new Date(versionInfo.config.timeRange!.startTime),
+        endTime: new Date(versionInfo.config.timeRange!.endTime)
+      },
+      chartTypes: versionInfo.config.chartTypes,
+      template: versionInfo.config.template
+    });
+    setSelectedReportForHistory(null);
+    setActiveTab('create');
+    alert(`Version ${versionInfo.version} loaded successfully`);
+  };
+
   return (
     <div className={cn("min-h-screen bg-gray-50", className)}>
       <nav className="bg-white shadow-sm border-b border-gray-200">
@@ -417,13 +441,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
             {activeTab === 'create' && (
               <div className="space-y-6">
-                <div className="flex justify-end">
-                  <Button variant="ghost" size="sm" onClick={() => setShowVersionHistory(!showVersionHistory)}>
-                    <History className="h-4 w-4 mr-2" />
-                    {showVersionHistory ? 'Back to Editor' : 'Version History'}
-                  </Button>
-                </div>
-
                 {!showVersionHistory ? (
                   <>
                     <Card>
@@ -626,18 +643,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                     </Card>
                   </>
                 ) : (
-                  <Card>
-                    <CardHeader>
-                      <h3 className="text-lg font-medium">Version History</h3>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="text-center py-8 text-gray-500">
-                        <History className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                        <p>Version history coming soon</p>
-                        <p className="text-sm">Track changes to your report configurations</p>
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <div className="text-center py-8 text-gray-500">
+                    <History className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p className="text-lg font-medium">Version history is available for saved reports</p>
+                    <p className="text-sm">Save this report first, then view its version history from the My Reports tab</p>
+                  </div>
                 )}
 
 
@@ -701,101 +711,124 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             {
               activeTab === 'reports' && (
                 <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-3xl font-bold text-gray-900">My Reports</h2>
-                      <p className="text-gray-600">
-                        Manage your saved report configurations and generated reports.
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                      {savedReportsLoading && (
-                        <div className="flex items-center space-x-2 text-blue-600">
-                          <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                          <span className="text-sm">Loading reports...</span>
+                  {selectedReportForHistory ? (
+                    <VersionHistory
+                      reportId={selectedReportForHistory.name}
+                      reportName={selectedReportForHistory.name}
+                      onClose={() => setSelectedReportForHistory(null)}
+                      onVersionLoad={handleVersionLoad}
+                    />
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h2 className="text-3xl font-bold text-gray-900">My Reports</h2>
+                          <p className="text-gray-600">
+                            Manage your saved report configurations and generated reports.
+                          </p>
+                        </div>
+                        <div className="flex items-center space-x-4">
+                          {savedReportsLoading && (
+                            <div className="flex items-center space-x-2 text-blue-600">
+                              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                              <span className="text-sm">Loading reports...</span>
+                            </div>
+                          )}
+                          <Button onClick={() => setActiveTab('create')}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            New Report
+                          </Button>
+                        </div>
+                      </div>
+
+                      {savedReports.length > 0 ? (
+                        <div className="bg-white rounded-lg border border-gray-200">
+                          <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-200">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Report Name
+                                  </th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Description
+                                  </th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Version
+                                  </th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Created
+                                  </th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    Actions
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="bg-white divide-y divide-gray-200">
+                                {savedReports.map((report) => (
+                                  <tr key={report.id} className="hover:bg-gray-50">
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                      <div className="text-sm font-medium text-gray-900">{report.name}</div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                      <div className="text-sm text-gray-500 max-w-xs truncate">
+                                        {report.description || 'No description'}
+                                      </div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                      <div className="text-sm text-gray-900">v{report.version}</div>
+                                      {report.totalVersions > 1 && (
+                                        <div className="text-xs text-gray-500">
+                                          {report.totalVersions} versions
+                                        </div>
+                                      )}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                      <div className="text-sm text-gray-500">
+                                        {new Date(report.createdAt).toLocaleDateString()}
+                                      </div>
+                                      <div className="text-xs text-gray-400">
+                                        by {report.createdBy}
+                                      </div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                                      <div className="flex space-x-2">
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handleLoadReport(report.id)}
+                                          disabled={isLoading}
+                                        >
+                                          Load
+                                        </Button>
+                                        {report.totalVersions > 1 && (
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => handleShowVersionHistory(report.id, report.name)}
+                                          >
+                                            <History className="h-4 w-4 mr-1" />
+                                            History
+                                          </Button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-white rounded-lg border border-gray-200">
+                          <div className="p-6 text-center text-gray-500">
+                            <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                            <p className="text-lg font-medium">No reports yet</p>
+                            <p>Create your first report to get started</p>
+                          </div>
                         </div>
                       )}
-                      <Button onClick={() => setActiveTab('create')}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        New Report
-                      </Button>
-                    </div>
-                  </div>
-
-                  {savedReports.length > 0 ? (
-                    <div className="bg-white rounded-lg border border-gray-200">
-                      <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-gray-200">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Report Name
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Description
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Version
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Created
-                              </th>
-                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                Actions
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="bg-white divide-y divide-gray-200">
-                            {savedReports.map((report) => (
-                              <tr key={report.id} className="hover:bg-gray-50">
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="text-sm font-medium text-gray-900">{report.name}</div>
-                                </td>
-                                <td className="px-6 py-4">
-                                  <div className="text-sm text-gray-500 max-w-xs truncate">
-                                    {report.description || 'No description'}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="text-sm text-gray-900">v{report.version}</div>
-                                  {report.totalVersions > 1 && (
-                                    <div className="text-xs text-gray-500">
-                                      {report.totalVersions} versions
-                                    </div>
-                                  )}
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                  <div className="text-sm text-gray-500">
-                                    {new Date(report.createdAt).toLocaleDateString()}
-                                  </div>
-                                  <div className="text-xs text-gray-400">
-                                    by {report.createdBy}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleLoadReport(report.id)}
-                                    disabled={isLoading}
-                                  >
-                                    Load
-                                  </Button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-white rounded-lg border border-gray-200">
-                      <div className="p-6 text-center text-gray-500">
-                        <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                        <p className="text-lg font-medium">No reports yet</p>
-                        <p>Create your first report to get started</p>
-                      </div>
-                    </div>
+                    </>
                   )}
                 </div>
               )
