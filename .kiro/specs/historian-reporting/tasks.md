@@ -656,6 +656,29 @@ This implementation plan breaks down the Historian Reports Application into disc
     - ✅ **FILEPATHS**: `client/src/components/reports/VersionHistory.tsx`
     - ⚠️ **NOTE**: Backend endpoints for version deletion and note editing need to be implemented
 
+  - [x] 23.3 Add version indicator to Report Configuration header
+    - Display "Version X" for saved reports with version numbers
+    - Display "New" for unsaved reports without version numbers
+    - Update indicator dynamically when loading saved reports
+    - Add visual styling to distinguish new vs versioned reports
+    - _Requirements: 6.3.1_
+    - ✅ **COMPLETED**: Implemented version indicator in Report Configuration header
+    - ✅ **FEATURES IMPLEMENTED**:
+      - ✅ Version badge showing "Version X" for saved reports with version numbers
+      - ✅ "New" badge for unsaved reports without version numbers
+      - ✅ Dynamic updates when loading saved reports via handleLoadReport
+      - ✅ Dynamic updates when loading versions via handleVersionLoad
+      - ✅ Version tracking in reportConfig state
+      - ✅ Version update after successful save operations
+      - ✅ Visual styling with blue badge for versioned reports, green badge for new reports
+    - ✅ **IMPLEMENTATION DETAILS**:
+      - ✅ Added `version?: number` field to reportConfig state
+      - ✅ Updated handleLoadReport to set version from loaded report
+      - ✅ Updated handleVersionLoad to set version from version history
+      - ✅ Updated handleSaveReport to update version after successful save
+      - ✅ Added conditional badge rendering in CardHeader with proper styling
+    - ✅ **FILEPATHS**: `client/src/components/layout/Dashboard.tsx`, `AGENTS.md`
+
 - [ ] 24. Final Integration and Testing
   - [ ] 24.1 Integrate report saving with existing workflow
     - Connect Save button to backend report management service

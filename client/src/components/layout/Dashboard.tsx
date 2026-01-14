@@ -46,6 +46,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     },
     chartTypes: ['line'],
     template: 'default',
+    version: undefined, // Track version number
   });
 
   // Health check with polling for reconnection countdown
@@ -271,6 +272,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       const response = await apiService.saveReport(saveRequest);
       
       if (response.success) {
+        // Update the version in the current config
+        setReportConfig(prev => ({
+          ...prev,
+          version: response.data.version
+        }));
         alert(`Report "${reportConfig.name}" saved successfully as version ${response.data.version}`);
         console.log('Report saved:', response.data);
         // Refresh saved reports list if we're on the reports tab
@@ -318,7 +324,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             endTime: new Date(loadedReport.config.timeRange.endTime)
           },
           chartTypes: loadedReport.config.chartTypes,
-          template: loadedReport.config.template
+          template: loadedReport.config.template,
+          version: loadedReport.version // Set the version number
         });
         setActiveTab('create');
         alert(`Report "${loadedReport.name}" loaded successfully`);
@@ -346,7 +353,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         endTime: new Date(versionInfo.config.timeRange!.endTime)
       },
       chartTypes: versionInfo.config.chartTypes,
-      template: versionInfo.config.template
+      template: versionInfo.config.template,
+      version: versionInfo.version // Set the version number
     });
     setSelectedReportForHistory(null);
     setActiveTab('create');
@@ -445,7 +453,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   <>
                     <Card>
                       <CardHeader>
-                        <h3 className="text-lg font-medium">Report Configuration</h3>
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-lg font-medium">Report Configuration</h3>
+                          <div className={cn(
+                            "px-3 py-1 rounded-full text-sm font-medium",
+                            reportConfig.version 
+                              ? "bg-blue-100 text-blue-800 border border-blue-200" 
+                              : "bg-green-100 text-green-800 border border-green-200"
+                          )}>
+                            {reportConfig.version ? `Version ${reportConfig.version}` : 'New'}
+                          </div>
+                        </div>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <div className="space-y-2">

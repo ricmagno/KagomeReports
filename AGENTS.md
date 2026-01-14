@@ -233,12 +233,16 @@ The system supports:
 4. Professional formatting and styling
 5. Tag selection search field with autocomplete filter
 6. Typed date and time inputs with post validation for precise window selection
-5. Report preview after submit and before generation.
-7. Validation happens after the user submit the query. The user should be free to type freely as long is a number.
-8. Validation to ensure start date/time is not greater than end date/time.
-9. Default end time is the current time.
-10. Default start time is current time minus 1 hour.
-11. Duration display showing the time difference between start and end dates
+7. Report preview after submit and before generation.
+8. Validation happens after the user submit the query. The user should be free to type freely as long is a number.
+9. Validation to ensure start date/time is not greater than end date/time.
+10. Default end time is the current time.
+11. Default start time is current time minus 1 hour.
+12. Duration display showing the time difference between start and end dates
+13. Version indicator in Report Configuration header:
+    - Shows "Version X" for saved reports with version numbers
+    - Shows "New" for unsaved reports without version numbers
+    - Updates dynamically when loading saved reports
 
 ### Automation Features
 Support for scheduled report generation with various intervals:
