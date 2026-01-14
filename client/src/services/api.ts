@@ -371,7 +371,7 @@ export const apiService = {
     });
   },
 
-  async generateReport(config: ReportConfig): Promise<Blob> {
+  async generateReport(config: any): Promise<ApiResponse<any>> {
     const response = await fetch(`${API_BASE_URL}/reports/generate`, {
       method: 'POST',
       headers: {
@@ -382,10 +382,16 @@ export const apiService = {
     });
 
     if (!response.ok) {
-      throw new ApiError(response.status, `Failed to generate report: ${response.status}`);
+      const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+      throw new ApiError(response.status, errorData.message || `Failed to generate report: ${response.status}`);
     }
 
-    return response.blob();
+    const data = await response.json();
+    return {
+      success: data.success,
+      data: data,
+      message: data.message
+    };
   },
 
   async downloadReport(id: string): Promise<Blob> {

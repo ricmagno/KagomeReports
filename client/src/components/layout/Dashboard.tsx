@@ -234,14 +234,67 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   };
 
   const handleGenerateReport = async () => {
+    if (!reportConfig.name || !reportConfig.tags?.length) {
+      alert('Please provide a report name and select at least one tag');
+      return;
+    }
+
     try {
       setIsLoading(true);
-      // Mock report generation
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      console.log('Generating report with config:', reportConfig);
-      setActiveTab('reports');
+      
+      // Prepare report generation request
+      const generateRequest = {
+        name: reportConfig.name,
+        description: reportConfig.description || '',
+        tags: reportConfig.tags,
+        timeRange: {
+          startTime: reportConfig.timeRange!.startTime.toISOString(),
+          endTime: reportConfig.timeRange!.endTime.toISOString(),
+          relativeRange: reportConfig.timeRange!.relativeRange
+        },
+        chartTypes: reportConfig.chartTypes || ['line'],
+        template: reportConfig.template || 'default',
+        format: 'pdf' as const,
+        includeStatistics: true,
+        includeTrends: true,
+        includeAnomalies: false
+      };
+
+      console.log('Generating report with config:', generateRequest);
+      
+      const response = await apiService.generateReport(generateRequest);
+      
+      if (response.success && response.data) {
+        const reportId = response.data.reportId;
+        
+        // Show success message
+        alert(`Report "${reportConfig.name}" generated successfully! Click OK to download.`);
+        
+        // Download the generated report using the API service
+        try {
+          const blob = await apiService.downloadReport(reportId);
+          
+          // Create download link
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${reportConfig.name}_${new Date().toISOString().split('T')[0]}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          
+          console.log('Report downloaded successfully');
+        } catch (downloadError) {
+          console.error('Failed to download report:', downloadError);
+          alert('Report generated but download failed. Please try downloading from the Reports tab.');
+        }
+      } else {
+        alert('Failed to generate report: ' + (response.message || 'Unknown error'));
+      }
     } catch (error) {
       console.error('Failed to generate report:', error);
+      alert('Failed to generate report: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setIsLoading(false);
     }
