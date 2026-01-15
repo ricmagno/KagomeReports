@@ -1,5 +1,5 @@
-SELECT DateTime, TagName, Value FROM History
+SELECT DateTime, TagName, Value, Quality FROM History
 WHERE TagName = 'Kagome_AU.TC11_TT004_PV'
-AND DateTime >= '2002-03-14 06:00'
-AND DateTime <= '2002-03-14 18:00'
-AND wwRetrievalMode = 'Dealta'
+AND DateTime >= '2026-01-15 16:22:40'
+AND DateTime <= '2026-01-15 16:22:41'
+AND wwRetrievalMode = 'Delta'

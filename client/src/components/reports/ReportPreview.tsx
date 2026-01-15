@@ -23,6 +23,7 @@ import { ReportConfig, TimeSeriesData, StatisticsResult } from '../../types/api'
 import { apiService } from '../../services/api';
 import { MiniChart, MultiTrendChart } from '../charts';
 import { CHART_COLORS, getTagColor, getTagIndex } from '../charts/chartUtils';
+import { DataPreviewTable } from './DataPreviewTable';
 
 interface ReportPreviewProps {
   config: ReportConfig;
@@ -566,6 +567,17 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                 +{Object.keys(previewData.dataPoints).length - 6} more charts will be included in the report
               </p>
             )}
+
+            {/* Data Preview Table */}
+            <div className="mt-8">
+              <DataPreviewTable
+                data={Object.values(previewData.dataPoints).flat()}
+                loading={previewData.loading}
+                error={previewData.error}
+                onRetry={loadPreviewData}
+                reportName={config.name}
+              />
+            </div>
           </div>
         )}
 

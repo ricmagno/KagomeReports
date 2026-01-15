@@ -95,7 +95,34 @@ export class DataRetrievalService {
       const query = this.buildOptimizedTimeSeriesQuery(tagName, timeRange, options);
       const params = this.buildQueryParams(tagName, timeRange, options);
 
+      // Log the query and parameters for debugging
+      dbLogger.info('Executing time-series query:', {
+        query: query.trim(),
+        params: {
+          tagName: params.tagName,
+          startTime: params.startTime,
+          endTime: params.endTime,
+          mode: params.mode,
+          resolution: params.resolution,
+          maxPoints: params.maxPoints
+        }
+      });
+      
+      // Log what the rendered query would look like
+      const renderedQuery = query
+        .replace('@tagName', `'${params.tagName}'`)
+        .replace('@startTime', `'${params.startTime}'`)
+        .replace('@endTime', `'${params.endTime}'`);
+      dbLogger.info('Rendered SQL query (approximate):', { renderedQuery: renderedQuery.trim() });
+
       const result = await this.getConnection().executeQuery<any>(query, params);
+
+      // Log raw database results for debugging
+      dbLogger.info('Raw database result:', {
+        recordCount: result.recordset.length,
+        firstRow: result.recordset[0],
+        lastRow: result.recordset[result.recordset.length - 1]
+      });
 
       if (operationId) {
         progressTracker.updateProgress(operationId, 'processing', 70, 'Processing query results');
@@ -103,6 +130,13 @@ export class DataRetrievalService {
 
       // Transform raw data to TimeSeriesData format
       const timeSeriesData = result.recordset.map(row => this.transformToTimeSeriesData(row, tagName));
+      
+      // Log transformed data for debugging
+      dbLogger.info('Transformed data:', {
+        count: timeSeriesData.length,
+        firstPoint: timeSeriesData[0],
+        lastPoint: timeSeriesData[timeSeriesData.length - 1]
+      });
 
       // Cache the result if caching is enabled
       if (this.cacheService && timeSeriesData.length > 0) {
@@ -202,8 +236,8 @@ export class DataRetrievalService {
 
       const params = {
         tagName,
-        startTime: timeRange.startTime,
-        endTime: timeRange.endTime
+        startTime: this.formatDateForHistorian(timeRange.startTime),
+        endTime: this.formatDateForHistorian(timeRange.endTime)
       };
 
       const result = await this.getConnection().executeQuery<{ estimatedCount: number }>(query, params);
@@ -246,8 +280,8 @@ export class DataRetrievalService {
 
       const params = {
         tagName,
-        startTime: timeRange.startTime,
-        endTime: timeRange.endTime
+        startTime: this.formatDateForHistorian(timeRange.startTime),
+        endTime: this.formatDateForHistorian(timeRange.endTime)
       };
 
       const result = await this.getConnection().executeQuery<any>(query, params);
@@ -301,7 +335,7 @@ export class DataRetrievalService {
     const includeQuality = options?.includeQuality !== false;
 
     // Use the native AVEVA Historian History view with wwRetrievalMode parameters
-    // We use the exact column names from the user's example but with aliases for our code
+    // Use Delta mode to get actual stored values (not interpolated)
     let query = `
       SELECT 
         DateTime as timestamp,
@@ -312,20 +346,9 @@ export class DataRetrievalService {
       WHERE TagName = @tagName
         AND DateTime >= @startTime
         AND DateTime <= @endTime
-        AND wwRetrievalMode = @mode
+        AND wwRetrievalMode = 'Delta'
+      ORDER BY DateTime ASC
     `;
-
-    // Add resolution or cycle count based on options
-    // prioritizing maxPoints (wwCycleCount) over resolution (wwResolution)
-    const mode = options?.mode || RetrievalMode.Cyclic;
-    if (options?.maxPoints) {
-      query += ` AND wwCycleCount = @maxPoints`;
-    } else if (mode === RetrievalMode.Cyclic || mode === RetrievalMode.Average || options?.resolution || options?.interval) {
-      query += ` AND wwResolution = @resolution`;
-    }
-
-    // Add query optimization
-    query += ` ORDER BY DateTime ASC`;
 
     return query;
   }
@@ -611,6 +634,21 @@ export class DataRetrievalService {
   }
 
   /**
+   * Format date for AVEVA Historian (local time without timezone)
+   */
+  private formatDateForHistorian(date: Date): string {
+    // AVEVA Historian expects local time format: 'YYYY-MM-DD HH:mm:ss'
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  }
+
+  /**
    * Build query parameters
    */
   private buildQueryParams(
@@ -621,8 +659,8 @@ export class DataRetrievalService {
     const mode = options?.mode || RetrievalMode.Cyclic;
     const params: Record<string, any> = {
       tagName,
-      startTime: timeRange.startTime,
-      endTime: timeRange.endTime,
+      startTime: this.formatDateForHistorian(timeRange.startTime),
+      endTime: this.formatDateForHistorian(timeRange.endTime),
       mode: mode
     };
 
@@ -663,7 +701,7 @@ export class DataRetrievalService {
       FROM History
       WHERE DateTime >= @startTime
         AND DateTime <= @endTime
-        AND wwRetrievalMode = @mode
+        AND wwRetrievalMode = 'Delta'
     `;
 
     if (filter.samplingInterval) {
@@ -711,8 +749,8 @@ export class DataRetrievalService {
     cursor?: string
   ): Record<string, any> {
     const params: Record<string, any> = {
-      startTime: timeRange.startTime,
-      endTime: timeRange.endTime,
+      startTime: this.formatDateForHistorian(timeRange.startTime),
+      endTime: this.formatDateForHistorian(timeRange.endTime),
       mode: filter.samplingInterval ? RetrievalMode.Cyclic : RetrievalMode.Full
     };
 
@@ -790,9 +828,12 @@ export class DataRetrievalService {
    * Transform raw database row to TimeSeriesData
    */
   private transformToTimeSeriesData(row: any, tagName?: string): TimeSeriesData {
+    // Handle null values - convert to NaN to indicate missing data
+    const value = row.value !== null && row.value !== undefined ? parseFloat(row.value) : NaN;
+    
     return {
       timestamp: new Date(row.timestamp),
-      value: parseFloat(row.value),
+      value: value,
       quality: row.quality || QualityCode.Good,
       tagName: tagName || row.tagName
     };
