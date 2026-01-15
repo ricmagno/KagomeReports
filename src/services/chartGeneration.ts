@@ -9,19 +9,22 @@ import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import { TimeSeriesData, StatisticsResult, TrendResult } from '@/types/historian';
 import { reportLogger } from '@/utils/logger';
 import { env } from '@/config/environment';
+import { chartBufferValidator } from '@/utils/chartBufferValidator';
 
 // Register Chart.js components
 Chart.register(...registerables);
 
-// Try to register date adapter, but don't fail if it's not available
+// Load date adapter using require (works better in CommonJS context)
 try {
-  require('chartjs-adapter-date-fns');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const adapter = require('chartjs-adapter-date-fns');
+  reportLogger.info('Chart.js date adapter loaded successfully');
 } catch (error) {
-  reportLogger.warn('Chart.js date adapter not available, date scaling may not work properly');
+  reportLogger.error('Failed to load Chart.js date adapter', { 
+    error: error instanceof Error ? error.message : 'Unknown error',
+    stack: error instanceof Error ? error.stack : undefined
+  });
 }
-
-// Register Chart.js components
-Chart.register(...registerables);
 
 export interface ChartOptions {
   width?: number;
@@ -80,18 +83,41 @@ export class ChartGenerationService {
   ): Promise<Buffer> {
     const width = options.width || this.defaultWidth;
     const height = options.height || this.defaultHeight;
+    const totalDataPoints = datasets.reduce((sum, d) => sum + d.data.length, 0);
     
     try {
       reportLogger.info('Generating line chart', { 
         datasets: datasets.length,
         width,
-        height 
+        height,
+        totalDataPoints,
+        title: options.title || 'untitled'
       });
 
+      // Validate input data
+      if (datasets.length === 0) {
+        throw new Error('No datasets provided for line chart generation');
+      }
+
+      if (totalDataPoints === 0) {
+        throw new Error('No data points available in datasets for line chart generation');
+      }
+
+      reportLogger.debug('Creating canvas for line chart', { width, height });
       const canvas = createCanvas(width, height);
       const ctx = canvas.getContext('2d');
+      
+      reportLogger.debug('Canvas created successfully', {
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height
+      });
 
       // Prepare chart data
+      reportLogger.debug('Preparing chart datasets', {
+        datasetCount: datasets.length,
+        datasetNames: datasets.map(d => d.tagName)
+      });
+      
       const chartDatasets = datasets.map((dataset, index) => ({
         label: dataset.tagName,
         data: dataset.data.map(point => ({
@@ -104,6 +130,11 @@ export class ChartGenerationService {
         fill: false,
         tension: 0.1
       }));
+
+      reportLogger.debug('Chart datasets prepared', {
+        datasetCount: chartDatasets.length,
+        totalPoints: chartDatasets.reduce((sum, d) => sum + d.data.length, 0)
+      });
 
       const config: ChartConfiguration = {
         type: 'line',
@@ -129,18 +160,20 @@ export class ChartGenerationService {
           },
           scales: {
             x: {
-              type: 'time',
-              time: {
-                displayFormats: {
-                  hour: 'MMM dd HH:mm',
-                  day: 'MMM dd',
-                  week: 'MMM dd',
-                  month: 'MMM yyyy'
-                }
-              },
+              type: 'linear',
               title: {
                 display: true,
                 text: 'Time'
+              },
+              ticks: {
+                callback: function(value) {
+                  const date = new Date(value);
+                  return date.toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: false 
+                  });
+                }
               }
             },
             y: {
@@ -161,22 +194,58 @@ export class ChartGenerationService {
       };
 
       // Create chart
+      reportLogger.debug('Creating Chart.js instance');
       const chart = new Chart(ctx, config);
+      reportLogger.debug('Chart.js instance created successfully');
 
       // Convert to buffer
+      reportLogger.debug('Converting canvas to PNG buffer');
       const buffer = canvas.toBuffer('image/png');
+      
+      reportLogger.info('Canvas converted to buffer successfully', {
+        bufferSize: buffer.length,
+        bufferType: typeof buffer,
+        isBuffer: Buffer.isBuffer(buffer)
+      });
+      
+      // Validate buffer
+      const validation = chartBufferValidator.validateBuffer(buffer, 'line_chart');
+      
+      if (!validation.valid) {
+        const errorMsg = `Generated line chart buffer is invalid: ${validation.errors.join(', ')}`;
+        reportLogger.error(errorMsg, {
+          errors: validation.errors,
+          bufferInfo: validation.bufferInfo
+        });
+        throw new Error(errorMsg);
+      }
+
+      if (validation.warnings.length > 0) {
+        reportLogger.warn('Line chart buffer validation warnings', {
+          warnings: validation.warnings,
+          bufferInfo: validation.bufferInfo
+        });
+      }
       
       // Clean up
       chart.destroy();
 
-      reportLogger.info('Line chart generated successfully', {
+      reportLogger.info('Line chart generated and validated successfully', {
         bufferSize: buffer.length,
+        format: validation.bufferInfo.format,
+        dimensions: validation.bufferInfo.dimensions || { width, height },
         dataPoints: datasets.reduce((sum, d) => sum + d.data.length, 0)
       });
 
       return buffer;
     } catch (error) {
-      reportLogger.error('Failed to generate line chart', { error });
+      reportLogger.error('Failed to generate line chart', { 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        datasets: datasets.length,
+        totalDataPoints,
+        dimensions: { width, height }
+      });
       throw error;
     }
   }
@@ -341,18 +410,20 @@ export class ChartGenerationService {
           },
           scales: {
             x: {
-              type: 'time',
-              time: {
-                displayFormats: {
-                  hour: 'MMM dd HH:mm',
-                  day: 'MMM dd',
-                  week: 'MMM dd',
-                  month: 'MMM yyyy'
-                }
-              },
+              type: 'linear',
               title: {
                 display: true,
                 text: 'Time'
+              },
+              ticks: {
+                callback: function(value) {
+                  const date = new Date(value);
+                  return date.toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: false 
+                  });
+                }
               }
             },
             y: {

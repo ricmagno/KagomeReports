@@ -85,6 +85,18 @@ npm run docker:build
 npm run docker:dev
 ```
 
+### Testing
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Run property-based tests
+npm run test:property
+```
+
 ## Code Organization and Structure
 
 ### Architecture Pattern

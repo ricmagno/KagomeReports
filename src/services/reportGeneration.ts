@@ -13,6 +13,7 @@ import { reportLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
 import { env } from '@/config/environment';
 import { chartGenerationService } from './chartGeneration';
+import { chartBufferValidator } from '@/utils/chartBufferValidator';
 
 export interface ReportConfig {
   id: string;
@@ -456,14 +457,23 @@ export class ReportGenerationService {
     doc.moveDown();
 
     let chartCount = 0;
+    let successCount = 0;
+    let failureCount = 0;
+    const failures: string[] = [];
+
+    reportLogger.info('Adding charts section to PDF', {
+      totalCharts: Object.keys(charts).length
+    });
+
     for (const [chartName, chartBuffer] of Object.entries(charts)) {
       if (chartCount > 0 && chartCount % 2 === 0) {
         doc.addPage();
+        reportLogger.debug('Added new page for charts', { chartCount });
       }
 
       const y = doc.y;
-      const chartWidth = 250;
-      const chartHeight = 200;
+      const chartWidth = 450;  // Increased from 250
+      const chartHeight = 300; // Increased from 200
 
       doc.fontSize(14)
          .font('Helvetica-Bold')
@@ -471,19 +481,104 @@ export class ReportGenerationService {
 
       doc.moveDown();
 
-      try {
-        // Add chart image
-        doc.image(chartBuffer, {
-          fit: [chartWidth, chartHeight],
-          align: 'center'
+      // Validate buffer before embedding
+      reportLogger.debug('Validating chart buffer before embedding', {
+        chartName,
+        bufferSize: chartBuffer?.length || 0
+      });
+
+      const validation = chartBufferValidator.validateBuffer(chartBuffer, chartName);
+      
+      if (!validation.valid) {
+        reportLogger.error('Chart buffer validation failed before embedding', {
+          chartName,
+          errors: validation.errors,
+          bufferInfo: validation.bufferInfo
         });
-      } catch (error) {
-        reportLogger.warn('Failed to embed chart', { chartName, error });
-        doc.text('Chart could not be displayed', { align: 'center' });
+        
+        // Add placeholder text
+        doc.fontSize(12)
+           .font('Helvetica')
+           .fillColor('#ef4444')
+           .text(`Chart could not be displayed: ${validation.errors[0]}`, { 
+             align: 'center',
+             width: chartWidth
+           })
+           .fillColor('black');
+        
+        failures.push(chartName);
+        failureCount++;
+      } else {
+        try {
+          // Log buffer details before embedding
+          reportLogger.info('Embedding chart in PDF', {
+            chartName,
+            bufferSize: validation.bufferInfo.size,
+            format: validation.bufferInfo.format,
+            dimensions: validation.bufferInfo.dimensions,
+            targetSize: { width: chartWidth, height: chartHeight }
+          });
+
+          // Add chart image with explicit options
+          doc.image(chartBuffer, {
+            fit: [chartWidth, chartHeight],
+            align: 'center'
+          });
+
+          successCount++;
+          
+          reportLogger.info('Chart embedded successfully in PDF', {
+            chartName,
+            bufferSize: validation.bufferInfo.size
+          });
+
+        } catch (error) {
+          reportLogger.error('Failed to embed chart in PDF', { 
+            chartName, 
+            error: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined,
+            bufferSize: validation.bufferInfo.size,
+            bufferFormat: validation.bufferInfo.format
+          });
+          
+          // Add error placeholder
+          doc.fontSize(12)
+             .font('Helvetica')
+             .fillColor('#ef4444')
+             .text(`Chart embedding failed: ${error instanceof Error ? error.message : 'Unknown error'}`, { 
+               align: 'center',
+               width: chartWidth
+             })
+             .fillColor('black');
+          
+          failures.push(chartName);
+          failureCount++;
+        }
       }
 
       doc.moveDown(2);
       chartCount++;
+    }
+
+    // Log summary
+    reportLogger.info('Chart embedding summary', {
+      total: chartCount,
+      successful: successCount,
+      failed: failureCount,
+      failures: failures,
+      successRate: chartCount > 0 ? ((successCount / chartCount) * 100).toFixed(1) + '%' : '0%'
+    });
+
+    // Add summary note if there were failures
+    if (failureCount > 0) {
+      doc.moveDown();
+      doc.fontSize(10)
+         .font('Helvetica')
+         .fillColor('#666666')
+         .text(`Note: ${failureCount} of ${chartCount} chart(s) could not be displayed. See logs for details.`, {
+           align: 'center'
+         })
+         .fillColor('black');
     }
   }
 
