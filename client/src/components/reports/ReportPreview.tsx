@@ -87,7 +87,10 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
             tagName,
             config.timeRange.startTime,
             config.timeRange.endTime,
-            { limit: 500 } // Limit for preview
+            { 
+              limit: 500, // Limit for preview
+              retrievalMode: config.retrievalMode || 'Delta'
+            }
           );
           return { tagName, data: response.success ? response.data : [] };
         } catch (error) {

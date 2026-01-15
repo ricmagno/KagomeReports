@@ -22,6 +22,7 @@ export interface ReportConfig {
   timeRange: TimeRange;
   chartTypes: ChartType[];
   template: string;
+  retrievalMode?: 'Delta' | 'Cyclic' | 'AVG' | 'RoundTrip';
   filters?: DataFilter[];
   createdBy?: string;
   createdAt?: Date;

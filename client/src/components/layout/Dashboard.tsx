@@ -543,6 +543,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                             onChange={range => setReportConfig(prev => ({ ...prev, timeRange: range }))}
                           />
                         </div>
+                        
+                        {/* Retrieval Mode */}
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">
+                            Retrieval Mode
+                          </label>
+                          <select
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                            value={reportConfig.retrievalMode || 'Delta'}
+                            onChange={(e) => setReportConfig(prev => ({ ...prev, retrievalMode: e.target.value as 'Delta' | 'Cyclic' | 'AVG' | 'RoundTrip' }))}
+                          >
+                            <option value="Delta">Delta - Actual stored values</option>
+                            <option value="Cyclic">Cyclic - Interpolated at intervals</option>
+                            <option value="AVG">AVG - Average values</option>
+                            <option value="RoundTrip">RoundTrip - Round trip values</option>
+                          </select>
+                          <p className="text-xs text-gray-500">
+                            Delta mode returns actual stored values (recommended for most cases)
+                          </p>
+                        </div>
+                        
                         {/* Search Tags */}
                         <div className="space-y-2">
                           <Input
@@ -770,7 +791,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           tags: reportConfig.tags,
                           timeRange: reportConfig.timeRange!,
                           chartTypes: reportConfig.chartTypes as any[],
-                          template: reportConfig.template || 'default'
+                          template: reportConfig.template || 'default',
+                          retrievalMode: reportConfig.retrievalMode || 'Delta'
                         }}
                         onGenerate={handleGenerateReport}
                       />

@@ -34,11 +34,25 @@ const dataFilterSchema = z.object({
 
 const queryOptionsSchema = z.object({
   mode: z.nativeEnum(RetrievalMode).default(RetrievalMode.Cyclic),
+  retrievalMode: z.enum(['Delta', 'Cyclic', 'AVG', 'RoundTrip']).optional().transform(val => {
+    // Map frontend retrievalMode to backend RetrievalMode enum
+    if (val === 'Delta') return RetrievalMode.Delta;
+    if (val === 'Cyclic') return RetrievalMode.Cyclic;
+    if (val === 'AVG') return RetrievalMode.Average;
+    if (val === 'RoundTrip') return RetrievalMode.Full;
+    return undefined;
+  }),
   interval: z.number().positive().optional(),
   tolerance: z.number().positive().optional(),
   maxPoints: z.preprocess((val) => val === undefined ? undefined : Number(val), z.number().positive().max(10000).optional()),
   limit: z.preprocess((val) => val === undefined ? undefined : Number(val), z.number().positive().max(10000).optional()),
   includeQuality: z.preprocess((val) => val === 'false' ? false : true, z.boolean().default(true))
+}).transform(data => {
+  // If retrievalMode is provided, use it instead of mode
+  if (data.retrievalMode !== undefined) {
+    return { ...data, mode: data.retrievalMode };
+  }
+  return data;
 });
 
 const paginationSchema = z.object({
