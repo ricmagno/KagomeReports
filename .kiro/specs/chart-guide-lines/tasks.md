@@ -1,5 +1,10 @@
 # Tasks Document: Interactive Guide Lines Implementation
 
+**⚠️ FEATURE PARKED - See STATUS.md for details**
+
+**Status**: Implementation incomplete due to unresolved coordinate system alignment issues  
+**Date Parked**: January 16, 2026
+
 ## Overview
 
 This document breaks down the implementation of interactive guide lines into discrete, actionable tasks. Tasks are organized by component and ordered for logical development flow.

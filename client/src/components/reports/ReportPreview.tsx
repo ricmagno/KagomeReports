@@ -21,8 +21,8 @@ import {
 } from 'lucide-react';
 import { ReportConfig, TimeSeriesData, StatisticsResult } from '../../types/api';
 import { apiService } from '../../services/api';
-import { MiniChart, MultiTrendChart } from '../charts';
-import { CHART_COLORS, getTagColor, getTagIndex } from '../charts/chartUtils';
+import { InteractiveChart } from '../charts';
+import { getTagColor, getTagIndex } from '../charts/chartUtils';
 import { DataPreviewTable } from './DataPreviewTable';
 
 interface ReportPreviewProps {
@@ -521,13 +521,13 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
         {!previewData.loading && dataQuality.totalPoints > 0 && (
           <div className="mt-6">
             <h4 className="text-sm font-medium text-gray-900 mb-4 flex items-center">
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Data Preview
+              <TrendingUp className="w-4 h-4 mr-2" />
+              Trends
             </h4>
             <div className="grid grid-cols-1 gap-8">
               {/* Combined Multi-Trend View (only if multiple tags selected) */}
               {Object.keys(previewData.dataPoints).filter(tag => previewData.dataPoints[tag].length > 0).length > 1 && (
-                <MultiTrendChart
+                <InteractiveChart
                   dataPoints={previewData.dataPoints}
                   tagDescriptions={previewData.tagDescriptions}
                   tags={config.tags}
@@ -536,6 +536,8 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                   width={800}
                   height={320}
                   className="mb-4"
+                  enableGuideLines={true}
+                  chartType="multi"
                 />
               )}
 
@@ -546,21 +548,21 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                   const data = previewData.dataPoints[tagName];
 
                   return (
-                    <MiniChart
+                    <InteractiveChart
                       key={tagName}
-                      data={data}
+                      dataPoints={{ [tagName]: data }}
+                      tagDescriptions={previewData.tagDescriptions}
                       tagName={tagName}
-                      type="line"
                       width={800}
                       height={320}
-                      showTrend={true}
-                      showAxis={true}
                       title={tagName}
                       description={previewData.tagDescriptions[tagName]}
                       units={previewData.tagUnits[tagName]}
                       statistics={previewData.statistics[tagName]}
                       color={tagColors[tagName]}
                       className="shadow-md border-gray-300"
+                      enableGuideLines={true}
+                      chartType="single"
                     />
                   );
                 })}

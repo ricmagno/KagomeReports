@@ -3,11 +3,8 @@
  */
 
 import sql from 'mssql';
-import fs from 'fs';
-import path from 'path';
 import { dataRetrievalService } from '../src/services/dataRetrieval';
 import { statisticalAnalysisService } from '../src/services/statisticalAnalysis';
-import { reportGenerationService } from '../src/services/reportGeneration';
 
 // Database configuration (from active config)
 const dbConfig = {
@@ -126,7 +123,12 @@ async function generateReportData() {
   }
   
   // Calculate statistics using the service
-  const stats = statisticalAnalysisService.calculateStatistics(data);
+  const stats = await statisticalAnalysisService.calculateStatistics(
+    tagName,
+    startTime,
+    endTime,
+    data
+  );
   
   console.log('\n=== Report Data Statistics ===');
   console.log(`Count: ${stats.count}`);

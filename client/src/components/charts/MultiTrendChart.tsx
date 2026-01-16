@@ -50,6 +50,8 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
         const minValue = Math.min(...allValues);
         const maxValue = Math.max(...allValues);
         const range = maxValue - minValue || 1;
+        
+        console.log('MultiTrendChart Scale:', { yMin: minValue, yMax: maxValue, range });
 
         // Normalize Y to fit height
         const leftPad = 60; // More space for labels
