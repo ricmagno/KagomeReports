@@ -95,12 +95,14 @@ router.get('/', authenticateToken, requirePermission('schedules', 'read'), async
 
     res.json({
       success: true,
-      data: paginatedSchedules,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total: filteredSchedules.length,
-        pages: Math.ceil(filteredSchedules.length / Number(limit))
+      data: {
+        schedules: paginatedSchedules,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total: filteredSchedules.length,
+          totalPages: Math.ceil(filteredSchedules.length / Number(limit))
+        }
       }
     });
   } catch (error) {
@@ -340,12 +342,14 @@ router.get('/:id/executions', asyncHandler(async (req: Request, res: Response) =
 
     res.json({
       success: true,
-      data: paginatedExecutions,
-      pagination: {
-        page: Number(page),
-        limit: Number(limit),
-        total: filteredExecutions.length,
-        pages: Math.ceil(filteredExecutions.length / Number(limit))
+      data: {
+        executions: paginatedExecutions,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total: filteredExecutions.length,
+          totalPages: Math.ceil(filteredExecutions.length / Number(limit))
+        }
       }
     });
   } catch (error) {

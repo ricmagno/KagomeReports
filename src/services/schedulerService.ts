@@ -209,21 +209,30 @@ export class SchedulerService {
           if (err) {
             reject(err);
           } else {
-            const schedules = rows.map(row => ({
-              id: row.id,
-              name: row.name,
-              description: row.description || undefined,
-              reportConfig: JSON.parse(row.report_config),
-              cronExpression: row.cron_expression,
-              enabled: Boolean(row.enabled),
-              nextRun: row.next_run ? new Date(row.next_run) : undefined,
-              lastRun: row.last_run ? new Date(row.last_run) : undefined,
-              lastStatus: row.last_status || undefined,
-              lastError: row.last_error || undefined,
-              createdAt: new Date(row.created_at),
-              updatedAt: new Date(row.updated_at),
-              recipients: row.recipients ? JSON.parse(row.recipients) : undefined
-            } as ScheduleConfig));
+            const schedules = rows.map(row => {
+              const reportConfig = JSON.parse(row.report_config);
+              // Convert date strings back to Date objects
+              if (reportConfig.timeRange) {
+                reportConfig.timeRange.startTime = new Date(reportConfig.timeRange.startTime);
+                reportConfig.timeRange.endTime = new Date(reportConfig.timeRange.endTime);
+              }
+              
+              return {
+                id: row.id,
+                name: row.name,
+                description: row.description || undefined,
+                reportConfig,
+                cronExpression: row.cron_expression,
+                enabled: Boolean(row.enabled),
+                nextRun: row.next_run ? new Date(row.next_run) : undefined,
+                lastRun: row.last_run ? new Date(row.last_run) : undefined,
+                lastStatus: row.last_status || undefined,
+                lastError: row.last_error || undefined,
+                createdAt: new Date(row.created_at),
+                updatedAt: new Date(row.updated_at),
+                recipients: row.recipients ? JSON.parse(row.recipients) : undefined
+              } as ScheduleConfig;
+            });
             resolve(schedules);
           }
         }
@@ -245,11 +254,18 @@ export class SchedulerService {
           } else if (!row) {
             resolve(null);
           } else {
+            const reportConfig = JSON.parse(row.report_config);
+            // Convert date strings back to Date objects
+            if (reportConfig.timeRange) {
+              reportConfig.timeRange.startTime = new Date(reportConfig.timeRange.startTime);
+              reportConfig.timeRange.endTime = new Date(reportConfig.timeRange.endTime);
+            }
+            
             resolve({
               id: row.id,
               name: row.name,
               description: row.description || undefined,
-              reportConfig: JSON.parse(row.report_config),
+              reportConfig,
               cronExpression: row.cron_expression,
               enabled: Boolean(row.enabled),
               nextRun: row.next_run ? new Date(row.next_run) : undefined,

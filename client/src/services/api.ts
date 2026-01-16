@@ -20,6 +20,17 @@ import {
   HealthCheckResponse,
   StatusCategory
 } from '../types/systemStatus';
+import {
+  Schedule,
+  ScheduleExecution,
+  ScheduleConfig,
+  ScheduleUpdatePayload,
+  ExecutionHistoryParams,
+  ScheduleListParams,
+  ExecutionStatistics,
+  SchedulerHealth,
+  PaginationInfo
+} from '../types/schedule';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 
@@ -415,36 +426,134 @@ export const apiService = {
   },
 
   // Schedule endpoints
-  async getSchedules(): Promise<ApiResponse<any[]>> {
-    return fetchWithRetry('/schedules');
+  
+  /**
+   * Get all schedules with optional filtering and pagination
+   */
+  async getSchedules(params?: ScheduleListParams): Promise<ApiResponse<{
+    schedules: Schedule[];
+    pagination: PaginationInfo;
+  }>> {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.enabled !== undefined) queryParams.append('enabled', params.enabled.toString());
+    if (params?.search) queryParams.append('search', params.search);
+    
+    const queryString = queryParams.toString();
+    return fetchWithRetry(`/schedules${queryString ? `?${queryString}` : ''}`);
   },
 
-  async getSchedule(id: string): Promise<ApiResponse<any>> {
+  /**
+   * Get a single schedule by ID
+   */
+  async getSchedule(id: string): Promise<ApiResponse<Schedule>> {
     return fetchWithRetry(`/schedules/${encodeURIComponent(id)}`);
   },
 
-  async createSchedule(schedule: any): Promise<ApiResponse<any>> {
+  /**
+   * Create a new schedule
+   */
+  async createSchedule(config: ScheduleConfig): Promise<ApiResponse<{
+    scheduleId: string;
+    schedule: Schedule;
+    message: string;
+  }>> {
     return fetchWithRetry('/schedules', {
       method: 'POST',
-      body: JSON.stringify(schedule),
+      body: JSON.stringify(config),
     });
   },
 
-  async updateSchedule(id: string, schedule: any): Promise<ApiResponse<any>> {
+  /**
+   * Update an existing schedule
+   */
+  async updateSchedule(id: string, updates: ScheduleUpdatePayload): Promise<ApiResponse<{
+    schedule: Schedule;
+    message: string;
+  }>> {
     return fetchWithRetry(`/schedules/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      body: JSON.stringify(schedule),
+      body: JSON.stringify(updates),
     });
   },
 
-  async deleteSchedule(id: string): Promise<ApiResponse<void>> {
+  /**
+   * Delete a schedule
+   */
+  async deleteSchedule(id: string): Promise<ApiResponse<{
+    message: string;
+  }>> {
     return fetchWithRetry(`/schedules/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
   },
 
-  async getScheduleExecutions(id: string): Promise<ApiResponse<any[]>> {
-    return fetchWithRetry(`/schedules/${encodeURIComponent(id)}/executions`);
+  /**
+   * Enable a schedule
+   */
+  async enableSchedule(id: string): Promise<ApiResponse<{
+    schedule: Schedule;
+    message: string;
+  }>> {
+    return fetchWithRetry(`/schedules/${encodeURIComponent(id)}/enable`, {
+      method: 'POST',
+    });
+  },
+
+  /**
+   * Disable a schedule
+   */
+  async disableSchedule(id: string): Promise<ApiResponse<{
+    schedule: Schedule;
+    message: string;
+  }>> {
+    return fetchWithRetry(`/schedules/${encodeURIComponent(id)}/disable`, {
+      method: 'POST',
+    });
+  },
+
+  /**
+   * Manually execute a schedule (Run Now)
+   */
+  async executeSchedule(id: string): Promise<ApiResponse<{
+    executionId: string;
+    status: string;
+    message: string;
+  }>> {
+    return fetchWithRetry(`/schedules/${encodeURIComponent(id)}/execute`, {
+      method: 'POST',
+    });
+  },
+
+  /**
+   * Get execution history for a schedule
+   */
+  async getExecutionHistory(id: string, params?: ExecutionHistoryParams): Promise<ApiResponse<{
+    executions: ScheduleExecution[];
+    pagination: PaginationInfo;
+  }>> {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+    if (params?.status) queryParams.append('status', params.status);
+    
+    const queryString = queryParams.toString();
+    return fetchWithRetry(`/schedules/${encodeURIComponent(id)}/executions${queryString ? `?${queryString}` : ''}`);
+  },
+
+  /**
+   * Get execution statistics for a schedule
+   */
+  async getExecutionStatistics(id: string): Promise<ApiResponse<ExecutionStatistics>> {
+    return fetchWithRetry(`/schedules/${encodeURIComponent(id)}/statistics`);
+  },
+
+  /**
+   * Get scheduler system health
+   */
+  async getSchedulerHealth(): Promise<ApiResponse<SchedulerHealth>> {
+    return fetchWithRetry('/schedules/health');
   },
 
   // Auto-update endpoints

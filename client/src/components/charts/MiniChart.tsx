@@ -5,6 +5,9 @@
 
 import React, { useMemo } from 'react';
 import { TimeSeriesData, StatisticsResult } from '../../types/api';
+import { GuideLine, ChartBounds, ChartScale } from '../../types/guideLines';
+import { calculateAllIntersections } from '../../utils/intersectionDetection';
+import { dataToPixelX, dataToPixelY, pixelToDataX, pixelToDataY } from './chartUtils';
 
 interface MiniChartProps {
   data: TimeSeriesData[];
@@ -20,6 +23,14 @@ interface MiniChartProps {
   statistics?: StatisticsResult;
   color?: string;
   units?: string;
+  /** Optional guide lines to render inside the chart */
+  guideLines?: GuideLine[];
+  /** Chart bounds for guide line positioning */
+  bounds?: ChartBounds;
+  /** Chart scale for guide line positioning */
+  scale?: ChartScale;
+  /** Callback to update guide line positions during drag */
+  onGuideLinesChange?: (lines: GuideLine[]) => void;
 }
 
 export const MiniChart: React.FC<MiniChartProps> = ({
@@ -35,8 +46,14 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   description,
   statistics,
   color,
-  units
+  units,
+  guideLines = [],
+  bounds,
+  scale,
+  onGuideLinesChange
 }) => {
+  const [dragState, setDragState] = React.useState<{lineId: string, type: 'horizontal' | 'vertical'} | null>(null);
+
   const chartData = useMemo(() => {
     if (!data || data.length === 0) return null;
 
@@ -190,6 +207,91 @@ export const MiniChart: React.FC<MiniChartProps> = ({
 
   const baseColor = color || getQualityColor();
 
+  // Calculate intersections if guide lines are provided
+  const intersections = useMemo(() => {
+    if (!scale || !bounds || !guideLines || guideLines.length === 0) return [];
+    // Create a dataPoints record for the single series
+    const dataPointsRecord: Record<string, TimeSeriesData[]> = {
+      [tagName]: data
+    };
+    return calculateAllIntersections(guideLines, dataPointsRecord, bounds, scale);
+  }, [guideLines, data, tagName, bounds, scale]);
+
+  // Handle mouse down on guide line (start drag)
+  const handleMouseDown = (lineId: string, type: 'horizontal' | 'vertical', event: React.MouseEvent<SVGLineElement>) => {
+    if (!onGuideLinesChange) return;
+
+    setDragState({ lineId, type });
+
+    // Update the guide line to indicate it's being dragged
+    const updatedLines = guideLines.map(line =>
+      line.id === lineId ? { ...line, isDragging: true } : line
+    );
+
+    onGuideLinesChange(updatedLines);
+
+    // Prevent text selection during drag
+    event.preventDefault();
+  };
+
+  // Handle mouse move (during drag)
+  const handleMouseMove = (event: React.MouseEvent<SVGSVGElement>) => {
+    if (!dragState || !onGuideLinesChange || !scale || !bounds || !chartData) return;
+
+    const line = guideLines.find(l => l.id === dragState.lineId);
+    if (!line) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+
+    // Calculate position relative to the SVG
+    const svgX = event.clientX - rect.left;
+    const svgY = event.clientY - rect.top;
+
+    // Calculate new position based on drag direction
+    let newPosition: number;
+
+    if (dragState.type === 'horizontal') {
+      // Calculate Y position in data space
+      const pixelY = svgY - 10; // Subtract top padding to get to graph area
+      // Ensure the pixelY is within the graph area bounds
+      const clampedPixelY = Math.max(0, Math.min(chartData.graphHeight, pixelY)); // Adjust for top padding
+      newPosition = pixelToDataY(clampedPixelY, bounds, scale);
+      // Constrain to Y bounds
+      newPosition = Math.max(scale.yMin, Math.min(scale.yMax, newPosition));
+    } else {
+      // Calculate X position (timestamp) in data space
+      const pixelX = svgX - chartData.leftPad; // Subtract left padding to get to graph area
+      // Ensure the pixelX is within the graph area bounds
+      const clampedPixelX = Math.max(0, Math.min(chartData.graphWidth, pixelX));
+      newPosition = pixelToDataX(clampedPixelX, bounds, scale);
+      // Constrain to X bounds
+      newPosition = Math.max(scale.xMin, Math.min(scale.xMax, newPosition));
+    }
+
+    // Update guide line position
+    const updatedLines = guideLines.map(l =>
+      l.id === dragState.lineId
+        ? { ...l, position: newPosition }
+        : l
+    );
+
+    onGuideLinesChange(updatedLines);
+  };
+
+  // Handle mouse up (end drag)
+  const handleMouseUp = () => {
+    if (!dragState || !onGuideLinesChange) return;
+
+    // Update the guide line to indicate it's no longer being dragged
+    const updatedLines = guideLines.map(line =>
+      line.id === dragState.lineId ? { ...line, isDragging: false } : line
+    );
+
+    onGuideLinesChange(updatedLines);
+
+    setDragState(null);
+  };
+
   return (
     <div className={`relative bg-white border border-gray-200 rounded p-4 ${className}`}>
       <div className="mb-2 flex items-start justify-between border-b border-gray-100 pb-2">
@@ -222,7 +324,14 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       </div>
 
       <div className="relative">
-        <svg width={width} height={height} className="overflow-visible">
+        <svg
+          width={width}
+          height={height}
+          className="overflow-visible"
+          onMouseMove={dragState ? handleMouseMove : undefined}
+          onMouseUp={dragState ? handleMouseUp : undefined}
+          onMouseLeave={dragState ? handleMouseUp : undefined}
+        >
           {/* Y-Axis Line */}
           {showAxis && (
             <line x1={chartData.leftPad - 5} y1="10" x2={chartData.leftPad - 5} y2={height - chartData.bottomPad} stroke="#94a3b8" strokeWidth="1" />
@@ -310,6 +419,153 @@ export const MiniChart: React.FC<MiniChartProps> = ({
               className="opacity-60"
             />
           ))}
+
+          {/* Guide Lines - rendered inside the chart SVG */}
+          {guideLines && guideLines.length > 0 && scale && bounds && (
+            <>
+              {guideLines.map(line => {
+                // Calculate pixel position from data position
+                const pixelX = line.type === 'vertical'
+                  ? dataToPixelX(line.position, bounds, scale) + chartData.leftPad
+                  : 0;
+
+                const pixelY = line.type === 'horizontal'
+                  ? dataToPixelY(line.position, bounds, scale) + 10 // top padding
+                  : 0;
+
+                // Calculate line endpoints
+                const x1 = line.type === 'horizontal' ? chartData.leftPad - 5 : pixelX;
+                const y1 = line.type === 'horizontal' ? pixelY : 10; // top padding
+                const x2 = line.type === 'horizontal' ? width - 10 : pixelX;
+                const y2 = line.type === 'horizontal' ? pixelY : height - chartData.bottomPad;
+
+                // Calculate opacity and stroke width based on state
+                const opacity = line.isDragging ? 0.9 : 0.7;
+                const strokeWidth = line.isDragging ? 3 : 2;
+
+                return (
+                  <g key={line.id}>
+                    {/* Invisible wider line for easier interaction */}
+                    <line
+                      x1={x1}
+                      y1={y1}
+                      x2={x2}
+                      y2={y2}
+                      stroke="transparent"
+                      strokeWidth="10"
+                      style={{ cursor: line.type === 'horizontal' ? 'ns-resize' : 'ew-resize' }}
+                      onMouseDown={(e) => handleMouseDown(line.id, line.type, e)}
+                    />
+
+                    {/* Guide line */}
+                    <line
+                      x1={x1}
+                      y1={y1}
+                      x2={x2}
+                      y2={y2}
+                      stroke={line.color}
+                      strokeWidth={strokeWidth}
+                      strokeDasharray="6 4"
+                      opacity={opacity}
+                      strokeLinecap="round"
+                    />
+
+                    {/* Coordinate display */}
+                    {line.type === 'horizontal' && (
+                      <g>
+                        {/* Background rectangle for readability */}
+                        <rect
+                          x={width - 50}
+                          y={pixelY - 12}
+                          width={48}
+                          height={20}
+                          fill="rgba(255, 255, 255, 0.95)"
+                          stroke="#e5e7eb"
+                          strokeWidth="1"
+                          rx="4"
+                          style={{
+                            filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))',
+                          }}
+                        />
+
+                        {/* Text */}
+                        <text
+                          x={width - 26}
+                          y={pixelY + 3}
+                          textAnchor="middle"
+                          className="text-[11px] font-mono font-medium fill-gray-800"
+                          style={{ pointerEvents: 'none' }}
+                        >
+                          {line.position.toFixed(2)}{units ? ` ${units}` : ''}
+                        </text>
+                      </g>
+                    )}
+
+                    {line.type === 'vertical' && (
+                      <g>
+                        {/* Background rectangle for readability */}
+                        <rect
+                          x={pixelX - 40}
+                          y={12}
+                          width={80}
+                          height={20}
+                          fill="rgba(255, 255, 255, 0.95)"
+                          stroke="#e5e7eb"
+                          strokeWidth="1"
+                          rx="4"
+                          style={{
+                            filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))',
+                          }}
+                        />
+
+                        {/* Text */}
+                        <text
+                          x={pixelX}
+                          y={26}
+                          textAnchor="middle"
+                          className="text-[11px] font-mono font-medium fill-gray-800"
+                          style={{ pointerEvents: 'none' }}
+                        >
+                          {new Date(line.position).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                          })}
+                        </text>
+                      </g>
+                    )}
+                  </g>
+                );
+              })}
+
+              {/* Render intersection points */}
+              {intersections.map((intersection, index) => (
+                <g key={`intersection-${index}`}>
+                  {/* Intersection point circle */}
+                  <circle
+                    cx={intersection.x + chartData.leftPad}
+                    cy={intersection.y + 10} // top padding
+                    r={4}
+                    fill="#ef4444"
+                    stroke="#ffffff"
+                    strokeWidth={2}
+                    opacity={0.9}
+                  />
+
+                  {/* Tooltip on hover (simplified - could be enhanced) */}
+                  <title>
+                    {intersection.tagName}
+                    {'\n'}
+                    Time: {intersection.xValue instanceof Date
+                      ? intersection.xValue.toLocaleTimeString()
+                      : new Date(intersection.xValue).toLocaleTimeString()}
+                    {'\n'}
+                    Value: {intersection.yValue.toFixed(2)}{units ? ` ${units}` : ''}
+                  </title>
+                </g>
+              ))}
+            </>
+          )}
 
           {showAxis && chartData.subdivisions.map((sub, i) => (
             <text

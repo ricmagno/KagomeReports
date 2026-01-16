@@ -167,89 +167,49 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
           />
         </div>
       )}
-      
-      {/* Chart container with guide lines overlay */}
+
+      {/* Chart container with guide lines rendered inside the chart */}
       <div className="relative">
         {/* Render appropriate chart type */}
         {chartType === 'multi' ? (
-          <div className="relative">
-            <MultiTrendChart
-              dataPoints={dataPoints}
-              tagDescriptions={tagDescriptions}
-              tags={tags}
-              width={width}
-              height={height}
-              title={title}
-              description={description}
-            />
-            
-            {/* Guide lines overlay - positioned to match chart SVG */}
-            {/* Adjust topOffset if lines don't align: increase to move down, decrease to move up */}
-            {enableGuideLines && guideLines.length > 0 && (
-              <div 
-                className="absolute pointer-events-none"
-                style={{
-                  top: '100px', // Card padding (24px) + header section (~76px)
-                  left: '84px', // Card padding (24px) + left axis padding (60px)
-                  width: `${bounds.graphWidth}px`,
-                  height: `${bounds.graphHeight}px`,
-                }}
-              >
-                <GuideLines
-                  dataPoints={dataPoints}
-                  bounds={bounds}
-                  scale={scale}
-                  guideLines={guideLines}
-                  onGuideLinesChange={setGuideLines}
-                  units={units}
-                />
-              </div>
-            )}
-          </div>
+          <MultiTrendChart
+            dataPoints={dataPoints}
+            tagDescriptions={tagDescriptions}
+            tags={tags}
+            width={width}
+            height={height}
+            title={title}
+            description={description}
+            guideLines={guideLines}
+            bounds={bounds}
+            scale={scale}
+            units={units}
+            onGuideLinesChange={setGuideLines}
+          />
         ) : (
           tagName && dataPoints[tagName] && (
-            <div className="relative">
-              <MiniChart
-                data={dataPoints[tagName]}
-                tagName={tagName}
-                type="line"
-                width={width}
-                height={height}
-                showTrend={true}
-                showAxis={true}
-                title={title || tagName}
-                description={tagDescriptions[tagName]}
-                units={units}
-                statistics={statistics}
-                color={color}
-              />
-              
-              {/* Guide lines overlay - positioned to match chart SVG */}
-              {enableGuideLines && guideLines.length > 0 && (
-                <div 
-                  className="absolute pointer-events-none"
-                  style={{
-                    top: '56px', // Account for padding (16px) + header (~40px)
-                    left: '16px', // Account for p-4 padding
-                    width: `${width}px`,
-                    height: `${height}px`,
-                  }}
-                >
-                  <GuideLines
-                    dataPoints={dataPoints}
-                    bounds={bounds}
-                    scale={scale}
-                    guideLines={guideLines}
-                    onGuideLinesChange={setGuideLines}
-                    units={units}
-                  />
-                </div>
-              )}
-            </div>
+            <MiniChart
+              data={dataPoints[tagName]}
+              tagName={tagName}
+              type="line"
+              width={width}
+              height={height}
+              showTrend={true}
+              showAxis={true}
+              title={title || tagName}
+              description={tagDescriptions[tagName]}
+              units={units}
+              statistics={statistics}
+              color={color}
+              guideLines={guideLines}
+              bounds={bounds}
+              scale={scale}
+              onGuideLinesChange={setGuideLines}
+            />
           )
         )}
       </div>
-      
+
       {/* Helper text */}
       {enableGuideLines && guideLines.length === 0 && (
         <div className="mt-2 text-xs text-gray-500 text-center">

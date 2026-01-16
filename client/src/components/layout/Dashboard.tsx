@@ -21,6 +21,7 @@ import { TimeRangePicker } from '../forms/TimeRangePicker';
 import { ReportPreview } from '../reports/ReportPreview';
 import { VersionHistory } from '../reports/VersionHistory';
 import { StatusDashboard } from '../status/StatusDashboard';
+import { SchedulesList, SchedulesErrorBoundary } from '../schedules';
 import { apiService, getAuthToken, setAuthToken } from '../../services/api';
 import { cn } from '../../utils/cn';
 
@@ -961,29 +962,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
             {
               activeTab === 'schedules' && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-3xl font-bold text-gray-900">Scheduled Reports</h2>
-                      <p className="text-gray-600">
-                        Manage automated report generation and delivery schedules.
-                      </p>
-                    </div>
-                    <Button>
-                      <Plus className="h-4 w-4 mr-2" />
-                      New Schedule
-                    </Button>
-                  </div>
-
-                  {/* Schedules List */}
-                  <div className="bg-white rounded-lg border border-gray-200">
-                    <div className="p-6 text-center text-gray-500">
-                      <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                      <p className="text-lg font-medium">No schedules configured</p>
-                      <p>Set up automated report generation to receive regular updates</p>
-                    </div>
-                  </div>
-                </div>
+                <SchedulesErrorBoundary>
+                  <SchedulesList />
+                </SchedulesErrorBoundary>
               )
             }
 

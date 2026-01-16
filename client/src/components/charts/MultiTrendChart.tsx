@@ -5,7 +5,9 @@
 
 import React, { useMemo } from 'react';
 import { TimeSeriesData } from '../../types/api';
-import { CHART_COLORS, getTagColor, getTagIndex } from './chartUtils';
+import { GuideLine, ChartBounds, ChartScale } from '../../types/guideLines';
+import { calculateAllIntersections } from '../../utils/intersectionDetection';
+import { CHART_COLORS, getTagColor, getTagIndex, dataToPixelX, dataToPixelY, pixelToDataX, pixelToDataY } from './chartUtils';
 
 interface MultiTrendChartProps {
     dataPoints: Record<string, TimeSeriesData[]>;
@@ -16,6 +18,16 @@ interface MultiTrendChartProps {
     className?: string;
     title?: string;
     description?: string;
+    /** Optional guide lines to render inside the chart */
+    guideLines?: GuideLine[];
+    /** Chart bounds for guide line positioning */
+    bounds?: ChartBounds;
+    /** Chart scale for guide line positioning */
+    scale?: ChartScale;
+    /** Optional units for Y values */
+    units?: string;
+    /** Callback to update guide line positions during drag */
+    onGuideLinesChange?: (lines: GuideLine[]) => void;
 }
 
 export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
@@ -26,8 +38,15 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
     height = 320,
     className = '',
     title = 'Combined Data Preview',
-    description
+    description,
+    guideLines = [],
+    bounds,
+    scale,
+    units,
+    onGuideLinesChange
 }) => {
+    const [dragState, setDragState] = React.useState<{lineId: string, type: 'horizontal' | 'vertical'} | null>(null);
+
     const chartData = useMemo(() => {
         // Use provided tags or fallback to keys of dataPoints
         const allTags = tags || Object.keys(dataPoints);
@@ -50,7 +69,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
         const minValue = Math.min(...allValues);
         const maxValue = Math.max(...allValues);
         const range = maxValue - minValue || 1;
-        
+
         console.log('MultiTrendChart Scale:', { yMin: minValue, yMax: maxValue, range });
 
         // Normalize Y to fit height
@@ -130,11 +149,97 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
             bottomPad,
             minValue,
             maxValue,
-            activeTags
+            activeTags,
+            graphWidth,
+            graphHeight
         };
     }, [dataPoints, tagDescriptions, tags, width, height]);
 
     if (!chartData) return null;
+
+    // Calculate intersections if guide lines are provided
+    const intersections = useMemo(() => {
+        if (!scale || !bounds || guideLines.length === 0) return [];
+        return calculateAllIntersections(guideLines, dataPoints, bounds, scale);
+    }, [guideLines, dataPoints, bounds, scale]);
+
+    // Handle mouse down on guide line (start drag)
+    const handleMouseDown = (lineId: string, type: 'horizontal' | 'vertical', event: React.MouseEvent<SVGLineElement>) => {
+        if (!onGuideLinesChange) return;
+
+        setDragState({ lineId, type });
+
+        // Update the guide line to indicate it's being dragged
+        const updatedLines = guideLines.map(line =>
+            line.id === lineId ? { ...line, isDragging: true } : line
+        );
+
+        onGuideLinesChange(updatedLines);
+
+        // Prevent text selection during drag
+        event.preventDefault();
+    };
+
+    // Handle mouse move (during drag)
+    const handleMouseMove = (event: React.MouseEvent<SVGSVGElement>) => {
+        if (!dragState || !onGuideLinesChange || !scale || !bounds) return;
+
+        const line = guideLines.find(l => l.id === dragState.lineId);
+        if (!line) return;
+
+        const rect = event.currentTarget.getBoundingClientRect();
+
+        // Calculate position relative to the SVG
+        const svgX = event.clientX - rect.left;
+        const svgY = event.clientY - rect.top;
+
+        // Calculate new position based on drag direction
+        let newPosition: number;
+
+        if (dragState.type === 'horizontal') {
+            // Calculate Y position in data space
+            // The chart area starts at topPad and ends at height - bottomPad
+            // So we need to map the full SVG height to the chart area
+            const pixelY = svgY - chartData.topPad; // Subtract top padding to get to graph area
+            // Ensure the pixelY is within the graph area bounds
+            const clampedPixelY = Math.max(0, Math.min(chartData.graphHeight, pixelY));
+            newPosition = pixelToDataY(clampedPixelY, bounds, scale);
+            // Constrain to Y bounds
+            newPosition = Math.max(scale.yMin, Math.min(scale.yMax, newPosition));
+        } else {
+            // Calculate X position (timestamp) in data space
+            // The chart area starts at leftPad and ends at width - rightPad (but SVG width is width-40)
+            const pixelX = svgX - chartData.leftPad; // Subtract left padding to get to graph area
+            // Ensure the pixelX is within the graph area bounds
+            const clampedPixelX = Math.max(0, Math.min(chartData.graphWidth, pixelX));
+            newPosition = pixelToDataX(clampedPixelX, bounds, scale);
+            // Constrain to X bounds
+            newPosition = Math.max(scale.xMin, Math.min(scale.xMax, newPosition));
+        }
+
+        // Update guide line position
+        const updatedLines = guideLines.map(l =>
+            l.id === dragState.lineId
+                ? { ...l, position: newPosition }
+                : l
+        );
+
+        onGuideLinesChange(updatedLines);
+    };
+
+    // Handle mouse up (end drag)
+    const handleMouseUp = () => {
+        if (!dragState || !onGuideLinesChange) return;
+
+        // Update the guide line to indicate it's no longer being dragged
+        const updatedLines = guideLines.map(line =>
+            line.id === dragState.lineId ? { ...line, isDragging: false } : line
+        );
+
+        onGuideLinesChange(updatedLines);
+
+        setDragState(null);
+    };
 
     return (
         <div className={`bg-white border border-gray-200 rounded p-6 shadow-md ${className}`}>
@@ -148,7 +253,14 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
             </div>
 
             <div className="relative mb-6">
-                <svg width={width - 40} height={height} className="overflow-visible">
+                <svg
+                    width={width - 40}
+                    height={height}
+                    className="overflow-visible"
+                    onMouseMove={dragState ? handleMouseMove : undefined}
+                    onMouseUp={dragState ? handleMouseUp : undefined}
+                    onMouseLeave={dragState ? handleMouseUp : undefined}
+                >
                     {/* Grid lines */}
                     {chartData.subdivisions.map((sub, i) => (
                         <React.Fragment key={`sub-${i}`}>
@@ -216,6 +328,155 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
                             className="transition-all duration-300"
                         />
                     ))}
+
+                    {/* Guide Lines - rendered inside the chart SVG */}
+                    {guideLines && guideLines.length > 0 && scale && bounds && (
+                        <>
+                            {guideLines.map(line => {
+                                // Calculate pixel position from data position
+                                const pixelX = line.type === 'vertical'
+                                    ? dataToPixelX(line.position, bounds, scale) + chartData.leftPad
+                                    : 0;
+
+                                const pixelY = line.type === 'horizontal'
+                                    ? dataToPixelY(line.position, bounds, scale) + chartData.topPad
+                                    : 0;
+
+                                // Calculate line endpoints
+                                // Use the actual SVG width (width - 40) for horizontal lines
+                                const actualSvgWidth = width - 40;
+                                const x1 = line.type === 'horizontal' ? chartData.leftPad : pixelX;
+                                const y1 = line.type === 'horizontal' ? pixelY : chartData.topPad;
+                                const x2 = line.type === 'horizontal' ? actualSvgWidth - chartData.rightPad : pixelX;
+                                const y2 = line.type === 'horizontal' ? pixelY : height - chartData.bottomPad;
+
+                                // Calculate opacity and stroke width based on state
+                                const opacity = line.isDragging ? 0.9 : 0.7;
+                                const strokeWidth = line.isDragging ? 3 : 2;
+
+                                return (
+                                    <g key={line.id}>
+                                        {/* Invisible wider line for easier interaction */}
+                                        <line
+                                            x1={x1}
+                                            y1={y1}
+                                            x2={x2}
+                                            y2={y2}
+                                            stroke="transparent"
+                                            strokeWidth="10"
+                                            style={{ cursor: line.type === 'horizontal' ? 'ns-resize' : 'ew-resize' }}
+                                            onMouseDown={(e) => handleMouseDown(line.id, line.type, e)}
+                                        />
+
+                                        {/* Guide line */}
+                                        <line
+                                            x1={x1}
+                                            y1={y1}
+                                            x2={x2}
+                                            y2={y2}
+                                            stroke={line.color}
+                                            strokeWidth={strokeWidth}
+                                            strokeDasharray="6 4"
+                                            opacity={opacity}
+                                            strokeLinecap="round"
+                                        />
+
+                                        {/* Coordinate display */}
+                                        {line.type === 'horizontal' && (
+                                            <g>
+                                                {/* Background rectangle for readability */}
+                                                <rect
+                                                    x={width - 40 - chartData.rightPad - 50}
+                                                    y={pixelY - 12}
+                                                    width={48}
+                                                    height={20}
+                                                    fill="rgba(255, 255, 255, 0.95)"
+                                                    stroke="#e5e7eb"
+                                                    strokeWidth="1"
+                                                    rx="4"
+                                                    style={{
+                                                        filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))',
+                                                    }}
+                                                />
+
+                                                {/* Text */}
+                                                <text
+                                                    x={width - 40 - chartData.rightPad - 26}
+                                                    y={pixelY + 3}
+                                                    textAnchor="middle"
+                                                    className="text-[11px] font-mono font-medium fill-gray-800"
+                                                    style={{ pointerEvents: 'none' }}
+                                                >
+                                                    {line.position.toFixed(2)}{units ? ` ${units}` : ''}
+                                                </text>
+                                            </g>
+                                        )}
+
+                                        {line.type === 'vertical' && (
+                                            <g>
+                                                {/* Background rectangle for readability */}
+                                                <rect
+                                                    x={pixelX - 40}
+                                                    y={chartData.topPad + 2}
+                                                    width={80}
+                                                    height={20}
+                                                    fill="rgba(255, 255, 255, 0.95)"
+                                                    stroke="#e5e7eb"
+                                                    strokeWidth="1"
+                                                    rx="4"
+                                                    style={{
+                                                        filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1))',
+                                                    }}
+                                                />
+
+                                                {/* Text */}
+                                                <text
+                                                    x={pixelX}
+                                                    y={chartData.topPad + 16}
+                                                    textAnchor="middle"
+                                                    className="text-[11px] font-mono font-medium fill-gray-800"
+                                                    style={{ pointerEvents: 'none' }}
+                                                >
+                                                    {new Date(line.position).toLocaleTimeString([], {
+                                                        hour: '2-digit',
+                                                        minute: '2-digit',
+                                                        second: '2-digit'
+                                                    })}
+                                                </text>
+                                            </g>
+                                        )}
+                                    </g>
+                                );
+                            })}
+
+                            {/* Render intersection points */}
+                            {intersections.map((intersection, index) => (
+                                <g key={`intersection-${index}`}>
+                                    {/* Intersection point circle */}
+                                    <circle
+                                        cx={intersection.x + chartData.leftPad}
+                                        cy={intersection.y + chartData.topPad}
+                                        r={4}
+                                        fill="#ef4444"
+                                        stroke="#ffffff"
+                                        strokeWidth={2}
+                                        opacity={0.9}
+                                    />
+
+                                    {/* Tooltip on hover (simplified - could be enhanced) */}
+                                    <title>
+                                        {intersection.tagName}
+                                        {'\n'}
+                                        Time: {intersection.xValue instanceof Date
+                                            ? intersection.xValue.toLocaleTimeString()
+                                            : new Date(intersection.xValue).toLocaleTimeString()}
+                                        {'\n'}
+                                        Value: {intersection.yValue.toFixed(2)}{units ? ` ${units}` : ''}
+                                    </title>
+                                </g>
+                            ))}
+                        </>
+                    )}
                 </svg>
             </div>
 
