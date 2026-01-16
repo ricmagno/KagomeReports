@@ -181,6 +181,14 @@ export class ReportGenerationService {
           this.addChartsSection(doc, reportData.charts);
         }
 
+        // Add data table for each tag
+        for (const [tagName, data] of Object.entries(reportData.data)) {
+          if (data.length > 0) {
+            doc.addPage();
+            this.addDataTable(doc, tagName, data);
+          }
+        }
+
         // Add statistical summary
         if (reportData.statistics) {
           doc.addPage();
@@ -638,6 +646,135 @@ export class ReportGenerationService {
     }
 
     doc.y = tableTop + (rowIndex + 1) * rowHeight;
+  }
+
+  /**
+   * Add data table section showing all data points
+   */
+  private addDataTable(doc: PDFKit.PDFDocument, tagName: string, data: TimeSeriesData[]): void {
+    doc.fontSize(18)
+       .font('Helvetica-Bold')
+       .text(`Data Table: ${tagName}`);
+
+    doc.moveDown();
+
+    // Table configuration
+    const tableTop = doc.y;
+    const tableLeft = 50;
+    const pageWidth = doc.page.width - 100; // Account for margins
+    
+    // Column widths (proportional)
+    const colWidths = {
+      timestamp: pageWidth * 0.35,
+      value: pageWidth * 0.25,
+      quality: pageWidth * 0.20,
+      status: pageWidth * 0.20
+    };
+    
+    const rowHeight = 20;
+    const headerHeight = 25;
+
+    // Helper function to get quality status text
+    const getQualityStatus = (quality: number): string => {
+      if (quality === 192) return 'Good';
+      if (quality === 0) return 'Bad';
+      if (quality === 64) return 'Uncertain';
+      return `Code ${quality}`;
+    };
+
+    // Helper function to check if we need a new page
+    const checkPageBreak = (currentY: number) => {
+      if (currentY > doc.page.height - 100) {
+        doc.addPage();
+        return 50; // Reset to top margin
+      }
+      return currentY;
+    };
+
+    // Draw table header
+    let currentY = tableTop;
+    
+    doc.fontSize(10)
+       .font('Helvetica-Bold')
+       .fillColor('#374151');
+
+    // Header background
+    doc.rect(tableLeft, currentY, pageWidth, headerHeight)
+       .fill('#f3f4f6');
+
+    // Header text
+    doc.fillColor('#374151')
+       .text('Timestamp', tableLeft + 5, currentY + 7, { width: colWidths.timestamp, align: 'left' })
+       .text('Value', tableLeft + colWidths.timestamp + 5, currentY + 7, { width: colWidths.value, align: 'right' })
+       .text('Quality Code', tableLeft + colWidths.timestamp + colWidths.value + 5, currentY + 7, { width: colWidths.quality, align: 'center' })
+       .text('Status', tableLeft + colWidths.timestamp + colWidths.value + colWidths.quality + 5, currentY + 7, { width: colWidths.status, align: 'center' });
+
+    currentY += headerHeight;
+
+    // Draw table rows
+    doc.font('Helvetica')
+       .fontSize(9);
+
+    // Limit to first 1000 rows to avoid huge PDFs
+    const maxRows = Math.min(data.length, 1000);
+    
+    for (let i = 0; i < maxRows; i++) {
+      const row = data[i];
+      
+      // Safety check
+      if (!row) continue;
+      
+      // Check if we need a new page
+      currentY = checkPageBreak(currentY);
+
+      // Alternate row colors
+      if (i % 2 === 0) {
+        doc.rect(tableLeft, currentY, pageWidth, rowHeight)
+           .fill('#f9fafb');
+      }
+
+      // Format timestamp
+      const timestamp = row.timestamp instanceof Date 
+        ? row.timestamp.toLocaleString() 
+        : new Date(row.timestamp).toLocaleString();
+
+      // Format value
+      const value = typeof row.value === 'number' 
+        ? row.value.toFixed(2) 
+        : String(row.value);
+
+      // Get quality status
+      const qualityStatus = getQualityStatus(row.quality);
+      
+      // Set text color based on quality
+      let textColor = '#111827'; // Default black
+      if (row.quality === 192) textColor = '#059669'; // Green for good
+      else if (row.quality === 0) textColor = '#dc2626'; // Red for bad
+      else if (row.quality === 64) textColor = '#d97706'; // Orange for uncertain
+
+      // Draw row data
+      doc.fillColor('#111827')
+         .text(timestamp, tableLeft + 5, currentY + 5, { width: colWidths.timestamp, align: 'left' })
+         .text(value, tableLeft + colWidths.timestamp + 5, currentY + 5, { width: colWidths.value, align: 'right' })
+         .fillColor(textColor)
+         .text(String(row.quality), tableLeft + colWidths.timestamp + colWidths.value + 5, currentY + 5, { width: colWidths.quality, align: 'center' })
+         .text(qualityStatus, tableLeft + colWidths.timestamp + colWidths.value + colWidths.quality + 5, currentY + 5, { width: colWidths.status, align: 'center' });
+
+      currentY += rowHeight;
+    }
+
+    // Add note if data was truncated
+    if (data.length > maxRows) {
+      currentY = checkPageBreak(currentY + 10);
+      doc.fillColor('#6b7280')
+         .fontSize(10)
+         .text(`Note: Showing first ${maxRows} of ${data.length} data points. Export to CSV for complete data.`, 
+               tableLeft, currentY + 10, { align: 'center', width: pageWidth });
+    }
+
+    // Reset color
+    doc.fillColor('black');
+    doc.y = currentY + 30;
   }
 
   /**
