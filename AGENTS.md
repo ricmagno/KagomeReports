@@ -107,6 +107,33 @@ The project follows a modular Service-Oriented Architecture (SOA) within a monol
 3.  **Services Layer**: Business logic in `src/services/` handling core functionality.
 4.  **Data Layer**: Direct SQL connections to AVEVA Historian and local storage.
 
+### Chart Components Architecture
+
+The frontend uses a modular chart component system for data visualization:
+
+**Core Chart Components** (`client/src/components/charts/`):
+- **MiniChart**: Individual tag chart with trend line and statistics
+- **MultiTrendChart**: Combined view showing multiple tags on one chart
+- **InteractiveChart**: Wrapper component that adds guide lines to charts
+- **GuideLines**: Container managing all guide lines and interactions
+- **GuideLine**: Individual draggable guide line component
+- **GuideLineControls**: UI controls for adding/removing guide lines
+- **CoordinateDisplay**: Shows X/Y values at guide line positions
+
+**Chart Coordinate System**:
+- Charts use SVG coordinate space with padding for axes and labels
+- Coordinate transformations convert between pixel space and data space
+- Utilities in `chartUtils.ts` handle conversions: `pixelToDataY()`, `dataToPixelY()`, etc.
+- Chart bounds include: `leftPad`, `rightPad`, `topPad`, `bottomPad`, `graphWidth`, `graphHeight`
+- Chart scale includes: `xMin`, `xMax`, `yMin`, `yMax` (data value ranges)
+
+**Guide Lines State Management**:
+- Guide lines are managed with React `useState` in the `InteractiveChart` component
+- Each guide line has: `id`, `type` (horizontal/vertical), `position` (data value), `color`
+- Drag state tracks: `lineId`, `startPosition`, `currentPosition`
+- Intersections are calculated by finding where guide lines cross data series
+- Guide lines are session-only and reset when navigating away or changing configuration
+
 ### Key Services and Responsibilities
 
 -   **DataRetrievalService**: Interfaces with AVEVA Historian for time-series data.
@@ -205,6 +232,11 @@ The project follows a modular Service-Oriented Architecture (SOA) within a monol
 1. Time-series data queries support sampling modes (Cyclic, Delta, BestFit) to handle large datasets
 2. Pagination is implemented for filtered data retrieval with cursor support
 3. Connection pooling helps manage database resource usage efficiently
+4. Chart rendering optimizations:
+   - Coordinate transformations are memoized using `useMemo`
+   - Mouse move events are throttled during guide line dragging (~60fps)
+   - Intersection calculations are debounced to prevent excessive recalculation
+   - Maximum guide line limits prevent performance degradation
 
 ### Error Handling
 1. Custom error handling middleware catches and properly formats errors for API responses
@@ -255,6 +287,29 @@ The system supports:
     - Shows "Version X" for saved reports with version numbers
     - Shows "New" for unsaved reports without version numbers
     - Updates dynamically when loading saved reports
+
+### Report Preview Sections
+The Report Preview component displays two distinct sections:
+
+1. **Trends Section** (formerly "Data Preview"):
+   - Located after the Data Summary section
+   - Displays interactive line charts showing time-series data visualization
+   - Uses `MultiTrendChart` component for multiple tags or `MiniChart` for individual tags
+   - **Interactive Guide Lines Feature** (in development):
+     - Allows users to add horizontal and vertical guide lines to charts
+     - Guide lines can be dragged to measure specific values
+     - Displays X and Y coordinate values at guide line positions
+     - Shows data intersection points where guide lines cross data series
+     - Supports up to 5 horizontal and 5 vertical guide lines per chart
+     - Guide lines are session-only (not persisted)
+     - Implemented using `InteractiveChart` wrapper component
+
+2. **Data Preview Section** (table):
+   - Located after the Trends section
+   - Displays detailed tabular data with columns: Timestamp, Value, Quality Code, Status
+   - Uses `DataPreviewTable` component with pagination
+   - Shows color-coded quality indicators
+   - Supports sorting and filtering
 
 ### Automation Features
 Support for scheduled report generation with various intervals:
