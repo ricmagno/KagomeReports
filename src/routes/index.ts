@@ -15,6 +15,7 @@ import progressRoutes from './progress';
 import autoUpdateRoutes from './autoUpdate';
 import databaseConfigRoutes from './databaseConfig';
 import statusRoutes from './status';
+import filesystemRoutes from './filesystem';
 
 const router = Router();
 
@@ -30,6 +31,7 @@ router.use('/progress', progressRoutes);
 router.use('/auto-update', autoUpdateRoutes);
 router.use('/database', databaseConfigRoutes);
 router.use('/status', statusRoutes);
+router.use('/filesystem', filesystemRoutes);
 
 // API info endpoint
 router.get('/', (req, res) => {
@@ -48,7 +50,8 @@ router.get('/', (req, res) => {
       progress: '/api/progress',
       autoUpdate: '/api/auto-update',
       database: '/api/database',
-      status: '/api/status'
+      status: '/api/status',
+      filesystem: '/api/filesystem'
     }
   });
 });

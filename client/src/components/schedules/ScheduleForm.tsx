@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Card, CardContent, CardHeader } from '../ui/Card';
 import { CronBuilder } from './CronBuilder';
+import { DirectoryBrowser } from './DirectoryBrowser';
 import { cn } from '../../utils/cn';
 
 /**
@@ -107,6 +108,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
   const [errors, setErrors] = useState<FormErrors>({});
   const [recipientInput, setRecipientInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showDirectoryBrowser, setShowDirectoryBrowser] = useState(false);
 
   const isEditMode = !!schedule;
 
@@ -394,15 +396,33 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
               {/* Destination Path Input */}
               {formData.saveToFile && (
                 <div className="ml-14">
-                  <Input
-                    label="Destination Path (optional)"
-                    type="text"
-                    value={formData.destinationPath}
-                    onChange={(e) => setFormData({ ...formData, destinationPath: e.target.value })}
-                    error={errors.destinationPath}
-                    placeholder="e.g., /reports/production or reports/daily"
-                    aria-describedby="destination-path-help"
-                  />
+                  <label htmlFor="destination-path" className="block text-sm font-medium text-gray-700 mb-1">
+                    Destination Path (optional)
+                  </label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="destination-path"
+                      type="text"
+                      value={formData.destinationPath}
+                      onChange={(e) => setFormData({ ...formData, destinationPath: e.target.value })}
+                      error={errors.destinationPath}
+                      placeholder="e.g., /reports/production or reports/daily"
+                      aria-describedby="destination-path-help"
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowDirectoryBrowser(true)}
+                      className="flex-shrink-0"
+                      aria-label="Browse directories"
+                    >
+                      <svg className="w-4 h-4 sm:mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                      </svg>
+                      <span className="hidden sm:inline">Browse</span>
+                    </Button>
+                  </div>
                   <p className="mt-1 text-xs text-gray-500" id="destination-path-help">
                     Leave empty to use default reports directory. Relative paths are relative to the reports folder.
                   </p>
@@ -645,6 +665,18 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
             </Button>
           </div>
         </form>
+
+        {/* Directory Browser Modal */}
+        {showDirectoryBrowser && (
+          <DirectoryBrowser
+            value={formData.destinationPath}
+            onChange={(path) => {
+              setFormData({ ...formData, destinationPath: path });
+              setShowDirectoryBrowser(false);
+            }}
+            onClose={() => setShowDirectoryBrowser(false)}
+          />
+        )}
       </CardContent>
     </Card>
   );
