@@ -29,6 +29,9 @@ export interface ScheduleConfig {
   createdAt: Date;
   updatedAt: Date;
   recipients?: string[] | undefined;
+  saveToFile?: boolean | undefined;
+  sendEmail?: boolean | undefined;
+  destinationPath?: string | undefined;
 }
 
 export interface ScheduleExecution {
@@ -87,7 +90,10 @@ export class SchedulerService {
           last_error TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          recipients TEXT
+          recipients TEXT,
+          save_to_file BOOLEAN DEFAULT 1,
+          send_email BOOLEAN DEFAULT 0,
+          destination_path TEXT
         )
       `);
 
@@ -116,6 +122,49 @@ export class SchedulerService {
           PRIMARY KEY (schedule_id, scheduled_time)
         )
       `);
+
+      // Migration: Add new columns if they don't exist
+      this.db.all("PRAGMA table_info(schedules)", (err, columns: any[]) => {
+        if (err) {
+          reportLogger.error('Failed to check table schema', { error: err });
+          return;
+        }
+
+        const columnNames = columns.map(col => col.name);
+
+        if (!columnNames.includes('save_to_file')) {
+          this.db.run('ALTER TABLE schedules ADD COLUMN save_to_file BOOLEAN DEFAULT 1', (err) => {
+            if (err) reportLogger.error('Failed to add save_to_file column', { error: err });
+            else reportLogger.info('Added save_to_file column to schedules table');
+          });
+        }
+
+        if (!columnNames.includes('send_email')) {
+          this.db.run('ALTER TABLE schedules ADD COLUMN send_email BOOLEAN DEFAULT 0', (err) => {
+            if (err) reportLogger.error('Failed to add send_email column', { error: err });
+            else reportLogger.info('Added send_email column to schedules table');
+          });
+        }
+
+        if (!columnNames.includes('destination_path')) {
+          this.db.run('ALTER TABLE schedules ADD COLUMN destination_path TEXT', (err) => {
+            if (err) reportLogger.error('Failed to add destination_path column', { error: err });
+            else reportLogger.info('Added destination_path column to schedules table');
+          });
+        }
+
+        // Migrate existing schedules: set send_email=1 if recipients exist
+        this.db.run(`
+          UPDATE schedules 
+          SET send_email = 1 
+          WHERE recipients IS NOT NULL 
+            AND recipients != '[]' 
+            AND send_email IS NULL
+        `, (err) => {
+          if (err) reportLogger.error('Failed to migrate existing schedules', { error: err });
+          else reportLogger.info('Migrated existing schedules with recipients');
+        });
+      });
     });
 
     reportLogger.info('Scheduler database initialized');
@@ -149,12 +198,17 @@ export class SchedulerService {
 
     const nextRun = this.getNextRunTime(config.cronExpression);
 
+    // Set defaults for delivery options
+    const saveToFile = config.saveToFile !== undefined ? config.saveToFile : true;
+    const sendEmail = config.sendEmail !== undefined ? config.sendEmail : (config.recipients && config.recipients.length > 0);
+    const destinationPath = config.destinationPath || null;
+
     return new Promise((resolve, reject) => {
       this.db.run(
         `INSERT INTO schedules (
           id, name, description, report_config, cron_expression, enabled,
-          next_run, created_at, updated_at, recipients
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          next_run, created_at, updated_at, recipients, save_to_file, send_email, destination_path
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           scheduleId,
           config.name,
@@ -165,7 +219,10 @@ export class SchedulerService {
           nextRun.toISOString(),
           now.toISOString(),
           now.toISOString(),
-          config.recipients ? JSON.stringify(config.recipients) : null
+          config.recipients ? JSON.stringify(config.recipients) : null,
+          saveToFile ? 1 : 0,
+          sendEmail ? 1 : 0,
+          destinationPath
         ],
         (err) => {
           if (err) {
@@ -230,7 +287,10 @@ export class SchedulerService {
                 lastError: row.last_error || undefined,
                 createdAt: new Date(row.created_at),
                 updatedAt: new Date(row.updated_at),
-                recipients: row.recipients ? JSON.parse(row.recipients) : undefined
+                recipients: row.recipients ? JSON.parse(row.recipients) : undefined,
+                saveToFile: row.save_to_file !== undefined ? Boolean(row.save_to_file) : true,
+                sendEmail: row.send_email !== undefined ? Boolean(row.send_email) : false,
+                destinationPath: row.destination_path || undefined
               } as ScheduleConfig;
             });
             resolve(schedules);
@@ -274,7 +334,10 @@ export class SchedulerService {
               lastError: row.last_error || undefined,
               createdAt: new Date(row.created_at),
               updatedAt: new Date(row.updated_at),
-              recipients: row.recipients ? JSON.parse(row.recipients) : undefined
+              recipients: row.recipients ? JSON.parse(row.recipients) : undefined,
+              saveToFile: row.save_to_file !== undefined ? Boolean(row.save_to_file) : true,
+              sendEmail: row.send_email !== undefined ? Boolean(row.send_email) : false,
+              destinationPath: row.destination_path || undefined
             } as ScheduleConfig);
           }
         }
@@ -300,8 +363,8 @@ export class SchedulerService {
     const nextRun = updates.cronExpression ? this.getNextRunTime(updates.cronExpression) : schedule.nextRun;
 
     return new Promise((resolve, reject) => {
-      const fields = [];
-      const values = [];
+      const fields: string[] = [];
+      const values: any[] = [] as any[];
 
       if (updates.name !== undefined) {
         fields.push('name = ?');
@@ -309,7 +372,7 @@ export class SchedulerService {
       }
       if (updates.description !== undefined) {
         fields.push('description = ?');
-        values.push(updates.description);
+        values.push(updates.description || null);
       }
       if (updates.reportConfig !== undefined) {
         fields.push('report_config = ?');
@@ -327,36 +390,66 @@ export class SchedulerService {
       }
       if (updates.recipients !== undefined) {
         fields.push('recipients = ?');
-        values.push(updates.recipients ? JSON.stringify(updates.recipients) : null);
+        values.push(updates.recipients && updates.recipients.length > 0 ? JSON.stringify(updates.recipients) : null);
+      }
+      if (updates.saveToFile !== undefined) {
+        fields.push('save_to_file = ?');
+        values.push(updates.saveToFile ? 1 : 0);
+      }
+      if (updates.sendEmail !== undefined) {
+        fields.push('send_email = ?');
+        values.push(updates.sendEmail ? 1 : 0);
+      }
+      if (updates.destinationPath !== undefined) {
+        fields.push('destination_path = ?');
+        values.push(updates.destinationPath || null);
       }
 
+      // Always update the updated_at timestamp
       fields.push('updated_at = ?');
       values.push(now.toISOString());
+      
+      // Add scheduleId as the last parameter for the WHERE clause
       values.push(scheduleId);
 
-      this.db.run(
-        `UPDATE schedules SET ${fields.join(', ')} WHERE id = ?`,
-        values,
-        (err) => {
-          if (err) {
-            reject(err);
-          } else {
-            reportLogger.info('Schedule updated', { scheduleId });
+      const sql = `UPDATE schedules SET ${fields.join(', ')} WHERE id = ?`;
+      
+      reportLogger.info('Updating schedule', { 
+        scheduleId, 
+        fields: fields.map(f => f.split(' = ')[0]),
+        sql 
+      });
 
-            // Restart cron job if necessary
-            this.stopCronJob(scheduleId);
-            if (updates.enabled !== false) {
-              this.getSchedule(scheduleId).then(updatedSchedule => {
-                if (updatedSchedule && updatedSchedule.enabled) {
-                  this.startCronJob(updatedSchedule);
-                }
-              });
-            }
+      this.db.run(sql, values, function(err) {
+        if (err) {
+          reportLogger.error('Failed to update schedule in database', { 
+            scheduleId, 
+            error: err,
+            sql,
+            values 
+          });
+          reject(err);
+        } else {
+          reportLogger.info('Schedule updated in database', { 
+            scheduleId, 
+            changes: this.changes 
+          });
 
-            resolve();
+          // Restart cron job if necessary
+          schedulerService.stopCronJob(scheduleId);
+          if (updates.enabled !== false) {
+            schedulerService.getSchedule(scheduleId).then(updatedSchedule => {
+              if (updatedSchedule && updatedSchedule.enabled) {
+                schedulerService.startCronJob(updatedSchedule);
+              }
+            }).catch(err => {
+              reportLogger.error('Failed to restart cron job after update', { scheduleId, error: err });
+            });
           }
+
+          resolve();
         }
-      );
+      });
     });
   }
 
@@ -545,23 +638,64 @@ export class SchedulerService {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
-      // Record successful execution
-      await this.recordExecution({
-        id: executionId,
-        scheduleId,
-        startTime,
-        endTime,
-        status: 'success',
-        reportPath: reportResult.filePath,
-        duration
-      } as ScheduleExecution);
+      // Determine delivery methods (with defaults)
+      const saveToFile = schedule.saveToFile !== undefined ? schedule.saveToFile : true;
+      const sendEmail = schedule.sendEmail !== undefined ? schedule.sendEmail : (schedule.recipients && schedule.recipients.length > 0);
+      
+      let reportPath = reportResult.filePath;
+      let fileSaveError: string | undefined;
+      let emailSendError: string | undefined;
 
-      // Update schedule status
-      const nextRun = this.getNextRunTime(schedule.cronExpression);
-      await this.updateScheduleStatus(scheduleId, 'success', startTime, nextRun);
+      // Handle file saving
+      if (saveToFile) {
+        try {
+          // If custom destination path is provided, move/copy the file
+          if (schedule.destinationPath && reportResult.filePath) {
+            const fs = await import('fs/promises');
+            const path = await import('path');
+            
+            // Sanitize and validate destination path
+            const sanitizedPath = schedule.destinationPath.replace(/\.\./g, '');
+            const destDir = path.isAbsolute(sanitizedPath) 
+              ? sanitizedPath 
+              : path.join(env.REPORTS_DIR, sanitizedPath);
+            
+            // Create directory if it doesn't exist
+            await fs.mkdir(destDir, { recursive: true });
+            
+            // Copy file to destination
+            const fileName = path.basename(reportResult.filePath);
+            const destPath = path.join(destDir, fileName);
+            await fs.copyFile(reportResult.filePath, destPath);
+            
+            reportPath = destPath;
+            reportLogger.info('Report saved to custom destination', {
+              scheduleId,
+              executionId,
+              destinationPath: destPath
+            });
+          } else {
+            reportLogger.info('Report saved to default location', {
+              scheduleId,
+              executionId,
+              reportPath: reportResult.filePath
+            });
+          }
+        } catch (fileError) {
+          fileSaveError = fileError instanceof Error ? fileError.message : 'Unknown file save error';
+          reportLogger.error('Failed to save report to custom destination', {
+            scheduleId,
+            executionId,
+            error: fileSaveError,
+            destinationPath: schedule.destinationPath
+          });
+        }
+      } else {
+        reportLogger.info('File saving disabled for this schedule', { scheduleId, executionId });
+      }
 
-      // Send email if recipients are configured
-      if (schedule.recipients && schedule.recipients.length > 0) {
+      // Handle email delivery
+      if (sendEmail && schedule.recipients && schedule.recipients.length > 0) {
         try {
           const emailResult = await emailService.sendReportEmail(
             schedule.recipients,
@@ -588,6 +722,7 @@ export class SchedulerService {
               messageId: emailResult.messageId
             });
           } else {
+            emailSendError = emailResult.error;
             reportLogger.warn('Failed to send report email', {
               scheduleId,
               executionId,
@@ -596,20 +731,45 @@ export class SchedulerService {
             });
           }
         } catch (emailError) {
+          emailSendError = emailError instanceof Error ? emailError.message : 'Unknown email error';
           reportLogger.error('Email sending failed with exception', {
             scheduleId,
             executionId,
             error: emailError
           });
         }
+      } else if (sendEmail) {
+        reportLogger.warn('Email delivery enabled but no recipients configured', { scheduleId, executionId });
+      } else {
+        reportLogger.info('Email delivery disabled for this schedule', { scheduleId, executionId });
       }
+
+      // Record successful execution
+      await this.recordExecution({
+        id: executionId,
+        scheduleId,
+        startTime,
+        endTime,
+        status: 'success',
+        reportPath: reportPath,
+        duration
+      } as ScheduleExecution);
+
+      // Update schedule status
+      const nextRun = this.getNextRunTime(schedule.cronExpression);
+      await this.updateScheduleStatus(scheduleId, 'success', startTime, nextRun);
 
       reportLogger.info('Scheduled execution completed successfully', {
         scheduleId,
         executionId,
         duration,
-        reportPath: reportResult.filePath,
-        emailSent: !!(schedule.recipients && schedule.recipients.length > 0)
+        reportPath: reportPath,
+        saveToFile,
+        sendEmail,
+        fileSaved: saveToFile && !fileSaveError,
+        emailSent: sendEmail && !emailSendError,
+        fileSaveError,
+        emailSendError
       });
 
     } catch (error) {

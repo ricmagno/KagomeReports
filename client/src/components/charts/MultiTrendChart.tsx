@@ -155,13 +155,13 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
         };
     }, [dataPoints, tagDescriptions, tags, width, height]);
 
-    if (!chartData) return null;
-
-    // Calculate intersections if guide lines are provided
+    // Calculate intersections if guide lines are provided (must be before early return)
     const intersections = useMemo(() => {
-        if (!scale || !bounds || guideLines.length === 0) return [];
+        if (!chartData || !scale || !bounds || guideLines.length === 0) return [];
         return calculateAllIntersections(guideLines, dataPoints, bounds, scale);
-    }, [guideLines, dataPoints, bounds, scale]);
+    }, [guideLines, dataPoints, bounds, scale, chartData]);
+
+    if (!chartData) return null;
 
     // Handle mouse down on guide line (start drag)
     const handleMouseDown = (lineId: string, type: 'horizontal' | 'vertical', event: React.MouseEvent<SVGLineElement>) => {

@@ -33,6 +33,9 @@ interface FormData {
   cronExpression: string;
   enabled: boolean;
   recipients: string[];
+  saveToFile: boolean;
+  sendEmail: boolean;
+  destinationPath: string;
 }
 
 /**
@@ -43,6 +46,8 @@ interface FormErrors {
   reportConfigId?: string;
   cronExpression?: string;
   recipients?: string;
+  deliveryOptions?: string;
+  destinationPath?: string;
 }
 
 /**
@@ -94,6 +99,9 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
     cronExpression: schedule?.cronExpression || '0 9 * * *',
     enabled: schedule?.enabled ?? true,
     recipients: schedule?.recipients || [],
+    saveToFile: schedule?.saveToFile !== undefined ? schedule.saveToFile : true,
+    sendEmail: schedule?.sendEmail !== undefined ? schedule.sendEmail : !!(schedule?.recipients && schedule.recipients.length > 0),
+    destinationPath: schedule?.destinationPath || '',
   });
 
   const [errors, setErrors] = useState<FormErrors>({});
@@ -136,8 +144,13 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
     }
 
     // Validate recipients
-    if (formData.recipients.length === 0) {
-      newErrors.recipients = 'At least one recipient email is required';
+    if (formData.sendEmail && formData.recipients.length === 0) {
+      newErrors.recipients = 'At least one recipient email is required when email delivery is enabled';
+    }
+
+    // Validate delivery options
+    if (!formData.saveToFile && !formData.sendEmail) {
+      newErrors.deliveryOptions = 'At least one delivery method must be enabled (Save to Disk or Send via Email)';
     }
 
     setErrors(newErrors);
@@ -154,9 +167,25 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
     setLoading(true);
 
     try {
-      const selectedReportConfig = reportConfigs.find(
-        (config) => config.id === formData.reportConfigId
-      );
+      let selectedReportConfig: ReportConfig | undefined;
+
+      // If editing an existing schedule, use its report config if no new one is selected
+      if (isEditMode && schedule?.reportConfig) {
+        // Try to find the selected report config from the list
+        selectedReportConfig = reportConfigs.find(
+          (config) => config.id === formData.reportConfigId
+        );
+        
+        // If not found (or user didn't change it), use the schedule's existing config
+        if (!selectedReportConfig || formData.reportConfigId === schedule.reportConfig.id) {
+          selectedReportConfig = schedule.reportConfig;
+        }
+      } else {
+        // For new schedules, must select from the list
+        selectedReportConfig = reportConfigs.find(
+          (config) => config.id === formData.reportConfigId
+        );
+      }
 
       if (!selectedReportConfig) {
         setErrors({ reportConfigId: 'Selected report configuration not found' });
@@ -169,7 +198,10 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
         reportConfig: selectedReportConfig,
         cronExpression: formData.cronExpression,
         enabled: formData.enabled,
-        recipients: formData.recipients,
+        recipients: formData.sendEmail ? formData.recipients : undefined,
+        saveToFile: formData.saveToFile,
+        sendEmail: formData.sendEmail,
+        destinationPath: formData.saveToFile && formData.destinationPath ? formData.destinationPath.trim() : undefined,
       };
 
       await onSave(scheduleConfig);
@@ -178,7 +210,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [formData, reportConfigs, validateForm, onSave]);
+  }, [formData, reportConfigs, validateForm, onSave, isEditMode, schedule]);
 
   const handleAddRecipient = useCallback(() => {
     const email = recipientInput.trim();
@@ -289,6 +321,13 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
               aria-describedby={errors.reportConfigId ? "report-config-error" : undefined}
             >
               <option value="">Select a report configuration</option>
+              {/* Show current schedule's report config if editing and not in the list */}
+              {isEditMode && schedule?.reportConfig && !reportConfigs.find(c => c.id === schedule.reportConfig.id) && (
+                <option key={schedule.reportConfig.id} value={schedule.reportConfig.id}>
+                  {schedule.reportConfig.name} (Current)
+                  {schedule.reportConfig.description && ` - ${schedule.reportConfig.description}`}
+                </option>
+              )}
               {reportConfigs.map((config) => (
                 <option key={config.id} value={config.id}>
                   {config.name}
@@ -316,14 +355,175 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
             />
           </div>
 
-          {/* Email Recipients */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2" id="recipients-label">
+          {/* Delivery Options Section */}
+          <div className="border-t border-gray-200 pt-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Delivery Options</h3>
+            
+            {errors.deliveryOptions && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md" role="alert">
+                <p className="text-sm text-red-800">{errors.deliveryOptions}</p>
+              </div>
+            )}
+
+            {/* Save Report to Disk Toggle */}
+            <div className="mb-6">
+              <div className="flex items-center gap-3 mb-3">
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.saveToFile}
+                    onChange={(e) =>
+                      setFormData({ ...formData, saveToFile: e.target.checked })
+                    }
+                    className="sr-only peer"
+                    aria-label="Enable or disable saving report to disk"
+                    aria-describedby="save-to-file-description"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+                <div>
+                  <p className="text-sm font-medium text-gray-700">
+                    Save Report to Disk
+                  </p>
+                  <p className="text-xs text-gray-500" id="save-to-file-description">
+                    Save generated reports to the file system
+                  </p>
+                </div>
+              </div>
+
+              {/* Destination Path Input */}
+              {formData.saveToFile && (
+                <div className="ml-14">
+                  <Input
+                    label="Destination Path (optional)"
+                    type="text"
+                    value={formData.destinationPath}
+                    onChange={(e) => setFormData({ ...formData, destinationPath: e.target.value })}
+                    error={errors.destinationPath}
+                    placeholder="e.g., /reports/production or reports/daily"
+                    aria-describedby="destination-path-help"
+                  />
+                  <p className="mt-1 text-xs text-gray-500" id="destination-path-help">
+                    Leave empty to use default reports directory. Relative paths are relative to the reports folder.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Send via Email Toggle */}
+            <div className="mb-4">
+              <div className="flex items-center gap-3 mb-3">
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.sendEmail}
+                    onChange={(e) =>
+                      setFormData({ ...formData, sendEmail: e.target.checked })
+                    }
+                    className="sr-only peer"
+                    aria-label="Enable or disable email delivery"
+                    aria-describedby="send-email-description"
+                  />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                </label>
+                <div>
+                  <p className="text-sm font-medium text-gray-700">
+                    Send via Email
+                  </p>
+                  <p className="text-xs text-gray-500" id="send-email-description">
+                    Email generated reports to recipients
+                  </p>
+                </div>
+              </div>
+
+              {/* Email Recipients */}
+              {formData.sendEmail && (
+                <div className="ml-14">
+                  <label className="block text-sm font-medium text-gray-700 mb-2" id="recipients-label">
+                    Email Recipients {formData.sendEmail && <span className="text-red-500">*</span>}
+                  </label>
+                  <div className="flex flex-col sm:flex-row gap-2 mb-2">
+                    <Input
+                      id="recipient-input"
+                      type="email"
+                      value={recipientInput}
+                      onChange={(e) => setRecipientInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddRecipient();
+                        }
+                      }}
+                      placeholder="email@example.com"
+                      className="flex-1"
+                      aria-label="Enter email address"
+                      aria-describedby="recipients-label"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleAddRecipient}
+                      className="w-full sm:w-auto"
+                      aria-label="Add email recipient"
+                    >
+                      Add
+                    </Button>
+                  </div>
+
+                  {/* Recipients List */}
+                  {formData.recipients.length > 0 && (
+                    <div className="space-y-2" role="list" aria-label="Email recipients">
+                      {formData.recipients.map((email) => (
+                        <div
+                          key={email}
+                          className="flex items-center justify-between p-2 bg-gray-50 rounded-md"
+                          role="listitem"
+                        >
+                          <span className="text-sm text-gray-700 break-all">{email}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveRecipient(email)}
+                            className="text-red-600 hover:text-red-800 ml-2 flex-shrink-0 p-1 rounded focus:outline-none focus:ring-2 focus:ring-red-500"
+                            aria-label={`Remove ${email} from recipients`}
+                          >
+                            <svg
+                              className="w-5 h-5"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M6 18L18 6M6 6l12 12"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {errors.recipients && (
+                    <p className="mt-1 text-sm text-red-600" role="alert">
+                      {errors.recipients}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Email Recipients - OLD SECTION TO REMOVE */}
+          <div style={{ display: 'none' }}>
+            <label className="block text-sm font-medium text-gray-700 mb-2" id="recipients-label-old">
               Email Recipients <span className="text-red-500">*</span>
             </label>
             <div className="flex flex-col sm:flex-row gap-2 mb-2">
               <Input
-                id="recipient-input"
+                id="recipient-input-old"
                 type="email"
                 value={recipientInput}
                 onChange={(e) => setRecipientInput(e.target.value)}
@@ -336,7 +536,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
                 placeholder="email@example.com"
                 className="flex-1"
                 aria-label="Enter email address"
-                aria-describedby="recipients-label"
+                aria-describedby="recipients-label-old"
               />
               <Button
                 type="button"

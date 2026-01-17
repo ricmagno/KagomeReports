@@ -162,6 +162,16 @@ export const MiniChart: React.FC<MiniChartProps> = ({
     };
   }, [data, width, height, showTrend, showAxis, units]);
 
+  // Calculate intersections if guide lines are provided (must be before early return)
+  const intersections = useMemo(() => {
+    if (!chartData || !scale || !bounds || !guideLines || guideLines.length === 0) return [];
+    // Create a dataPoints record for the single series
+    const dataPointsRecord: Record<string, TimeSeriesData[]> = {
+      [tagName]: data
+    };
+    return calculateAllIntersections(guideLines, dataPointsRecord, bounds, scale);
+  }, [guideLines, data, tagName, bounds, scale, chartData]);
+
   if (!chartData) {
     return (
       <div
@@ -206,16 +216,6 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   };
 
   const baseColor = color || getQualityColor();
-
-  // Calculate intersections if guide lines are provided
-  const intersections = useMemo(() => {
-    if (!scale || !bounds || !guideLines || guideLines.length === 0) return [];
-    // Create a dataPoints record for the single series
-    const dataPointsRecord: Record<string, TimeSeriesData[]> = {
-      [tagName]: data
-    };
-    return calculateAllIntersections(guideLines, dataPointsRecord, bounds, scale);
-  }, [guideLines, data, tagName, bounds, scale]);
 
   // Handle mouse down on guide line (start drag)
   const handleMouseDown = (lineId: string, type: 'horizontal' | 'vertical', event: React.MouseEvent<SVGLineElement>) => {

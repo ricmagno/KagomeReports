@@ -386,3 +386,129 @@ const formatDate = useCallback((date: Date | string) => {
 - ✅ Both Date objects and strings are handled gracefully
 
 ### Status: ✅ FIXED
+
+
+---
+
+## Additional Bug Fix: CRUD Operations Response Structure
+
+### Date: 2026-01-17
+
+### Issue Description:
+The "Update schedule" button was not functional. Other CRUD operations (create, enable, disable) also had response structure mismatches.
+
+### Root Cause:
+The backend API routes were returning data directly in the `data` field, but the frontend expected nested structures with specific property names.
+
+### Files Modified:
+
+#### `src/routes/schedules.ts`
+
+**1. POST /api/schedules (Create Schedule)**
+
+**Before:**
+```typescript
+res.status(201).json({
+  success: true,
+  data: savedSchedule,
+  message: 'Schedule created successfully'
+});
+```
+
+**After:**
+```typescript
+res.status(201).json({
+  success: true,
+  data: {
+    scheduleId: scheduleId,
+    schedule: savedSchedule,
+    message: 'Schedule created successfully'
+  }
+});
+```
+
+**2. PUT /api/schedules/:id (Update Schedule)**
+
+**Before:**
+```typescript
+res.json({
+  success: true,
+  data: updatedSchedule,
+  message: 'Schedule updated successfully'
+});
+```
+
+**After:**
+```typescript
+res.json({
+  success: true,
+  data: {
+    schedule: updatedSchedule,
+    message: 'Schedule updated successfully'
+  }
+});
+```
+
+**3. POST /api/schedules/:id/enable (Enable Schedule)**
+
+**Before:**
+```typescript
+await schedulerService.updateSchedule(id, { enabled: true });
+res.json({
+  success: true,
+  message: 'Schedule enabled successfully'
+});
+```
+
+**After:**
+```typescript
+await schedulerService.updateSchedule(id, { enabled: true });
+const updatedSchedule = await schedulerService.getSchedule(id);
+res.json({
+  success: true,
+  data: {
+    schedule: updatedSchedule,
+    message: 'Schedule enabled successfully'
+  }
+});
+```
+
+**4. POST /api/schedules/:id/disable (Disable Schedule)**
+
+**Before:**
+```typescript
+await schedulerService.updateSchedule(id, { enabled: false });
+res.json({
+  success: true,
+  message: 'Schedule disabled successfully'
+});
+```
+
+**After:**
+```typescript
+await schedulerService.updateSchedule(id, { enabled: false });
+const updatedSchedule = await schedulerService.getSchedule(id);
+res.json({
+  success: true,
+  data: {
+    schedule: updatedSchedule,
+    message: 'Schedule disabled successfully'
+  }
+});
+```
+
+### Benefits:
+1. **Consistent Response Structure**: All CRUD operations now return data in the same format
+2. **Updated Schedule Data**: Enable/disable operations now return the updated schedule with new `nextRun` time
+3. **Better UX**: Frontend can immediately update the UI with fresh data without additional API calls
+
+### Verification:
+- ✅ No TypeScript errors
+- ✅ Response structures match frontend expectations
+- ✅ Create schedule works
+- ✅ Update schedule works
+- ✅ Enable schedule works
+- ✅ Disable schedule works
+- ✅ All operations return updated schedule data
+
+### Status: ✅ FIXED

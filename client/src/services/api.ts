@@ -52,13 +52,20 @@ export function getAuthToken(): string | null {
   return authToken;
 }
 
-// Enhanced fetch with retry logic and better error handling
+  // Enhanced fetch with retry logic and better error handling
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
   
   const defaultHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
   };
+
+  // Add cache-busting for GET requests to prevent stale data
+  if (!options?.method || options.method === 'GET') {
+    defaultHeaders['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+    defaultHeaders['Pragma'] = 'no-cache';
+    defaultHeaders['Expires'] = '0';
+  }
 
   // Add authentication header if token exists (but don't require it for public endpoints)
   if (authToken) {

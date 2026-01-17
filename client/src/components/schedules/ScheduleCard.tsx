@@ -212,11 +212,34 @@ const ScheduleCardComponent: React.FC<ScheduleCardProps> = ({
             </p>
           </div>
           <div>
-            <span className="text-gray-500">Recipients:</span>
-            <p className="font-medium text-gray-900">
-              {schedule.recipients?.length || 0} recipient(s)
-            </p>
+            <span className="text-gray-500">Delivery:</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {(schedule.saveToFile !== false) && (
+                <span className="inline-flex items-center px-2 py-1 rounded-md bg-blue-100 text-blue-800 text-xs font-medium">
+                  <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                  </svg>
+                  Save to Disk
+                </span>
+              )}
+              {(schedule.sendEmail !== false && schedule.recipients && schedule.recipients.length > 0) && (
+                <span className="inline-flex items-center px-2 py-1 rounded-md bg-green-100 text-green-800 text-xs font-medium">
+                  <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  Email ({schedule.recipients.length})
+                </span>
+              )}
+            </div>
           </div>
+          {schedule.destinationPath && (
+            <div className="sm:col-span-2">
+              <span className="text-gray-500">Destination:</span>
+              <p className="font-medium text-gray-900 break-all text-xs">
+                {schedule.destinationPath}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Error Message */}

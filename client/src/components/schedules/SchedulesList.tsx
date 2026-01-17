@@ -252,22 +252,31 @@ export const SchedulesList: React.FC<SchedulesListProps> = ({ className }) => {
     try {
       if (selectedSchedule) {
         // Update existing schedule
+        console.log('[SchedulesList] Updating schedule:', selectedSchedule.id, config);
         const response = await apiService.updateSchedule(selectedSchedule.id, config);
+        console.log('[SchedulesList] Update response:', response);
         if (response.success) {
           success('Schedule updated successfully');
           setShowForm(false);
-          fetchSchedules();
+          console.log('[SchedulesList] Fetching updated schedules...');
+          await fetchSchedules();
+          console.log('[SchedulesList] Schedules refreshed');
         }
       } else {
         // Create new schedule
+        console.log('[SchedulesList] Creating schedule:', config);
         const response = await apiService.createSchedule(config);
+        console.log('[SchedulesList] Create response:', response);
         if (response.success) {
           success('Schedule created successfully');
           setShowForm(false);
-          fetchSchedules();
+          console.log('[SchedulesList] Fetching updated schedules...');
+          await fetchSchedules();
+          console.log('[SchedulesList] Schedules refreshed');
         }
       }
     } catch (err: any) {
+      console.error('[SchedulesList] Save error:', err);
       const errorMessage = handleApiError(
         err,
         selectedSchedule ? 'Failed to update schedule' : 'Failed to create schedule',

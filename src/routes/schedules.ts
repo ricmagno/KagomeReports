@@ -48,7 +48,18 @@ const scheduleConfigSchema = z.object({
   reportConfig: reportConfigSchema,
   cronExpression: z.string().min(1),
   enabled: z.boolean().default(true),
-  recipients: z.array(z.string().email()).optional()
+  recipients: z.array(z.string().email()).optional(),
+  saveToFile: z.boolean().optional().default(true),
+  sendEmail: z.boolean().optional(),
+  destinationPath: z.string().optional()
+}).refine(data => {
+  // At least one delivery method must be enabled
+  const saveToFile = data.saveToFile !== undefined ? data.saveToFile : true;
+  const sendEmail = data.sendEmail !== undefined ? data.sendEmail : (data.recipients && data.recipients.length > 0);
+  return saveToFile || sendEmail;
+}, {
+  message: "At least one delivery method must be enabled (Save to Disk or Send via Email)",
+  path: ["deliveryOptions"]
 });
 
 const scheduleUpdateSchema = z.object({
@@ -57,7 +68,10 @@ const scheduleUpdateSchema = z.object({
   reportConfig: reportConfigSchema.optional(),
   cronExpression: z.string().min(1).optional(),
   enabled: z.boolean().optional(),
-  recipients: z.array(z.string().email()).optional()
+  recipients: z.array(z.string().email()).optional(),
+  saveToFile: z.boolean().optional(),
+  sendEmail: z.boolean().optional(),
+  destinationPath: z.string().optional()
 }).transform(data => {
   // Remove undefined values to avoid TypeScript strict optional issues
   const result: any = {};
@@ -67,6 +81,24 @@ const scheduleUpdateSchema = z.object({
     }
   });
   return result;
+}).refine(data => {
+  // If reportConfig is provided, validate it has required fields
+  if (data.reportConfig) {
+    return data.reportConfig.tags && data.reportConfig.tags.length > 0;
+  }
+  return true;
+}, {
+  message: "Report config must include at least one tag",
+  path: ["reportConfig", "tags"]
+}).refine(data => {
+  // If both delivery options are explicitly set to false, reject
+  if (data.saveToFile === false && data.sendEmail === false) {
+    return false;
+  }
+  return true;
+}, {
+  message: "At least one delivery method must be enabled (Save to Disk or Send via Email)",
+  path: ["deliveryOptions"]
 });
 
 /**
@@ -132,8 +164,11 @@ router.post('/', authenticateToken, requirePermission('schedules', 'write'), asy
 
     res.status(201).json({
       success: true,
-      data: savedSchedule,
-      message: 'Schedule created successfully'
+      data: {
+        scheduleId: scheduleId,
+        schedule: savedSchedule,
+        message: 'Schedule created successfully'
+      }
     });
   } catch (error) {
     apiLogger.error('Failed to create schedule', { error, config: config.name });
@@ -193,8 +228,10 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      data: updatedSchedule,
-      message: 'Schedule updated successfully'
+      data: {
+        schedule: updatedSchedule,
+        message: 'Schedule updated successfully'
+      }
     });
   } catch (error) {
     if (error instanceof Error && error.message.includes('not found')) {
@@ -277,10 +314,14 @@ router.post('/:id/enable', asyncHandler(async (req: Request, res: Response) => {
 
   try {
     await schedulerService.updateSchedule(id, { enabled: true });
+    const updatedSchedule = await schedulerService.getSchedule(id);
 
     res.json({
       success: true,
-      message: 'Schedule enabled successfully'
+      data: {
+        schedule: updatedSchedule,
+        message: 'Schedule enabled successfully'
+      }
     });
   } catch (error) {
     if (error instanceof Error && error.message.includes('not found')) {
@@ -302,10 +343,14 @@ router.post('/:id/disable', asyncHandler(async (req: Request, res: Response) => 
 
   try {
     await schedulerService.updateSchedule(id, { enabled: false });
+    const updatedSchedule = await schedulerService.getSchedule(id);
 
     res.json({
       success: true,
-      message: 'Schedule disabled successfully'
+      data: {
+        schedule: updatedSchedule,
+        message: 'Schedule disabled successfully'
+      }
     });
   } catch (error) {
     if (error instanceof Error && error.message.includes('not found')) {
