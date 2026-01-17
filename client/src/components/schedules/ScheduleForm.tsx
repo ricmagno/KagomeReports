@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useCallback, memo } from 'react';
 import { Schedule, ScheduleConfig } from '../../types/schedule';
 import { ReportConfig } from '../../types/api';
 import { Button } from '../ui/Button';
@@ -243,13 +243,6 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
       recipients: formData.recipients.filter((r) => r !== email),
     });
   }, [formData]);
-
-  const handleRecipientKeyPress = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      handleAddRecipient();
-    }
-  }, [handleAddRecipient]);
 
   return (
     <Card className={cn('max-w-3xl mx-auto', className)}>

@@ -129,7 +129,11 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
   };
 
   const handleSelect = () => {
-    onChange(currentPath);
+    // Return the full absolute path
+    const fullPath = browserData?.baseDirectory 
+      ? `${browserData.baseDirectory}${currentPath ? '/' + currentPath : ''}`
+      : currentPath;
+    onChange(fullPath);
     onClose();
   };
 

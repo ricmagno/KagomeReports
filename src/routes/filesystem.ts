@@ -10,7 +10,6 @@ import * as path from 'path';
 import { apiLogger } from '@/utils/logger';
 import { asyncHandler, createError } from '@/middleware/errorHandler';
 import { authenticateToken, requirePermission } from '@/middleware/auth';
-import { env } from '@/config/environment';
 
 const router = Router();
 
@@ -44,7 +43,8 @@ function sanitizePath(userPath: string): string {
  * Get the base directory for browsing
  */
 function getBaseDirectory(): string {
-  return env.REPORTS_DIR || './reports';
+  // Start from user's home directory
+  return process.env.HOME || process.env.USERPROFILE || '/';
 }
 
 /**
