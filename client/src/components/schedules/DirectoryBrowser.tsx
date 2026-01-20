@@ -24,6 +24,7 @@ interface DirectoryBrowserProps {
   onChange: (path: string) => void;
   onClose: () => void;
   className?: string;
+  baseType?: 'home' | 'reports'; // Specify the base directory type
 }
 
 /**
@@ -36,7 +37,8 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
   value,
   onChange,
   onClose,
-  className
+  className,
+  baseType = 'home' // Default to home directory
 }) => {
   const [currentPath, setCurrentPath] = useState<string>(value || '');
   const [browserData, setBrowserData] = useState<DirectoryBrowserData | null>(null);
@@ -55,6 +57,8 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
       if (path) {
         params.append('path', path);
       }
+      // Use the specified base directory type
+      params.append('baseType', baseType);
 
       const response = await fetch(`/api/filesystem/browse?${params.toString()}`, {
         headers: {
@@ -73,7 +77,7 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [baseType]);
 
   useEffect(() => {
     fetchDirectory(currentPath);
@@ -104,7 +108,8 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
         ? `${currentPath}/${newFolderName.trim()}`
         : newFolderName.trim();
 
-      const response = await fetch('/api/filesystem/create-directory', {
+      const params = new URLSearchParams({ baseType });
+      const response = await fetch(`/api/filesystem/create-directory?${params.toString()}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -129,11 +134,21 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
   };
 
   const handleSelect = () => {
-    // Return the full absolute path
-    const fullPath = browserData?.baseDirectory 
-      ? `${browserData.baseDirectory}${currentPath ? '/' + currentPath : ''}`
-      : currentPath;
-    onChange(fullPath);
+    // Sanitize the path to remove any problematic characters
+    // Replace any problematic characters and normalize the path
+    let sanitizedPath = currentPath || '';
+
+    // Remove any .. sequences to prevent directory traversal
+    sanitizedPath = sanitizedPath.replace(/\.\./g, '');
+
+    // Normalize path separators to forward slashes (standard for web APIs)
+    sanitizedPath = sanitizedPath.replace(/\\/g, '/');
+
+    // Remove leading slash if present (paths should be relative)
+    sanitizedPath = sanitizedPath.replace(/^\//, '');
+
+    // The sanitized path is relative to the base directory
+    onChange(sanitizedPath);
     onClose();
   };
 
@@ -163,7 +178,7 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
             <span className="text-gray-700 font-mono">
-              {browserData?.baseDirectory}/{currentPath || '(root)'}
+              {baseType === 'reports' ? 'Reports Root' : browserData?.baseDirectory}/{currentPath || '.'}
             </span>
           </div>
         </div>

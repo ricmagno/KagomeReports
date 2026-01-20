@@ -311,6 +311,24 @@ The Report Preview component displays two distinct sections:
    - Shows color-coded quality indicators
    - Supports sorting and filtering
 
+### Directory Browser and File System API
+The application includes a DirectoryBrowser component for selecting report destination paths:
+
+- **DirectoryBrowser Component** (`client/src/components/schedules/DirectoryBrowser.tsx`):
+  - Allows users to browse the file system to select destination folders for reports
+  - Supports two base directory types via the `baseType` prop: 'home' (user's home directory) or 'reports' (reports directory)
+  - When used for report destinations, it uses `baseType="reports"` to start from the reports directory
+  - Returns paths that are relative to the selected base directory
+  - Includes functionality to create new directories
+
+- **File System API** (`src/routes/filesystem.ts`):
+  - Provides `/api/filesystem/browse` endpoint for directory browsing
+  - Provides `/api/filesystem/create-directory` endpoint for creating directories
+  - Provides `/api/filesystem/validate-path` endpoint for path validation
+  - Accepts a `baseType` query parameter to determine the base directory ('home' or 'reports')
+  - Implements security measures to ensure all operations stay within the allowed base directory
+  - Uses environment variables (REPORTS_DIR) to determine the reports directory path
+
 ### Automation Features
 Support for scheduled report generation with various intervals:
 - Hourly, Every 6 hours, Every 8 hours, Every 12 hours, Daily (24 hours)

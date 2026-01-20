@@ -93,7 +93,10 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
   onCancel,
   className,
 }) => {
-  const [formData, setFormData] = useState<FormData>({
+  const isEditMode = !!schedule;
+  
+  // Initialize form data - use a function to ensure it only runs once
+  const [formData, setFormData] = useState<FormData>(() => ({
     name: schedule?.name || '',
     description: schedule?.description || '',
     reportConfigId: schedule?.reportConfig?.id || '',
@@ -103,14 +106,12 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
     saveToFile: schedule?.saveToFile !== undefined ? schedule.saveToFile : true,
     sendEmail: schedule?.sendEmail !== undefined ? schedule.sendEmail : !!(schedule?.recipients && schedule.recipients.length > 0),
     destinationPath: schedule?.destinationPath || '',
-  });
+  }));
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [recipientInput, setRecipientInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [showDirectoryBrowser, setShowDirectoryBrowser] = useState(false);
-
-  const isEditMode = !!schedule;
 
   // Memoize validation functions
   const validateEmail = useCallback((email: string): boolean => {
@@ -171,22 +172,17 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
     try {
       let selectedReportConfig: ReportConfig | undefined;
 
-      // If editing an existing schedule, use its report config if no new one is selected
-      if (isEditMode && schedule?.reportConfig) {
-        // Try to find the selected report config from the list
-        selectedReportConfig = reportConfigs.find(
-          (config) => config.id === formData.reportConfigId
-        );
-        
-        // If not found (or user didn't change it), use the schedule's existing config
-        if (!selectedReportConfig || formData.reportConfigId === schedule.reportConfig.id) {
+      // Always try to find the report config from the available list first
+      selectedReportConfig = reportConfigs.find(
+        (config) => config.id === formData.reportConfigId
+      );
+
+      // If not found in the list and we're editing, use the schedule's existing config
+      // This handles the case where the schedule's report config was deleted
+      if (!selectedReportConfig && isEditMode && schedule?.reportConfig) {
+        if (formData.reportConfigId === schedule.reportConfig.id) {
           selectedReportConfig = schedule.reportConfig;
         }
-      } else {
-        // For new schedules, must select from the list
-        selectedReportConfig = reportConfigs.find(
-          (config) => config.id === formData.reportConfigId
-        );
       }
 
       if (!selectedReportConfig) {
@@ -668,6 +664,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
               setShowDirectoryBrowser(false);
             }}
             onClose={() => setShowDirectoryBrowser(false)}
+            baseType="reports" // For report destination paths, use reports directory as base
           />
         )}
       </CardContent>
