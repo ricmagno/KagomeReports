@@ -17,11 +17,12 @@ export interface TagInfo {
 export interface ReportConfig {
   id?: string;
   name: string;
-  description: string;
+  description?: string;
   tags: string[];
   timeRange: TimeRange;
   chartTypes: ChartType[];
   template: string;
+  format?: 'pdf' | 'docx';
   retrievalMode?: 'Delta' | 'Cyclic' | 'AVG' | 'RoundTrip';
   filters?: DataFilter[];
   createdBy?: string;

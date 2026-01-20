@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader } from '../ui/Card';
 import { CronBuilder } from './CronBuilder';
 import { DirectoryBrowser } from './DirectoryBrowser';
 import { cn } from '../../utils/cn';
+import { useToast } from '../../hooks/useToast';
 
 /**
  * Props for the ScheduleForm component
@@ -112,6 +113,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
   const [recipientInput, setRecipientInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [showDirectoryBrowser, setShowDirectoryBrowser] = useState(false);
+  const { success: showSuccess } = useToast();
 
   // Memoize validation functions
   const validateEmail = useCallback((email: string): boolean => {
@@ -586,9 +588,10 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
             onChange={(path) => {
               setFormData(prev => ({ ...prev, destinationPath: path }));
               setShowDirectoryBrowser(false);
+              showSuccess('Location Selected', `Destination path set to: ${path || 'Default root'}`);
             }}
             onClose={() => setShowDirectoryBrowser(false)}
-            baseType="reports" // For report destination paths, use reports directory as base
+            baseType="home" // Allow browsing from home directory for more flexibility
           />
         )}
       </CardContent>

@@ -53,18 +53,18 @@ function getBaseDirectory(): string {
 function resolveUserPath(userPath: string): string {
   const basePath = path.resolve(getBaseDirectory());
   const sanitized = sanitizePath(userPath);
-  
+
   if (!sanitized) {
     return basePath;
   }
-  
+
   const resolved = path.resolve(basePath, sanitized);
-  
+
   // Ensure the resolved path is within the base directory
   if (!resolved.startsWith(basePath)) {
     throw new Error('Invalid path: outside allowed directory');
   }
-  
+
   return resolved;
 }
 
@@ -96,8 +96,12 @@ router.get('/browse', authenticateToken, requirePermission('schedules', 'read'),
     const resolvedPath = path.resolve(baseDirectory, userPath || '');
     const basePath = path.resolve(baseDirectory);
 
+    // Normalize paths for comparison (especially on Windows)
+    const normalizedResolved = path.normalize(resolvedPath).toLowerCase();
+    const normalizedBase = path.normalize(basePath).toLowerCase();
+
     // Ensure the resolved path is within the base directory
-    if (!resolvedPath.startsWith(basePath)) {
+    if (!normalizedResolved.startsWith(normalizedBase)) {
       throw createError('Invalid path: outside allowed directory', 403);
     }
 
@@ -105,10 +109,12 @@ router.get('/browse', authenticateToken, requirePermission('schedules', 'read'),
     try {
       const stats = await fs.stat(resolvedPath);
       if (!stats.isDirectory()) {
-        throw createError('Path is not a directory', 400);
+        throw createError(`Path "${userPath}" exists but is not a directory`, 400);
       }
-    } catch (error) {
-      throw createError('Directory not found', 404);
+    } catch (error: any) {
+      if (error.statusCode) throw error;
+      apiLogger.warn('Directory not found', { resolvedPath, userPath });
+      throw createError(`Directory "${userPath || 'root'}" not found or inaccessible`, 404);
     }
 
     // Read directory contents
@@ -162,6 +168,9 @@ router.get('/browse', authenticateToken, requirePermission('schedules', 'read'),
 
     const isRoot = resolvedPath === basePath;
 
+    // Check if the current directory is writable
+    const currentWritable = await isWritable(resolvedPath);
+
     res.json({
       success: true,
       data: {
@@ -169,15 +178,22 @@ router.get('/browse', authenticateToken, requirePermission('schedules', 'read'),
         parentPath,
         isRoot,
         directories,
-        baseDirectory
+        baseDirectory,
+        isWritable: currentWritable
       }
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (error.statusCode) throw error;
+
+    if (error.code === 'EACCES' || error.code === 'EPERM') {
+      throw createError(`Permission denied accessing "${userPath || 'root'}"`, 403);
+    }
+
     if (error instanceof Error && error.message.includes('outside allowed directory')) {
       throw createError('Invalid path: outside allowed directory', 403);
     }
     apiLogger.error('Failed to browse directory', { error, userPath });
-    throw createError('Failed to browse directory', 500);
+    throw createError(`Failed to load directory "${userPath || 'root'}": ${error.message}`, 500);
   }
 }));
 
@@ -197,8 +213,12 @@ router.post('/create-directory', authenticateToken, requirePermission('schedules
     const resolvedPath = path.resolve(baseDirectory, userPath);
     const basePath = path.resolve(baseDirectory);
 
+    // Normalize paths for comparison
+    const normalizedResolved = path.normalize(resolvedPath).toLowerCase();
+    const normalizedBase = path.normalize(basePath).toLowerCase();
+
     // Ensure the resolved path is within the base directory
-    if (!resolvedPath.startsWith(basePath)) {
+    if (!normalizedResolved.startsWith(normalizedBase)) {
       throw createError('Invalid path: outside allowed directory', 403);
     }
 
@@ -273,8 +293,12 @@ router.get('/validate-path', authenticateToken, requirePermission('schedules', '
     const resolvedPath = path.resolve(baseDirectory, userPath);
     const basePath = path.resolve(baseDirectory);
 
+    // Normalize paths for comparison
+    const normalizedResolved = path.normalize(resolvedPath).toLowerCase();
+    const normalizedBase = path.normalize(basePath).toLowerCase();
+
     // Ensure the resolved path is within the base directory
-    if (!resolvedPath.startsWith(basePath)) {
+    if (!normalizedResolved.startsWith(normalizedBase)) {
       res.json({
         success: true,
         data: {

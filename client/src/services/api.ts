@@ -1,18 +1,18 @@
-import { 
-  ApiResponse, 
-  PaginatedResponse, 
-  TagInfo, 
-  TimeSeriesData, 
-  ReportConfig, 
+import {
+  ApiResponse,
+  PaginatedResponse,
+  TagInfo,
+  TimeSeriesData,
+  ReportConfig,
   ReportVersion,
   ReportVersionHistory,
-  StatisticsResult, 
-  TrendResult 
+  StatisticsResult,
+  TrendResult
 } from '../types/api';
-import { 
-  DatabaseConfig, 
-  DatabaseConfigSummary, 
-  ConnectionTestResult 
+import {
+  DatabaseConfig,
+  DatabaseConfigSummary,
+  ConnectionTestResult
 } from '../types/databaseConfig';
 import {
   SystemStatusResponse,
@@ -31,6 +31,11 @@ import {
   SchedulerHealth,
   PaginationInfo
 } from '../types/schedule';
+import {
+  DirectoryBrowserData,
+  CreateDirectoryResponse,
+  ValidatePathResponse
+} from '../types/filesystem';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
 
@@ -52,10 +57,10 @@ export function getAuthToken(): string | null {
   return authToken;
 }
 
-  // Enhanced fetch with retry logic and better error handling
+// Enhanced fetch with retry logic and better error handling
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  
+
   const defaultHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -119,35 +124,35 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
 
 // Retry wrapper for failed requests
 async function fetchWithRetry<T>(
-  endpoint: string, 
-  options?: RequestInit, 
+  endpoint: string,
+  options?: RequestInit,
   maxRetries: number = 3
 ): Promise<T> {
   let lastError: ApiError;
-  
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await fetchApi<T>(endpoint, options);
     } catch (error) {
       lastError = error as ApiError;
-      
+
       // Don't retry on client errors (4xx) except 408 (timeout) and 429 (rate limit)
-      if (lastError.status >= 400 && lastError.status < 500 && 
-          lastError.status !== 408 && lastError.status !== 429) {
+      if (lastError.status >= 400 && lastError.status < 500 &&
+        lastError.status !== 408 && lastError.status !== 429) {
         throw lastError;
       }
-      
+
       // Don't retry on the last attempt
       if (attempt === maxRetries) {
         throw lastError;
       }
-      
+
       // Exponential backoff
       const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
-  
+
   throw lastError!;
 }
 
@@ -179,12 +184,12 @@ export const apiService = {
       method: 'POST',
       body: JSON.stringify(credentials),
     });
-    
+
     // Set auth token for future requests
     if (response.success && response.data?.token) {
       setAuthToken(response.data.token);
     }
-    
+
     return response;
   },
 
@@ -192,10 +197,10 @@ export const apiService = {
     const response = await fetchApi<ApiResponse<void>>('/auth/logout', {
       method: 'POST',
     });
-    
+
     // Clear auth token
     setAuthToken(null);
-    
+
     return response;
   },
 
@@ -203,11 +208,11 @@ export const apiService = {
     const response = await fetchApi<ApiResponse<{ token: string }>>('/auth/refresh', {
       method: 'POST',
     });
-    
+
     if (response.data?.token) {
       setAuthToken(response.data.token);
     }
-    
+
     return response;
   },
 
@@ -433,7 +438,7 @@ export const apiService = {
   },
 
   // Schedule endpoints
-  
+
   /**
    * Get all schedules with optional filtering and pagination
    */
@@ -446,7 +451,7 @@ export const apiService = {
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.enabled !== undefined) queryParams.append('enabled', params.enabled.toString());
     if (params?.search) queryParams.append('search', params.search);
-    
+
     const queryString = queryParams.toString();
     return fetchWithRetry(`/schedules${queryString ? `?${queryString}` : ''}`);
   },
@@ -544,7 +549,7 @@ export const apiService = {
     if (params?.page) queryParams.append('page', params.page.toString());
     if (params?.limit) queryParams.append('limit', params.limit.toString());
     if (params?.status) queryParams.append('status', params.status);
-    
+
     const queryString = queryParams.toString();
     return fetchWithRetry(`/schedules/${encodeURIComponent(id)}/executions${queryString ? `?${queryString}` : ''}`);
   },
@@ -633,8 +638,8 @@ export const apiService = {
   },
 
   async createReportVersion(
-    reportId: string, 
-    config: ReportConfig, 
+    reportId: string,
+    config: ReportConfig,
     changeDescription?: string
   ): Promise<ApiResponse<ReportVersion>> {
     return fetchWithRetry(`/reports/${encodeURIComponent(reportId)}/versions`, {
@@ -653,8 +658,8 @@ export const apiService = {
   },
 
   async compareVersions(
-    reportId: string, 
-    version1: number, 
+    reportId: string,
+    version1: number,
     version2: number
   ): Promise<ApiResponse<{ differences: any; version1: ReportVersion; version2: ReportVersion }>> {
     return fetchWithRetry(`/reports/${encodeURIComponent(reportId)}/compare/${version1}/${version2}`);
@@ -743,6 +748,30 @@ export const apiService = {
     }
 
     return response.blob();
+  },
+
+  // Filesystem endpoints
+  async browseDirectory(path?: string, baseType: 'home' | 'reports' = 'home'): Promise<ApiResponse<DirectoryBrowserData>> {
+    const params = new URLSearchParams();
+    if (path) {
+      params.append('path', path);
+    }
+    params.append('baseType', baseType);
+    return fetchWithRetry(`/filesystem/browse?${params.toString()}`);
+  },
+
+  async createDirectory(path: string, baseType: 'home' | 'reports' = 'home'): Promise<ApiResponse<CreateDirectoryResponse>> {
+    return fetchWithRetry(`/filesystem/create-directory?baseType=${baseType}`, {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    });
+  },
+
+  async validatePath(path: string, baseType: 'home' | 'reports' = 'home'): Promise<ApiResponse<ValidatePathResponse>> {
+    const params = new URLSearchParams();
+    params.append('path', path);
+    params.append('baseType', baseType);
+    return fetchWithRetry(`/filesystem/validate-path?${params.toString()}`);
   },
 };
 

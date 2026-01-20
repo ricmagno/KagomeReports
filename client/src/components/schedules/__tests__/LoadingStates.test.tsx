@@ -50,18 +50,18 @@ describe('Loading States and Optimistic Updates', () => {
   describe('ScheduleCardSkeleton', () => {
     it('should render skeleton loader with proper structure', () => {
       const { container } = render(<ScheduleCardSkeleton />);
-      
+
       // Check for skeleton elements
       const skeletonElements = container.querySelectorAll('.bg-gray-200');
       expect(skeletonElements.length).toBeGreaterThan(0);
-      
+
       // Check for animation class
       expect(container.querySelector('.animate-pulse')).toBeInTheDocument();
     });
 
     it('should have proper accessibility structure', () => {
       const { container } = render(<ScheduleCardSkeleton />);
-      
+
       // Skeleton should be in a card structure
       expect(container.querySelector('.bg-white')).toBeInTheDocument();
       expect(container.querySelector('.rounded-lg')).toBeInTheDocument();
@@ -71,7 +71,7 @@ describe('Loading States and Optimistic Updates', () => {
   describe('Spinner Component', () => {
     it('should render spinner with default size', () => {
       const { container } = render(<Spinner />);
-      
+
       const spinner = container.querySelector('svg');
       expect(spinner).toBeInTheDocument();
       expect(spinner).toHaveClass('animate-spin');
@@ -80,21 +80,21 @@ describe('Loading States and Optimistic Updates', () => {
 
     it('should render spinner with small size', () => {
       const { container } = render(<Spinner size="sm" />);
-      
+
       const spinner = container.querySelector('svg');
       expect(spinner).toHaveClass('h-4', 'w-4');
     });
 
     it('should render spinner with large size', () => {
       const { container } = render(<Spinner size="lg" />);
-      
+
       const spinner = container.querySelector('svg');
       expect(spinner).toHaveClass('h-8', 'w-8');
     });
 
     it('should have aria-hidden attribute', () => {
       const { container } = render(<Spinner />);
-      
+
       const spinner = container.querySelector('svg');
       expect(spinner).toHaveAttribute('aria-hidden', 'true');
     });
@@ -103,9 +103,9 @@ describe('Loading States and Optimistic Updates', () => {
   describe('ProgressIndicator Component', () => {
     it('should render indeterminate progress with spinner', () => {
       render(<ProgressIndicator message="Loading..." />);
-      
+
       expect(screen.getByText('Loading...')).toBeInTheDocument();
-      
+
       // Should have spinner for indeterminate progress
       const spinner = document.querySelector('.animate-spin');
       expect(spinner).toBeInTheDocument();
@@ -113,9 +113,9 @@ describe('Loading States and Optimistic Updates', () => {
 
     it('should render determinate progress with progress bar', () => {
       render(<ProgressIndicator message="Processing" progress={50} />);
-      
+
       expect(screen.getByText(/Processing \(50%\)/)).toBeInTheDocument();
-      
+
       // Should have progress bar
       const progressBar = document.querySelector('.bg-primary-600');
       expect(progressBar).toBeInTheDocument();
@@ -124,10 +124,10 @@ describe('Loading States and Optimistic Updates', () => {
 
     it('should clamp progress values between 0 and 100', () => {
       const { rerender } = render(<ProgressIndicator progress={-10} />);
-      
+
       let progressBar = document.querySelector('.bg-primary-600');
       expect(progressBar).toHaveStyle({ width: '0%' });
-      
+
       rerender(<ProgressIndicator progress={150} />);
       progressBar = document.querySelector('.bg-primary-600');
       expect(progressBar).toHaveStyle({ width: '100%' });
@@ -137,7 +137,7 @@ describe('Loading States and Optimistic Updates', () => {
   describe('ScheduleCard Loading States', () => {
     it('should show loading spinner when toggling enabled state', async () => {
       const mockToggle = jest.fn().mockResolvedValue(undefined);
-      
+
       render(
         <ScheduleCard
           schedule={mockSchedule}
@@ -149,7 +149,7 @@ describe('Loading States and Optimistic Updates', () => {
           isTogglingEnabled={true}
         />
       );
-      
+
       // Should show spinner when toggling
       const spinner = document.querySelector('.animate-spin');
       expect(spinner).toBeInTheDocument();
@@ -157,7 +157,7 @@ describe('Loading States and Optimistic Updates', () => {
 
     it('should show loading state on Run Now button', async () => {
       const mockRunNow = jest.fn().mockResolvedValue(undefined);
-      
+
       render(
         <ScheduleCard
           schedule={mockSchedule}
@@ -169,7 +169,7 @@ describe('Loading States and Optimistic Updates', () => {
           isRunning={true}
         />
       );
-      
+
       const runButton = screen.getByLabelText(`Run ${mockSchedule.name} now`);
       expect(runButton).toBeDisabled();
     });
@@ -186,7 +186,7 @@ describe('Loading States and Optimistic Updates', () => {
           isTogglingEnabled={true}
         />
       );
-      
+
       const toggle = screen.getByRole('checkbox');
       expect(toggle).toBeDisabled();
     });
@@ -213,7 +213,7 @@ describe('Loading States and Optimistic Updates', () => {
       });
 
       const { container } = render(<SchedulesList />);
-      
+
       // Should show skeleton loaders initially
       const skeletons = container.querySelectorAll('.animate-pulse');
       expect(skeletons.length).toBeGreaterThan(0);
@@ -239,12 +239,12 @@ describe('Loading States and Optimistic Updates', () => {
       });
 
       const { container } = render(<SchedulesList />);
-      
+
       // Wait for loading to complete
       await waitFor(() => {
         expect(screen.getByText('Test Schedule')).toBeInTheDocument();
       });
-      
+
       // Skeletons should be gone
       const skeletons = container.querySelectorAll('.animate-pulse');
       expect(skeletons.length).toBe(0);
@@ -254,7 +254,7 @@ describe('Loading States and Optimistic Updates', () => {
   describe('Optimistic Updates', () => {
     it('should update UI immediately when toggling schedule', async () => {
       const disabledSchedule = { ...mockSchedule, enabled: false };
-      
+
       mockedApiService.getSchedules.mockResolvedValue({
         success: true,
         data: {
@@ -276,21 +276,22 @@ describe('Loading States and Optimistic Updates', () => {
       mockedApiService.enableSchedule.mockResolvedValue({
         success: true,
         message: 'Schedule enabled',
+        data: { schedule: mockSchedule, message: 'Schedule enabled' },
       });
 
       render(<SchedulesList />);
-      
+
       // Wait for initial load
       await waitFor(() => {
         expect(screen.getByText('Test Schedule')).toBeInTheDocument();
       });
-      
+
       // Find and click the toggle
       const toggle = screen.getByRole('checkbox');
       expect(toggle).not.toBeChecked();
-      
+
       fireEvent.click(toggle);
-      
+
       // UI should update immediately (optimistic)
       await waitFor(() => {
         expect(toggle).toBeChecked();
@@ -299,7 +300,7 @@ describe('Loading States and Optimistic Updates', () => {
 
     it('should revert optimistic update on error', async () => {
       const enabledSchedule = { ...mockSchedule, enabled: true };
-      
+
       mockedApiService.getSchedules.mockResolvedValue({
         success: true,
         data: {
@@ -324,17 +325,17 @@ describe('Loading States and Optimistic Updates', () => {
       );
 
       render(<SchedulesList />);
-      
+
       // Wait for initial load
       await waitFor(() => {
         expect(screen.getByText('Test Schedule')).toBeInTheDocument();
       });
-      
+
       const toggle = screen.getByRole('checkbox');
       expect(toggle).toBeChecked();
-      
+
       fireEvent.click(toggle);
-      
+
       // Should revert back to enabled after error
       await waitFor(() => {
         expect(toggle).toBeChecked();
@@ -364,28 +365,28 @@ describe('Loading States and Optimistic Updates', () => {
 
       // Mock slow delete
       mockedApiService.deleteSchedule.mockImplementation(
-        () => new Promise(resolve => setTimeout(() => resolve({ success: true, message: 'Deleted' }), 100))
+        () => new Promise(resolve => setTimeout(() => resolve({ success: true, message: 'Deleted', data: { message: 'Deleted' } }), 100))
       );
 
       render(<SchedulesList />);
-      
+
       // Wait for initial load
       await waitFor(() => {
         expect(screen.getByText('Test Schedule')).toBeInTheDocument();
       });
-      
+
       // Click delete button
       const deleteButton = screen.getByLabelText(`Delete ${mockSchedule.name}`);
       fireEvent.click(deleteButton);
-      
+
       // Confirm delete in modal
       await waitFor(() => {
         expect(screen.getByText('Delete Schedule')).toBeInTheDocument();
       });
-      
+
       const confirmButton = screen.getAllByRole('button', { name: /delete/i })[1]; // Get the modal button
       fireEvent.click(confirmButton);
-      
+
       // Button should show loading state
       await waitFor(() => {
         expect(confirmButton).toBeDisabled();

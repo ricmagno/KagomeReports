@@ -3,21 +3,9 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Spinner } from '../ui/Spinner';
 import { cn } from '../../utils/cn';
-
-interface DirectoryEntry {
-  name: string;
-  path: string;
-  type: 'directory';
-  isWritable: boolean;
-}
-
-interface DirectoryBrowserData {
-  currentPath: string;
-  parentPath: string | null;
-  isRoot: boolean;
-  directories: DirectoryEntry[];
-  baseDirectory: string;
-}
+import { apiService } from '../../services/api';
+import { useToast } from '../../hooks/useToast';
+import { DirectoryBrowserData, DirectoryEntry } from '../../types/filesystem';
 
 interface DirectoryBrowserProps {
   value: string;
@@ -48,36 +36,31 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [creatingFolder, setCreatingFolder] = useState(false);
 
+  const { success: showSuccess, error: showError } = useToast();
+
   const fetchDirectory = useCallback(async (path: string) => {
     setLoading(true);
     setError(null);
 
     try {
-      const params = new URLSearchParams();
-      if (path) {
-        params.append('path', path);
+      const response = await apiService.browseDirectory(path, baseType);
+
+      if (response.success && response.data) {
+        setBrowserData(response.data);
+        // Ensure currentPath is updated to what the server says
+        if (response.data.currentPath !== undefined && path !== response.data.currentPath) {
+          setCurrentPath(response.data.currentPath);
+        }
+      } else {
+        throw new Error(response.message || 'Failed to browse directory');
       }
-      // Use the specified base directory type
-      params.append('baseType', baseType);
-
-      const response = await fetch(`/api/filesystem/browse?${params.toString()}`, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to browse directory');
-      }
-
-      const result = await response.json();
-      setBrowserData(result.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load directory');
+      showError('Directory Error', err instanceof Error ? err.message : 'Failed to load directory');
     } finally {
       setLoading(false);
     }
-  }, [baseType]);
+  }, [baseType, showError]);
 
   useEffect(() => {
     fetchDirectory(currentPath);
@@ -104,50 +87,49 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
     setError(null);
 
     try {
-      const newPath = currentPath 
-        ? `${currentPath}/${newFolderName.trim()}`
-        : newFolderName.trim();
+      const folderName = newFolderName.trim();
+      const newPath = currentPath
+        ? `${currentPath}/${folderName}`
+        : folderName;
 
-      const params = new URLSearchParams({ baseType });
-      const response = await fetch(`/api/filesystem/create-directory?${params.toString()}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ path: newPath }),
-      });
+      const response = await apiService.createDirectory(newPath, baseType);
 
-      if (!response.ok) {
-        const result = await response.json();
-        throw new Error(result.error || 'Failed to create directory');
+      if (response.success) {
+        showSuccess('Folder Created', `Directory "${folderName}" created successfully.`);
+        // Refresh the current directory
+        await fetchDirectory(currentPath);
+        setShowNewFolderInput(false);
+        setNewFolderName('');
+      } else {
+        throw new Error(response.message || 'Failed to create directory');
       }
-
-      // Refresh the current directory
-      await fetchDirectory(currentPath);
-      setShowNewFolderInput(false);
-      setNewFolderName('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create folder');
+      const msg = err instanceof Error ? err.message : 'Failed to create folder';
+      setError(msg);
+      showError('Folder Creation Failed', msg);
     } finally {
       setCreatingFolder(false);
     }
   };
 
   const handleSelect = () => {
-    // Sanitize the path to remove any problematic characters
-    // Replace any problematic characters and normalize the path
-    let sanitizedPath = currentPath || '';
+    if (!browserData) return;
 
-    // Remove any .. sequences to prevent directory traversal
-    sanitizedPath = sanitizedPath.replace(/\.\./g, '');
+    // Construct the absolute path
+    // If currentPath is empty, it's the baseDirectory itself
+    let fullPath = browserData.baseDirectory;
+    if (currentPath) {
+      // Normalize currentPath to remove redundant slashes
+      const normalizedCurrent = currentPath.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+      if (normalizedCurrent) {
+        const separator = fullPath.endsWith('/') || fullPath.endsWith('\\') ? '' : '/';
+        fullPath = `${fullPath}${separator}${normalizedCurrent}`;
+      }
+    }
 
-    // Normalize path separators to forward slashes (standard for web APIs)
-    sanitizedPath = sanitizedPath.replace(/\\/g, '/');
+    // Normalize path separators to forward slashes for the database
+    const sanitizedPath = fullPath.replace(/\\/g, '/');
 
-    // Remove leading slash if present (paths should be relative)
-    sanitizedPath = sanitizedPath.replace(/^\//, '');
-
-    // The sanitized path is relative to the base directory
     onChange(sanitizedPath);
     onClose();
   };
@@ -177,9 +159,14 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
             <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
-            <span className="text-gray-700 font-mono">
-              {baseType === 'reports' ? 'Reports Root' : browserData?.baseDirectory}/{currentPath || '.'}
+            <span className="text-gray-700 font-mono truncate max-w-[60%]">
+              {browserData?.baseDirectory || (baseType === 'reports' ? 'Reports Root' : 'Home')}/{currentPath || ''}
             </span>
+            {browserData && browserData.isWritable === false && (
+              <span className="px-2 py-0.5 text-[10px] font-medium bg-red-100 text-red-700 rounded-full border border-red-200 uppercase tracking-wider">
+                Read-only
+              </span>
+            )}
           </div>
         </div>
 
@@ -309,7 +296,8 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
               <Button
                 variant="primary"
                 onClick={handleSelect}
-                disabled={loading}
+                disabled={loading || (browserData !== null && browserData.isWritable === false)}
+                title={browserData?.isWritable === false ? 'This directory is not writable' : ''}
               >
                 Select Current Folder
               </Button>
