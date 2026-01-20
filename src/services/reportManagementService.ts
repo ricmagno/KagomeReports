@@ -5,11 +5,11 @@
 
 import { Database } from 'sqlite3';
 import { v4 as uuidv4 } from 'uuid';
-import { 
-  ReportConfig, 
-  SavedReport, 
-  ReportVersion, 
-  ReportVersionHistory, 
+import {
+  ReportConfig,
+  SavedReport,
+  ReportVersion,
+  ReportVersionHistory,
   ReportListItem,
   SaveReportRequest,
   SaveReportResponse,
@@ -227,7 +227,7 @@ export class ReportManagementService {
 
       // Get next version number
       const version = await this.getNextVersionNumber(request.name);
-      
+
       // Mark previous versions as not latest
       if (version > 1) {
         await this.markPreviousVersionsAsOld(request.name);
@@ -333,7 +333,7 @@ export class ReportManagementService {
 
         try {
           const config = JSON.parse(row.config);
-          
+
           // Convert date strings back to Date objects
           if (config.timeRange) {
             if (config.timeRange.startTime) {
@@ -349,7 +349,7 @@ export class ReportManagementService {
           if (config.updatedAt) {
             config.updatedAt = new Date(config.updatedAt);
           }
-          
+
           const savedReport: SavedReport = {
             id: row.id,
             name: row.name,
@@ -383,14 +383,14 @@ export class ReportManagementService {
         FROM reports r 
         WHERE r.is_latest_version = true
       `;
-      
+
       const params: any[] = [];
-      
+
       if (userId) {
         query += ' AND r.created_by = ?';
         params.push(userId);
       }
-      
+
       query += ' ORDER BY r.updated_at DESC';
 
       this.db.all(query, params, (err, rows: any[]) => {
@@ -404,6 +404,7 @@ export class ReportManagementService {
           id: row.id,
           name: row.name,
           description: row.description || '',
+          config: this.deserializeDates(JSON.parse(row.config)),
           version: row.version,
           createdBy: row.created_by,
           createdAt: new Date(row.created_at),
@@ -528,7 +529,7 @@ export class ReportManagementService {
     try {
       // Get next version number
       const version = await this.getNextVersionNumber(reportName);
-      
+
       // Mark previous versions as not latest
       await this.markPreviousVersionsAsOld(reportName);
 

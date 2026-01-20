@@ -94,7 +94,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
   className,
 }) => {
   const isEditMode = !!schedule;
-  
+
   // Initialize form data - use a function to ensure it only runs once
   const [formData, setFormData] = useState<FormData>(() => ({
     name: schedule?.name || '',
@@ -225,19 +225,19 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
       return;
     }
 
-    setFormData({
-      ...formData,
-      recipients: [...formData.recipients, email],
-    });
+    setFormData(prev => ({
+      ...prev,
+      recipients: [...prev.recipients, email],
+    }));
     setRecipientInput('');
     setErrors({ ...errors, recipients: undefined });
   }, [recipientInput, formData, errors, validateEmail]);
 
   const handleRemoveRecipient = useCallback((email: string) => {
-    setFormData({
-      ...formData,
-      recipients: formData.recipients.filter((r) => r !== email),
-    });
+    setFormData(prev => ({
+      ...prev,
+      recipients: prev.recipients.filter((r) => r !== email),
+    }));
   }, [formData]);
 
   return (
@@ -258,7 +258,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
             label="Schedule Name"
             type="text"
             value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
             error={errors.name}
             placeholder="e.g., Daily Production Report"
             required
@@ -278,7 +278,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
               id="schedule-description"
               value={formData.description}
               onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
+                setFormData(prev => ({ ...prev, description: e.target.value }))
               }
               placeholder="Optional description of this schedule"
               rows={3}
@@ -300,7 +300,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
               id="report-config"
               value={formData.reportConfigId}
               onChange={(e) =>
-                setFormData({ ...formData, reportConfigId: e.target.value })
+                setFormData(prev => ({ ...prev, reportConfigId: e.target.value }))
               }
               className={cn(
                 'block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm sm:text-base',
@@ -340,7 +340,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
             </label>
             <CronBuilder
               value={formData.cronExpression}
-              onChange={(cron) => setFormData({ ...formData, cronExpression: cron })}
+              onChange={(cron) => setFormData(prev => ({ ...prev, cronExpression: cron }))}
               error={errors.cronExpression}
               aria-labelledby="cron-label"
             />
@@ -349,7 +349,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
           {/* Delivery Options Section */}
           <div className="border-t border-gray-200 pt-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Delivery Options</h3>
-            
+
             {errors.deliveryOptions && (
               <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md" role="alert">
                 <p className="text-sm text-red-800">{errors.deliveryOptions}</p>
@@ -364,7 +364,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
                     type="checkbox"
                     checked={formData.saveToFile}
                     onChange={(e) =>
-                      setFormData({ ...formData, saveToFile: e.target.checked })
+                      setFormData(prev => ({ ...prev, saveToFile: e.target.checked }))
                     }
                     className="sr-only peer"
                     aria-label="Enable or disable saving report to disk"
@@ -393,7 +393,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
                       id="destination-path"
                       type="text"
                       value={formData.destinationPath}
-                      onChange={(e) => setFormData({ ...formData, destinationPath: e.target.value })}
+                      onChange={(e) => setFormData(prev => ({ ...prev, destinationPath: e.target.value }))}
                       error={errors.destinationPath}
                       placeholder="e.g., /reports/production or reports/daily"
                       aria-describedby="destination-path-help"
@@ -427,7 +427,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
                     type="checkbox"
                     checked={formData.sendEmail}
                     onChange={(e) =>
-                      setFormData({ ...formData, sendEmail: e.target.checked })
+                      setFormData(prev => ({ ...prev, sendEmail: e.target.checked }))
                     }
                     className="sr-only peer"
                     aria-label="Enable or disable email delivery"
@@ -525,82 +525,6 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
             </div>
           </div>
 
-          {/* Email Recipients - OLD SECTION TO REMOVE */}
-          <div style={{ display: 'none' }}>
-            <label className="block text-sm font-medium text-gray-700 mb-2" id="recipients-label-old">
-              Email Recipients <span className="text-red-500">*</span>
-            </label>
-            <div className="flex flex-col sm:flex-row gap-2 mb-2">
-              <Input
-                id="recipient-input-old"
-                type="email"
-                value={recipientInput}
-                onChange={(e) => setRecipientInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddRecipient();
-                  }
-                }}
-                placeholder="email@example.com"
-                className="flex-1"
-                aria-label="Enter email address"
-                aria-describedby="recipients-label-old"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleAddRecipient}
-                className="w-full sm:w-auto"
-                aria-label="Add email recipient"
-              >
-                Add
-              </Button>
-            </div>
-
-            {/* Recipients List */}
-            {formData.recipients.length > 0 && (
-              <div className="space-y-2" role="list" aria-label="Email recipients">
-                {formData.recipients.map((email) => (
-                  <div
-                    key={email}
-                    className="flex items-center justify-between p-2 bg-gray-50 rounded-md"
-                    role="listitem"
-                  >
-                    <span className="text-sm text-gray-700 break-all">{email}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveRecipient(email)}
-                      className="text-red-600 hover:text-red-800 ml-2 flex-shrink-0 p-1 rounded focus:outline-none focus:ring-2 focus:ring-red-500"
-                      aria-label={`Remove ${email} from recipients`}
-                    >
-                      <svg
-                        className="w-5 h-5"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        aria-hidden="true"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M6 18L18 6M6 6l12 12"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {errors.recipients && (
-              <p className="mt-1 text-sm text-red-600" role="alert">
-                {errors.recipients}
-              </p>
-            )}
-          </div>
-
           {/* Enabled Toggle */}
           <fieldset>
             <legend className="sr-only">Schedule status</legend>
@@ -610,7 +534,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
                   type="checkbox"
                   checked={formData.enabled}
                   onChange={(e) =>
-                    setFormData({ ...formData, enabled: e.target.checked })
+                    setFormData(prev => ({ ...prev, enabled: e.target.checked }))
                   }
                   className="sr-only peer"
                   aria-label="Enable or disable this schedule"
@@ -643,9 +567,9 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
             >
               Cancel
             </Button>
-            <Button 
-              type="submit" 
-              variant="primary" 
+            <Button
+              type="submit"
+              variant="primary"
               loading={loading}
               className="w-full sm:w-auto"
               aria-label={isEditMode ? 'Update schedule' : 'Create schedule'}
@@ -660,7 +584,7 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
           <DirectoryBrowser
             value={formData.destinationPath}
             onChange={(path) => {
-              setFormData({ ...formData, destinationPath: path });
+              setFormData(prev => ({ ...prev, destinationPath: path }));
               setShowDirectoryBrowser(false);
             }}
             onClose={() => setShowDirectoryBrowser(false)}

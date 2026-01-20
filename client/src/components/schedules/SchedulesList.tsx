@@ -106,7 +106,7 @@ function useDebounce<T>(value: T, delay: number): T {
 export const SchedulesList: React.FC<SchedulesListProps> = ({ className }) => {
   // Toast notifications
   const { toasts, success, error: showError, removeToast } = useToast();
-  
+
   // State management
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [reportConfigs, setReportConfigs] = useState<ReportConfig[]>([]);
@@ -119,7 +119,7 @@ export const SchedulesList: React.FC<SchedulesListProps> = ({ className }) => {
   const [limit] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  
+
   // UI state
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -189,7 +189,7 @@ export const SchedulesList: React.FC<SchedulesListProps> = ({ className }) => {
         }
 
         setSchedules(filteredSchedules);
-        
+
         // Safely access pagination data with defaults
         const pagination = response.data.pagination || { totalPages: 1, total: 0 };
         setTotalPages(pagination.totalPages || 1);
@@ -221,14 +221,10 @@ export const SchedulesList: React.FC<SchedulesListProps> = ({ className }) => {
       if (response.success && response.data) {
         // Map saved reports to ReportConfig format
         const configs: ReportConfig[] = response.data.map((report: any) => ({
+          ...report.config,
           id: report.id,
           name: report.name,
           description: report.description,
-          tags: [],
-          timeRange: { startTime: new Date(), endTime: new Date() },
-          chartTypes: [],
-          template: 'default',
-          format: 'pdf',
         }));
         setReportConfigs(configs);
       }
@@ -320,7 +316,7 @@ export const SchedulesList: React.FC<SchedulesListProps> = ({ className }) => {
   const handleToggleEnabled = useCallback(async (scheduleId: string, enabled: boolean) => {
     // Optimistic update
     setTogglingSchedules(prev => new Set(prev).add(scheduleId));
-    
+
     // Update UI immediately
     setSchedules(prevSchedules =>
       prevSchedules.map(schedule =>
@@ -488,9 +484,9 @@ export const SchedulesList: React.FC<SchedulesListProps> = ({ className }) => {
                 />
               </svg>
             </Button>
-            <Button 
-              variant="primary" 
-              onClick={handleCreateSchedule} 
+            <Button
+              variant="primary"
+              onClick={handleCreateSchedule}
               className="flex-shrink-0"
               aria-label="Create new schedule"
             >
@@ -699,7 +695,7 @@ export const SchedulesList: React.FC<SchedulesListProps> = ({ className }) => {
       {/* Schedules Grid */}
       {!loading && !error && schedules.length > 0 && (
         <>
-          <div 
+          <div
             className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-4 sm:gap-6"
             role="list"
             aria-label="Scheduled reports"
@@ -722,7 +718,7 @@ export const SchedulesList: React.FC<SchedulesListProps> = ({ className }) => {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <nav 
+            <nav
               className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-gray-200"
               role="navigation"
               aria-label="Pagination"

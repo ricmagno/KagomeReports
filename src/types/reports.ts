@@ -79,6 +79,7 @@ export interface ReportListItem {
   id: string;
   name: string;
   description: string;
+  config: ReportConfig;
   version: number;
   createdBy: string;
   createdAt: Date;
