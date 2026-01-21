@@ -51,6 +51,8 @@ jspm_packages/
 # Reports and temp directories
 /reports/
 temp/
+@temp/**
+@test-reports/**
 
 # IDE files
 .vscode/
