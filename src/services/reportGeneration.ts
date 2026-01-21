@@ -140,7 +140,8 @@ export class ReportGenerationService {
       try {
         const doc = new PDFDocument({
           size: 'A4',
-          margins: { top: 50, bottom: 50, left: 50, right: 50 },
+          margins: { top: 40, bottom: 60, left: 40, right: 40 },
+          bufferPages: true, // Enable page buffering for footer addition
           info: {
             Title: reportData.config.name,
             Author: reportData.config.metadata?.author || 'Historian Reports',
@@ -170,16 +171,29 @@ export class ReportGenerationService {
         this.addExecutiveSummary(doc, reportData);
 
         // Add data sections for each tag
+        let isFirstTag = true;
         for (const [tagName, data] of Object.entries(reportData.data)) {
           if (data.length > 0) {
-            doc.addPage();
+            // Only add page break if not the first tag or if we're too far down the page
+            if (!isFirstTag || doc.y > doc.page.height - 300) {
+              doc.addPage();
+            } else {
+              // Add some spacing before first tag section
+              doc.moveDown(1);
+            }
             this.addTagSection(doc, tagName, data, reportData);
+            isFirstTag = false;
           }
         }
 
         // Add charts if available
         if (reportData.charts && Object.keys(reportData.charts).length > 0) {
-          doc.addPage();
+          // Only add page if we're too far down the current page
+          if (doc.y > doc.page.height - 400) {
+            doc.addPage();
+          } else {
+            doc.moveDown(1);
+          }
           this.addChartsSection(doc, reportData.charts);
         }
 
@@ -193,11 +207,19 @@ export class ReportGenerationService {
 
         // Add statistical summary
         if (reportData.statistics) {
-          doc.addPage();
+          // Only add page if we're too far down the current page
+          if (doc.y > doc.page.height - 300) {
+            doc.addPage();
+          } else {
+            doc.moveDown(1);
+          }
           this.addStatisticalSummary(doc, reportData.statistics);
         }
 
-        // Add footer
+        // Get page count before adding footers
+        const pageCount = doc.bufferedPageRange().count;
+
+        // Add footer to all pages (must be done before doc.end())
         this.addReportFooter(doc, reportData);
 
         // Finalize the PDF
@@ -206,24 +228,15 @@ export class ReportGenerationService {
         doc.on('end', () => {
           try {
             const buffer = Buffer.concat(chunks);
-            
+
             // Generate standardized filename using report name and current date
             const reportName = getReportNameFromConfig(reportData.config);
             const fileName = generateReportFilename(reportName, 'pdf');
-            
+
             const filePath = path.join(this.outputDir, fileName);
 
             // Save to file
             fs.writeFileSync(filePath, buffer);
-
-            // Calculate pages more safely
-            let pageCount = 1;
-            try {
-              pageCount = doc.bufferedPageRange().count;
-            } catch (error) {
-              // Fallback to estimating pages based on content
-              pageCount = Math.max(1, Math.ceil(Object.keys(reportData.data).length / 2));
-            }
 
             const result: ReportResult = {
               success: true,
@@ -261,29 +274,36 @@ export class ReportGenerationService {
    * Add report header with branding
    */
   private addReportHeader(doc: PDFKit.PDFDocument, config: ReportConfig): void {
-    const companyName = config.branding?.companyName || 'Historian Reports';
-    const primaryColor = config.branding?.colors?.primary || '#0ea5e9';
-
-    // Header background
-    doc.rect(0, 0, doc.page.width, 80)
-      .fill(primaryColor);
-
-    // Company name
-    doc.fillColor('white')
-      .fontSize(20)
+    // Company name - Kagome branding
+    doc.fontSize(16)
+      .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text(companyName, 50, 25);
+      .text('Kagome', 40, 25);
+
+    // Subtitle - Historian Reports
+    doc.fontSize(11)
+      .fillColor('#6b7280')
+      .font('Helvetica')
+      .text('Historian Reports', 40, 45);
+
+    // Subtle separator line
+    doc.strokeColor('#e5e7eb')
+      .lineWidth(1)
+      .moveTo(40, 65)
+      .lineTo(doc.page.width - 40, 65)
+      .stroke();
 
     // Reset position and color
-    doc.fillColor('black')
-      .y = 100;
+    doc.fillColor('#111827');
+    doc.y = 75;
   }
 
   /**
    * Add report title and basic information
    */
   private addReportTitle(doc: PDFKit.PDFDocument, config: ReportConfig): void {
-    doc.fontSize(24)
+    doc.fontSize(20)
+      .fillColor('#111827')
       .font('Helvetica-Bold')
       .text(config.name, { align: 'center' });
 
@@ -291,6 +311,7 @@ export class ReportGenerationService {
 
     if (config.description) {
       doc.fontSize(14)
+        .fillColor('#6b7280')
         .font('Helvetica')
         .text(config.description, { align: 'center' });
       doc.moveDown();
@@ -305,9 +326,12 @@ export class ReportGenerationService {
       : 'Unknown';
 
     doc.fontSize(12)
+      .fillColor('#6b7280')
       .text(`Report Period: ${startTime} - ${endTime}`, { align: 'center' });
 
-    doc.moveDown(2);
+    // Reset to default black
+    doc.fillColor('#111827');
+    doc.moveDown(1);
   }
 
   /**
@@ -322,13 +346,17 @@ export class ReportGenerationService {
       : 'Unknown';
 
     doc.fontSize(10)
+      .fillColor('#111827')
       .font('Helvetica-Bold')
       .text('Generated:', 50, startY)
+      .fillColor('#6b7280')
       .font('Helvetica')
       .text(generatedDate, 120, startY);
 
-    doc.font('Helvetica-Bold')
+    doc.fillColor('#111827')
+      .font('Helvetica-Bold')
       .text('Tags:', 50, startY + 15)
+      .fillColor('#6b7280')
       .font('Helvetica')
       .text(reportData.config.tags.join(', '), 120, startY + 15);
 
@@ -336,48 +364,58 @@ export class ReportGenerationService {
     const totalDataPoints = Object.values(reportData.data)
       .reduce((sum, data) => sum + data.length, 0);
 
-    doc.font('Helvetica-Bold')
+    doc.fillColor('#111827')
+      .font('Helvetica-Bold')
       .text('Data Points:', 300, startY)
+      .fillColor('#6b7280')
       .font('Helvetica')
       .text(totalDataPoints.toString(), 370, startY);
 
-    doc.font('Helvetica-Bold')
+    doc.fillColor('#111827')
+      .font('Helvetica-Bold')
       .text('Format:', 300, startY + 15)
+      .fillColor('#6b7280')
       .font('Helvetica')
       .text(reportData.config.format.toUpperCase(), 370, startY + 15);
 
+    // Reset to default
+    doc.fillColor('#111827');
     doc.y = startY + 40;
-    doc.moveDown();
+    doc.moveDown(0.5);
   }
 
   /**
    * Add executive summary
    */
   private addExecutiveSummary(doc: PDFKit.PDFDocument, reportData: ReportData): void {
-    doc.fontSize(16)
+    doc.fontSize(14)
+      .fillColor('#111827')
       .font('Helvetica-Bold')
       .text('Executive Summary');
 
-    doc.moveDown();
+    doc.moveDown(0.5);
 
     const totalTags = reportData.config.tags.length;
     const totalDataPoints = Object.values(reportData.data)
       .reduce((sum, data) => sum + data.length, 0);
 
     doc.fontSize(12)
+      .fillColor('#111827')
       .font('Helvetica')
       .text(`This report analyzes ${totalTags} tag(s) over the specified time period, ` +
         `containing a total of ${totalDataPoints} data points. ` +
         `The analysis includes statistical summaries, trend analysis, and data quality metrics.`);
 
-    doc.moveDown();
+    doc.moveDown(0.5);
 
     // Key findings
     if (reportData.statistics) {
-      doc.font('Helvetica-Bold')
+      doc.fillColor('#111827')
+        .font('Helvetica-Bold')
         .text('Key Findings:');
 
-      doc.font('Helvetica');
+      doc.fillColor('#111827')
+        .font('Helvetica');
 
       for (const [tagName, stats] of Object.entries(reportData.statistics)) {
         doc.text(`• ${tagName}: Average ${stats.average.toFixed(2)}, ` +
@@ -386,7 +424,7 @@ export class ReportGenerationService {
       }
     }
 
-    doc.moveDown(2);
+    doc.moveDown(1);
   }
 
   /**
@@ -398,14 +436,16 @@ export class ReportGenerationService {
     data: TimeSeriesData[],
     reportData: ReportData
   ): void {
-    doc.fontSize(18)
+    doc.fontSize(14)
+      .fillColor('#111827')
       .font('Helvetica-Bold')
       .text(`Tag: ${tagName}`);
 
-    doc.moveDown();
+    doc.moveDown(0.5);
 
     // Basic information
     doc.fontSize(12)
+      .fillColor('#111827')
       .font('Helvetica')
       .text(`Data Points: ${data.length}`);
 
@@ -417,44 +457,50 @@ export class ReportGenerationService {
       doc.text('Time Range: No data available');
     }
 
-    doc.moveDown();
+    doc.moveDown(0.5);
 
     // Statistics if available
     const stats = reportData.statistics?.[tagName];
     if (stats) {
-      doc.font('Helvetica-Bold')
+      doc.fillColor('#111827')
+        .font('Helvetica-Bold')
         .text('Statistical Summary:');
 
-      doc.font('Helvetica')
+      doc.fillColor('#111827')
+        .font('Helvetica')
         .text(`Minimum: ${stats.min.toFixed(2)}`)
         .text(`Maximum: ${stats.max.toFixed(2)}`)
         .text(`Average: ${stats.average.toFixed(2)}`)
         .text(`Standard Deviation: ${stats.standardDeviation.toFixed(2)}`)
         .text(`Data Quality: ${stats.dataQuality.toFixed(1)}%`);
 
-      doc.moveDown();
+      doc.moveDown(0.5);
     }
 
     // Trend information if available
     const trend = reportData.trends?.[tagName];
     if (trend) {
-      doc.font('Helvetica-Bold')
+      doc.fillColor('#111827')
+        .font('Helvetica-Bold')
         .text('Trend Analysis:');
 
-      doc.font('Helvetica')
+      doc.fillColor('#111827')
+        .font('Helvetica')
         .text(`Trend Equation: ${trend.equation}`)
         .text(`Correlation: ${trend.correlation.toFixed(3)}`)
         .text(`Confidence: ${(trend.confidence * 100).toFixed(1)}%`);
 
-      doc.moveDown();
+      doc.moveDown(0.5);
     }
 
     // Data quality breakdown
     const qualityBreakdown = this.calculateQualityBreakdown(data);
-    doc.font('Helvetica-Bold')
+    doc.fillColor('#111827')
+      .font('Helvetica-Bold')
       .text('Data Quality Breakdown:');
 
-    doc.font('Helvetica')
+    doc.fillColor('#111827')
+      .font('Helvetica')
       .text(`Good Quality: ${qualityBreakdown.good} (${qualityBreakdown.goodPercent.toFixed(1)}%)`)
       .text(`Bad Quality: ${qualityBreakdown.bad} (${qualityBreakdown.badPercent.toFixed(1)}%)`)
       .text(`Uncertain Quality: ${qualityBreakdown.uncertain} (${qualityBreakdown.uncertainPercent.toFixed(1)}%)`);
@@ -464,7 +510,8 @@ export class ReportGenerationService {
    * Add charts section
    */
   private addChartsSection(doc: PDFKit.PDFDocument, charts: Record<string, Buffer>): void {
-    doc.fontSize(18)
+    doc.fontSize(14)
+      .fillColor('#111827')
       .font('Helvetica-Bold')
       .text('Data Visualizations');
 
@@ -489,11 +536,12 @@ export class ReportGenerationService {
       const chartWidth = 450;  // Increased from 250
       const chartHeight = 300; // Increased from 200
 
-      doc.fontSize(14)
+      doc.fontSize(12)
+        .fillColor('#111827')
         .font('Helvetica-Bold')
         .text(chartName, { align: 'center' });
 
-      doc.moveDown();
+      doc.moveDown(0.5);
 
       // Validate buffer before embedding
       reportLogger.debug('Validating chart buffer before embedding', {
@@ -518,7 +566,7 @@ export class ReportGenerationService {
             align: 'center',
             width: chartWidth
           })
-          .fillColor('black');
+          .fillColor('#111827');
 
         failures.push(chartName);
         failureCount++;
@@ -563,14 +611,14 @@ export class ReportGenerationService {
               align: 'center',
               width: chartWidth
             })
-            .fillColor('black');
+            .fillColor('#111827');
 
           failures.push(chartName);
           failureCount++;
         }
       }
 
-      doc.moveDown(2);
+      doc.moveDown(1.5);
       chartCount++;
     }
 
@@ -592,7 +640,7 @@ export class ReportGenerationService {
         .text(`Note: ${failureCount} of ${chartCount} chart(s) could not be displayed. See logs for details.`, {
           align: 'center'
         })
-        .fillColor('black');
+        .fillColor('#111827');
     }
   }
 
@@ -600,22 +648,24 @@ export class ReportGenerationService {
    * Add statistical summary section
    */
   private addStatisticalSummary(doc: PDFKit.PDFDocument, statistics: Record<string, StatisticsResult>): void {
-    doc.fontSize(18)
+    doc.fontSize(14)
+      .fillColor('#111827')
       .font('Helvetica-Bold')
       .text('Statistical Summary');
 
-    doc.moveDown();
+    doc.moveDown(0.5);
 
     // Create table
     const tableTop = doc.y;
-    const tableLeft = 50;
-    const columnWidth = 80;
+    const tableLeft = 40;
+    const columnWidth = 85;
     const rowHeight = 20;
 
     // Table headers
     const headers = ['Tag', 'Min', 'Max', 'Average', 'Std Dev', 'Quality %'];
 
     doc.fontSize(10)
+      .fillColor('#111827')
       .font('Helvetica-Bold');
 
     headers.forEach((header, i) => {
@@ -626,7 +676,8 @@ export class ReportGenerationService {
     });
 
     // Table rows
-    doc.font('Helvetica');
+    doc.fillColor('#111827')
+      .font('Helvetica');
     let rowIndex = 1;
 
     for (const [tagName, stats] of Object.entries(statistics)) {
@@ -658,16 +709,16 @@ export class ReportGenerationService {
    * Add data table section showing all data points
    */
   private addDataTable(doc: PDFKit.PDFDocument, tagName: string, data: TimeSeriesData[]): void {
-    doc.fontSize(18)
+    doc.fontSize(14)
       .font('Helvetica-Bold')
       .text(`Data Table: ${tagName}`);
 
-    doc.moveDown();
+    doc.moveDown(0.5);
 
     // Table configuration
     const tableTop = doc.y;
-    const tableLeft = 50;
-    const pageWidth = doc.page.width - 100; // Account for margins
+    const tableLeft = 40;
+    const pageWidth = doc.page.width - 80; // Account for margins (40 on each side)
 
     // Column widths (proportional)
     const colWidths = {
@@ -752,17 +803,11 @@ export class ReportGenerationService {
       // Get quality status
       const qualityStatus = getQualityStatus(row.quality);
 
-      // Set text color based on quality
-      let textColor = '#111827'; // Default black
-      if (row.quality === 192) textColor = '#059669'; // Green for good
-      else if (row.quality === 0) textColor = '#dc2626'; // Red for bad
-      else if (row.quality === 64) textColor = '#d97706'; // Orange for uncertain
-
+      // Use grayscale for all text (no colored quality indicators in tables)
       // Draw row data
       doc.fillColor('#111827')
         .text(timestamp, tableLeft + 5, currentY + 5, { width: colWidths.timestamp, align: 'left' })
         .text(value, tableLeft + colWidths.timestamp + 5, currentY + 5, { width: colWidths.value, align: 'right' })
-        .fillColor(textColor)
         .text(String(row.quality), tableLeft + colWidths.timestamp + colWidths.value + 5, currentY + 5, { width: colWidths.quality, align: 'center' })
         .text(qualityStatus, tableLeft + colWidths.timestamp + colWidths.value + colWidths.quality + 5, currentY + 5, { width: colWidths.status, align: 'center' });
 
@@ -784,35 +829,70 @@ export class ReportGenerationService {
   }
 
   /**
-   * Add report footer
+   * Add report footer to all pages with generation info and page numbers
    */
   private addReportFooter(doc: PDFKit.PDFDocument, reportData: ReportData): void {
-    // Add footer to current page only during generation
-    // Footer will be added to all pages after document is complete
+    try {
+      // Get total page count
+      const range = doc.bufferedPageRange();
+      const totalPages = range.count;
 
-    // Footer line
-    doc.strokeColor('#cccccc')
-      .lineWidth(1)
-      .moveTo(50, doc.page.height - 50)
-      .lineTo(doc.page.width - 50, doc.page.height - 50)
-      .stroke();
+      // Format generation timestamp
+      const generatedDate = reportData.generatedAt instanceof Date
+        ? reportData.generatedAt.toLocaleString()
+        : 'Unknown';
 
-    // Footer text - safely handle date
-    const generatedDate = reportData.generatedAt instanceof Date
-      ? reportData.generatedAt.toLocaleString()
-      : 'Unknown';
+      // Iterate through all pages and add footer to each
+      for (let i = 0; i < totalPages; i++) {
+        doc.switchToPage(i);
 
-    doc.fillColor('#666666')
-      .fontSize(8)
-      .text(
-        `Generated by Historian Reports on ${generatedDate}`,
-        50,
-        doc.page.height - 40,
-        { align: 'left' }
-      );
+        // Temporarily disable bottom margin to prevent auto-page-adding 
+        // when writing in the footer area (within the original margin)
+        const oldBottomMargin = doc.page.margins.bottom;
+        doc.page.margins.bottom = 0;
 
-    // Note: Page numbers will be added after document completion
-    doc.fillColor('black'); // Reset color
+        const pageNumber = i + 1;
+        const footerY = doc.page.height - 55;
+
+        // Add horizontal separator line above footer
+        doc.strokeColor('#cccccc')
+          .lineWidth(1)
+          .moveTo(40, footerY)
+          .lineTo(doc.page.width - 40, footerY)
+          .stroke();
+
+        // Add generation timestamp (left side)
+        doc.fillColor('#666666')
+          .fontSize(8)
+          .font('Helvetica')
+          .text(
+            `Generated by Historian Reports on ${generatedDate}`,
+            40,
+            footerY + 10,
+            { align: 'left', width: doc.page.width - 200 }
+          );
+
+        // Add page numbers (right side)
+        doc.text(
+          `Page ${pageNumber} of ${totalPages}`,
+          doc.page.width - 140,
+          footerY + 10,
+          { align: 'right', width: 100 }
+        );
+
+        // Restore bottom margin
+        doc.page.margins.bottom = oldBottomMargin;
+      }
+
+      // Reset color
+      doc.fillColor('#111827');
+    } catch (error) {
+      reportLogger.error('Error adding footer to pages', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      throw error;
+    }
   }
 
   /**
