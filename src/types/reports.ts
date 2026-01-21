@@ -2,7 +2,15 @@
  * Type definitions for report management and configuration
  */
 
-import { TimeRange, DataFilter } from './historian';
+import { 
+  TimeRange, 
+  DataFilter, 
+  TimeSeriesData, 
+  SpecificationLimits, 
+  TrendLineResult, 
+  SPCMetrics, 
+  SPCMetricsSummary 
+} from './historian';
 
 // Chart types supported in reports
 export type ChartType = 'line' | 'bar' | 'trend' | 'scatter' | 'area';
@@ -39,6 +47,12 @@ export interface ReportConfig {
   updatedAt?: Date;
   version?: number;
   parentId?: string; // For version tracking
+  
+  // Advanced Chart Analytics fields
+  specificationLimits?: Record<string, SpecificationLimits>; // Map of tag name to spec limits
+  includeSPCCharts?: boolean;      // Include Statistical Process Control charts
+  includeTrendLines?: boolean;     // Include trend lines on standard charts
+  includeStatsSummary?: boolean;   // Include statistical summaries on charts
 }
 
 // Saved report with metadata
@@ -109,4 +123,33 @@ export interface ReportValidationResult {
   isValid: boolean;
   errors: string[];
   warnings: string[];
+}
+
+// Tag classification for analytics
+export interface TagClassification {
+  tagName: string;
+  type: 'analog' | 'digital';
+  confidence: number; // 0-1, how confident the classification is
+}
+
+// Tag analytics data combining classification and calculated metrics
+export interface TagAnalytics {
+  tagName: string;
+  classification: TagClassification;
+  trendLine?: TrendLineResult;
+  spcMetrics?: SPCMetrics;
+  statistics: {
+    min: number;
+    max: number;
+    mean: number;
+    stdDev: number;
+  };
+}
+
+// Enhanced report data with analytics
+export interface EnhancedReportData {
+  configuration: ReportConfig;
+  timeSeriesData: Record<string, TimeSeriesData[]>; // Map of tag name to time-series data
+  tagAnalytics: Record<string, TagAnalytics>;       // Map of tag name to analytics
+  spcMetricsSummary: SPCMetricsSummary[];           // Summary table data
 }

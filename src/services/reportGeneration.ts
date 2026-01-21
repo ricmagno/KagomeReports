@@ -8,13 +8,16 @@ import PDFDocument from 'pdfkit';
 import Handlebars from 'handlebars';
 import fs from 'fs';
 import path from 'path';
-import { TimeSeriesData, StatisticsResult, TrendResult } from '@/types/historian';
+import { TimeSeriesData, StatisticsResult, TrendResult, SPCMetricsSummary, SpecificationLimits, TagClassification } from '@/types/historian';
 import { reportLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
 import { env } from '@/config/environment';
 import { chartGenerationService } from './chartGeneration';
 import { chartBufferValidator } from '@/utils/chartBufferValidator';
 import { generateReportFilename, getReportNameFromConfig } from '@/utils/reportFilename';
+import { classifyTag, classifyTags } from './tagClassificationService';
+import { statisticalAnalysisService } from './statisticalAnalysis';
+import { analyticsErrorHandler } from '@/utils/analyticsErrorHandler';
 
 export interface ReportConfig {
   id: string;
@@ -42,6 +45,10 @@ export interface ReportConfig {
     subject?: string | undefined;
     keywords?: string[] | undefined;
   } | undefined;
+  specificationLimits?: Record<string, SpecificationLimits> | undefined;
+  includeSPCCharts?: boolean | undefined;
+  includeTrendLines?: boolean | undefined;
+  includeStatsSummary?: boolean | undefined;
 }
 
 export interface ReportData {
@@ -136,8 +143,162 @@ export class ReportGenerationService {
    * Generate PDF report using PDFKit
    */
   private async generatePDFReport(reportData: ReportData, startTime: number): Promise<ReportResult> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       try {
+        // Step 1: Classify tags (analog vs digital)
+        reportLogger.info('Classifying tags for analytics', {
+          tagCount: Object.keys(reportData.data).length
+        });
+        
+        const tagClassifications = new Map<string, TagClassification>();
+        for (const [tagName, data] of Object.entries(reportData.data)) {
+          if (data.length > 0) {
+            const classification = classifyTag(data);
+            tagClassifications.set(tagName, classification);
+            reportLogger.debug(`Tag ${tagName} classified as ${classification.type}`, {
+              confidence: classification.confidence
+            });
+          }
+        }
+
+        // Step 2: Calculate analytics for analog tags
+        const trendLines = new Map<string, any>();
+        const spcMetrics = new Map<string, any>();
+        const spcMetricsSummary: SPCMetricsSummary[] = [];
+        
+        const includeTrendLines = reportData.config.includeTrendLines !== false; // Default true
+        const includeSPCCharts = reportData.config.includeSPCCharts !== false; // Default true
+        
+        for (const [tagName, data] of Object.entries(reportData.data)) {
+          const classification = tagClassifications.get(tagName);
+          
+          // Only process analog tags
+          if (classification?.type === 'analog' && data.length >= 3) {
+            // Calculate trend line if enabled (with graceful error handling)
+            if (includeTrendLines) {
+              const trendLine = statisticalAnalysisService.safeCalculateTrendLine(data, tagName);
+              if (trendLine) {
+                trendLines.set(tagName, trendLine);
+                reportLogger.debug(`Trend line calculated for ${tagName}`, {
+                  slope: trendLine.slope,
+                  rSquared: trendLine.rSquared
+                });
+              } else {
+                reportLogger.warn(`Trend line calculation failed for ${tagName}, continuing without trend line`);
+              }
+            }
+            
+            // Calculate SPC metrics if enabled and spec limits provided (with graceful error handling)
+            if (includeSPCCharts) {
+              const specLimits = reportData.config.specificationLimits?.[tagName];
+              const metrics = statisticalAnalysisService.safeCalculateSPCMetrics(data, tagName, specLimits);
+              
+              if (metrics) {
+                spcMetrics.set(tagName, metrics);
+                
+                // Add to summary table
+                const capability = statisticalAnalysisService.assessCapability(metrics.cp, metrics.cpk);
+                spcMetricsSummary.push({
+                  tagName,
+                  mean: metrics.mean,
+                  stdDev: metrics.stdDev,
+                  lsl: specLimits?.lsl ?? null,
+                  usl: specLimits?.usl ?? null,
+                  cp: metrics.cp,
+                  cpk: metrics.cpk,
+                  capability
+                });
+                
+                reportLogger.debug(`SPC metrics calculated for ${tagName}`, {
+                  mean: metrics.mean,
+                  cp: metrics.cp,
+                  cpk: metrics.cpk,
+                  capability
+                });
+              } else {
+                reportLogger.warn(`SPC metrics calculation failed for ${tagName}, continuing without SPC metrics`);
+              }
+            }
+          }
+        }
+
+        // Step 3: Generate enhanced charts with trend lines and statistics
+        const enhancedCharts = new Map<string, Buffer>();
+        
+        for (const [tagName, data] of Object.entries(reportData.data)) {
+          if (data.length === 0) continue;
+          
+          const classification = tagClassifications.get(tagName);
+          const stats = reportData.statistics?.[tagName];
+          
+          // Generate standard chart with trend line and statistics
+          const trendLine = trendLines.get(tagName);
+          const statistics = stats ? {
+            min: stats.min,
+            max: stats.max,
+            mean: stats.average,
+            stdDev: stats.standardDeviation
+          } : undefined;
+          
+          const lineChartData: any = {
+            tagName,
+            data,
+            trendLine,
+            statistics
+          };
+          
+          try {
+            const chartBuffer = await chartGenerationService.generateLineChart(
+              [lineChartData],
+              {
+                title: `${tagName} - Time Series Data`,
+                width: 800,
+                height: 400
+              }
+            );
+            
+            enhancedCharts.set(`${tagName} - Data Trend`, chartBuffer);
+            reportLogger.debug(`Enhanced chart generated for ${tagName}`);
+          } catch (error) {
+            reportLogger.error(`Failed to generate line chart for ${tagName}`, {
+              error: error instanceof Error ? error.message : 'Unknown error'
+            });
+            // Chart generation failed - report will continue without this chart
+            // The addChartsSection method will handle missing charts gracefully
+          }
+          
+          // Generate SPC chart for analog tags if enabled
+          if (classification?.type === 'analog' && includeSPCCharts) {
+            const metrics = spcMetrics.get(tagName);
+            const specLimits = reportData.config.specificationLimits?.[tagName];
+            
+            if (metrics) {
+              try {
+                const spcChartBuffer = await chartGenerationService.generateSPCChart(
+                  tagName,
+                  data,
+                  metrics,
+                  specLimits,
+                  {
+                    title: `${tagName} - SPC Chart`,
+                    width: 800,
+                    height: 400
+                  }
+                );
+                
+                enhancedCharts.set(`${tagName} - SPC Chart`, spcChartBuffer);
+                reportLogger.debug(`SPC chart generated for ${tagName}`);
+              } catch (error) {
+                reportLogger.error(`Failed to generate SPC chart for ${tagName}`, {
+                  error: error instanceof Error ? error.message : 'Unknown error'
+                });
+                // SPC chart generation failed - report will continue without this chart
+              }
+            }
+          }
+        }
+
+        // Step 4: Create PDF document
         const doc = new PDFDocument({
           size: 'A4',
           margins: { top: 40, bottom: 60, left: 40, right: 40 },
@@ -186,15 +347,57 @@ export class ReportGenerationService {
           }
         }
 
-        // Add charts if available
-        if (reportData.charts && Object.keys(reportData.charts).length > 0) {
+        // Separate standard charts from SPC charts
+        const standardCharts = new Map<string, Buffer>();
+        const spcCharts = new Map<string, Buffer>();
+        
+        for (const [chartName, chartBuffer] of enhancedCharts.entries()) {
+          if (chartName.includes('SPC Chart')) {
+            spcCharts.set(chartName, chartBuffer);
+          } else {
+            standardCharts.set(chartName, chartBuffer);
+          }
+        }
+
+        // Add standard charts section (with trend lines)
+        if (standardCharts.size > 0) {
           // Only add page if we're too far down the current page
           if (doc.y > doc.page.height - 400) {
             doc.addPage();
           } else {
             doc.moveDown(1);
           }
-          this.addChartsSection(doc, reportData.charts);
+          this.addChartsSection(doc, Object.fromEntries(standardCharts));
+        }
+
+        // Add SPC section on a new page if we have SPC data
+        if (spcCharts.size > 0 || spcMetricsSummary.length > 0) {
+          // Always start SPC section on a new page
+          doc.addPage();
+          
+          // Add SPC section header
+          doc.fontSize(16)
+            .fillColor('#111827')
+            .font('Helvetica-Bold')
+            .text('Statistical Process Control Analysis', { align: 'center' });
+          
+          doc.moveDown(1);
+          
+          // Add SPC charts first
+          if (spcCharts.size > 0) {
+            this.addChartsSection(doc, Object.fromEntries(spcCharts));
+          }
+          
+          // Add SPC metrics summary table after charts
+          if (spcMetricsSummary.length > 0) {
+            // Only add page if we're too far down the current page
+            if (doc.y > doc.page.height - 300) {
+              doc.addPage();
+            } else {
+              doc.moveDown(1);
+            }
+            this.addSPCMetricsTable(doc, spcMetricsSummary);
+          }
         }
 
         // Add data table for each tag
@@ -251,12 +454,34 @@ export class ReportGenerationService {
               }
             };
 
-            reportLogger.info('PDF report generated successfully', {
+            // Log analytics error summary if any errors occurred
+            if (analyticsErrorHandler.hasErrors()) {
+              const errorSummary = analyticsErrorHandler.getErrorSummary();
+              reportLogger.warn('Report generated with analytics errors', {
+                reportId: reportData.config.id,
+                errorSummary,
+                errors: analyticsErrorHandler.getErrors().map(e => ({
+                  type: e.type,
+                  message: e.message,
+                  tagName: e.tagName,
+                  metric: e.metric
+                }))
+              });
+              
+              // Clear errors for next report
+              analyticsErrorHandler.clearErrors();
+            }
+
+            reportLogger.info('PDF report generated successfully with analytics', {
               reportId: reportData.config.id,
               filePath,
               fileSize: buffer.length,
               pages: result.metadata.pages,
-              generationTime: result.metadata.generationTime
+              generationTime: result.metadata.generationTime,
+              analogTags: Array.from(tagClassifications.values()).filter(c => c.type === 'analog').length,
+              digitalTags: Array.from(tagClassifications.values()).filter(c => c.type === 'digital').length,
+              trendLinesGenerated: trendLines.size,
+              spcChartsGenerated: spcMetrics.size
             });
 
             resolve(result);
@@ -842,9 +1067,38 @@ export class ReportGenerationService {
         ? reportData.generatedAt.toLocaleString()
         : 'Unknown';
 
-      // Iterate through all pages and add footer to each
+      // Format report period for header
+      const startTimeStr = reportData.config.timeRange.startTime instanceof Date
+        ? reportData.config.timeRange.startTime.toLocaleString()
+        : 'Unknown';
+      const endTimeStr = reportData.config.timeRange.endTime instanceof Date
+        ? reportData.config.timeRange.endTime.toLocaleString()
+        : 'Unknown';
+      const periodStr = `Report Period: ${startTimeStr} - ${endTimeStr}`;
+
+      // Iterate through all pages and add decorations (header/footer) to each
       for (let i = 0; i < totalPages; i++) {
         doc.switchToPage(i);
+
+        // Add header to all pages BUT the first
+        if (i > 0) {
+          doc.fillColor('#6b7280')
+            .fontSize(9)
+            .font('Helvetica')
+            .text(
+              `${reportData.config.name} - ${periodStr}`,
+              40,
+              25,
+              { align: 'right', width: doc.page.width - 80 }
+            );
+
+          // Add a subtle line below the repeat header
+          doc.strokeColor('#e5e7eb')
+            .lineWidth(0.5)
+            .moveTo(40, 38)
+            .lineTo(doc.page.width - 40, 38)
+            .stroke();
+        }
 
         // Temporarily disable bottom margin to prevent auto-page-adding 
         // when writing in the footer area (within the original margin)
@@ -893,6 +1147,163 @@ export class ReportGenerationService {
       });
       throw error;
     }
+  }
+
+  /**
+   * Add SPC metrics summary table
+   */
+  addSPCMetricsTable(doc: PDFKit.PDFDocument, metrics: SPCMetricsSummary[]): void {
+    if (!metrics || metrics.length === 0) {
+      return;
+    }
+
+    doc.fontSize(14)
+      .fillColor('#111827')
+      .font('Helvetica-Bold')
+      .text('SPC Metrics Summary');
+
+    doc.moveDown(0.5);
+
+    const tableTop = doc.y + 10;
+    const tableLeft = 40;
+    const colWidths: number[] = [120, 60, 60, 60, 60, 60, 60, 80];
+    const headers = ['Tag Name', 'X̄', 'σest', 'LSL', 'USL', 'Cp', 'Cpk', 'Capability'];
+    const rowHeight = 20;
+    const headerHeight = 25;
+
+    // Helper function to check if we need a new page
+    const checkPageBreak = (currentY: number) => {
+      if (currentY > doc.page.height - 100) {
+        doc.addPage();
+        return 50; // Reset to top margin
+      }
+      return currentY;
+    };
+
+    let currentY = tableTop;
+
+    // Draw table header background
+    const tableWidth = colWidths.reduce((a, b) => a + b, 0);
+    doc.rect(tableLeft, currentY, tableWidth, headerHeight)
+      .fill('#f3f4f6');
+
+    // Draw table header text
+    let x = tableLeft;
+    doc.fontSize(10)
+      .fillColor('#374151')
+      .font('Helvetica-Bold');
+
+    headers.forEach((header, i) => {
+      const width = colWidths[i] || 60;
+      doc.text(header, x + 5, currentY + 7, {
+        width: width - 10,
+        align: 'center'
+      });
+      x += width;
+    });
+
+    currentY += headerHeight;
+
+    // Draw table rows
+    doc.fontSize(9)
+      .fillColor('#111827')
+      .font('Helvetica');
+
+    metrics.forEach((metric, index) => {
+      // Check if we need a new page
+      currentY = checkPageBreak(currentY);
+
+      // Alternate row colors
+      if (index % 2 === 0) {
+        doc.rect(tableLeft, currentY, tableWidth, rowHeight)
+          .fill('#f9fafb');
+      }
+
+      x = tableLeft;
+
+      // Tag name (left-aligned)
+      doc.fillColor('#111827')
+        .text(metric.tagName, x + 5, currentY + 5, {
+          width: colWidths[0]! - 10,
+          align: 'left'
+        });
+      x += colWidths[0]!;
+
+      // Mean (X̄)
+      doc.text(metric.mean.toFixed(2), x + 5, currentY + 5, {
+        width: colWidths[1]! - 10,
+        align: 'center'
+      });
+      x += colWidths[1]!;
+
+      // StdDev (σest)
+      doc.text(metric.stdDev.toFixed(2), x + 5, currentY + 5, {
+        width: colWidths[2]! - 10,
+        align: 'center'
+      });
+      x += colWidths[2]!;
+
+      // LSL
+      doc.text(
+        metric.lsl !== null ? metric.lsl.toFixed(2) : 'N/A',
+        x + 5,
+        currentY + 5,
+        { width: colWidths[3]! - 10, align: 'center' }
+      );
+      x += colWidths[3]!;
+
+      // USL
+      doc.text(
+        metric.usl !== null ? metric.usl.toFixed(2) : 'N/A',
+        x + 5,
+        currentY + 5,
+        { width: colWidths[4]! - 10, align: 'center' }
+      );
+      x += colWidths[4]!;
+
+      // Cp
+      doc.text(
+        metric.cp !== null ? metric.cp.toFixed(2) : 'N/A',
+        x + 5,
+        currentY + 5,
+        { width: colWidths[5]! - 10, align: 'center' }
+      );
+      x += colWidths[5]!;
+
+      // Cpk
+      doc.text(
+        metric.cpk !== null ? metric.cpk.toFixed(2) : 'N/A',
+        x + 5,
+        currentY + 5,
+        { width: colWidths[6]! - 10, align: 'center' }
+      );
+      x += colWidths[6]!;
+
+      // Capability assessment with visual indicator
+      const capabilityText = metric.capability;
+      let capabilityColor = '#111827'; // Default black
+
+      // Use grayscale indicators for capability
+      if (metric.capability === 'Capable') {
+        capabilityColor = '#111827'; // Dark (good)
+      } else if (metric.capability === 'Marginal') {
+        capabilityColor = '#6b7280'; // Medium gray (warning)
+      } else if (metric.capability === 'Not Capable') {
+        capabilityColor = '#9ca3af'; // Light gray (poor)
+      }
+
+      doc.fillColor(capabilityColor)
+        .text(capabilityText, x + 5, currentY + 5, {
+          width: colWidths[7]! - 10,
+          align: 'center'
+        });
+
+      currentY += rowHeight;
+    });
+
+    // Reset color and position
+    doc.fillColor('#111827');
+    doc.y = currentY + 20;
   }
 
   /**

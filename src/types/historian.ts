@@ -100,6 +100,27 @@ export interface TrendResult {
   confidence: number;
 }
 
+// Advanced trend line result with R² value
+export interface TrendLineResult {
+  slope: number;        // m in y = mx + b
+  intercept: number;    // b in y = mx + b
+  rSquared: number;     // Coefficient of determination (0-1)
+  equation: string;     // Formatted equation string
+}
+
+// Trend line calculator interface
+export interface TrendLineCalculator {
+  /**
+   * Calculate linear regression trend line
+   */
+  calculateTrendLine(data: TimeSeriesData[]): TrendLineResult;
+  
+  /**
+   * Format trend line equation for display
+   */
+  formatEquation(slope: number, intercept: number): string;
+}
+
 // Anomaly detection result
 export interface AnomalyResult {
   timestamp: Date;
@@ -131,4 +152,78 @@ export interface HistorianQueryOptions {
   tolerance?: number | undefined;       // For Delta mode (percentage)
   maxPoints?: number | undefined;       // Maximum points to return (maps to wwCycleCount)
   includeQuality?: boolean | undefined; // Include quality information
+}
+
+// Specification limits for SPC analysis
+export interface SpecificationLimits {
+  lsl?: number;  // Lower Specification Limit
+  usl?: number;  // Upper Specification Limit
+}
+
+// Statistical Process Control metrics
+export interface SPCMetrics {
+  mean: number;              // X̄ - Process average
+  stdDev: number;            // σest - Estimated standard deviation
+  ucl: number;               // Upper Control Limit (X̄ + 3σ)
+  lcl: number;               // Lower Control Limit (X̄ - 3σ)
+  cp: number | null;         // Process Capability Index
+  cpk: number | null;        // Process Performance Index
+  outOfControlPoints: number[]; // Indices of points outside control limits
+}
+
+// SPC calculator interface
+export interface SPCCalculator {
+  /**
+   * Calculate SPC metrics for a dataset
+   */
+  calculateSPCMetrics(
+    data: TimeSeriesData[], 
+    specLimits?: SpecificationLimits
+  ): SPCMetrics;
+  
+  /**
+   * Identify out-of-control points
+   */
+  identifyOutOfControlPoints(
+    data: TimeSeriesData[], 
+    ucl: number, 
+    lcl: number
+  ): number[];
+  
+  /**
+   * Assess process capability
+   */
+  assessCapability(cp: number | null, cpk: number | null): 'Capable' | 'Marginal' | 'Not Capable' | 'N/A';
+}
+
+// SPC metrics summary for table display
+export interface SPCMetricsSummary {
+  tagName: string;
+  mean: number;
+  stdDev: number;
+  lsl: number | null;
+  usl: number | null;
+  cp: number | null;
+  cpk: number | null;
+  capability: 'Capable' | 'Marginal' | 'Not Capable' | 'N/A';
+}
+
+// Tag classification for determining tag type
+export interface TagClassification {
+  tagName: string;
+  type: 'analog' | 'digital';
+  confidence: number; // 0-1, how confident the classification is
+}
+
+// Tag classification service interface
+export interface TagClassificationService {
+  /**
+   * Classify a tag based on its data characteristics
+   */
+  classifyTag(data: TimeSeriesData[]): TagClassification;
+  
+  /**
+   * Classify multiple tags in batch
+   */
+  classifyTags(tagData: Record<string, TimeSeriesData[]>): Record<string, TagClassification>;
 }

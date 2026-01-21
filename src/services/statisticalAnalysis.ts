@@ -3,11 +3,13 @@
  * Provides mathematical functions for trend analysis, statistics, and anomaly detection
  */
 
-import { TimeSeriesData, StatisticsResult, TrendResult, AnomalyResult } from '@/types/historian';
+import { TimeSeriesData, StatisticsResult, TrendResult, AnomalyResult, TrendLineResult, SPCMetrics, SpecificationLimits } from '@/types/historian';
 import { dbLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
+import { validateSpecificationLimitsOrThrow } from '@/utils/specificationLimitsValidator';
 import { CacheService } from './cacheService';
 import { createHash } from 'crypto';
+import { analyticsErrorHandler, AnalyticsResult } from '@/utils/analyticsErrorHandler';
 
 export class StatisticalAnalysisService {
   private cacheService: CacheService | undefined;
@@ -162,6 +164,122 @@ export class StatisticalAnalysisService {
       equation,
       confidence
     };
+  }
+
+  /**
+   * Calculate advanced linear regression trend line with R² value
+   * Uses time-based x-values (seconds from start) for more accurate trend analysis
+   * 
+   * @param data - Time-series data points
+   * @returns TrendLineResult with slope, intercept, R², and formatted equation
+   * @throws Error if insufficient data points (<3) or all values are identical
+   */
+  calculateAdvancedTrendLine(data: TimeSeriesData[]): TrendLineResult {
+    // Validate minimum data points
+    if (data.length < 3) {
+      throw createError('Insufficient data for trend calculation: at least 3 data points required', 400);
+    }
+
+    // Filter out invalid values
+    const validData = data.filter(point => !isNaN(point.value) && isFinite(point.value));
+    
+    if (validData.length < 3) {
+      throw createError('Insufficient valid data for trend calculation: at least 3 valid data points required', 400);
+    }
+
+    // Check for identical values (would result in undefined slope)
+    const uniqueValues = new Set(validData.map(p => p.value));
+    if (uniqueValues.size === 1) {
+      // All values are identical - return horizontal line
+      const value = validData[0]!.value;
+      return {
+        slope: 0,
+        intercept: Number(value.toFixed(2)),
+        rSquared: 1.0, // Perfect fit for horizontal line
+        equation: this.formatTrendEquation(0, value)
+      };
+    }
+
+    // Convert timestamps to numeric x values (seconds from start)
+    const startTime = validData[0]!.timestamp.getTime();
+    const points = validData.map(d => ({
+      x: (d.timestamp.getTime() - startTime) / 1000, // seconds from start
+      y: d.value
+    }));
+
+    const n = points.length;
+
+    // Calculate sums for linear regression
+    const sumX = points.reduce((sum, p) => sum + p.x, 0);
+    const sumY = points.reduce((sum, p) => sum + p.y, 0);
+    const sumXY = points.reduce((sum, p) => sum + p.x * p.y, 0);
+    const sumX2 = points.reduce((sum, p) => sum + p.x * p.x, 0);
+    const sumY2 = points.reduce((sum, p) => sum + p.y * p.y, 0);
+
+    // Calculate slope and intercept using least squares method
+    // slope = (n*Σ(xy) - Σx*Σy) / (n*Σ(x²) - (Σx)²)
+    const denominator = n * sumX2 - sumX * sumX;
+    
+    if (Math.abs(denominator) < 1e-10) {
+      // All x values are identical (shouldn't happen with time-series data)
+      throw createError('Cannot calculate trend line: all timestamps are identical', 400);
+    }
+
+    const slope = (n * sumXY - sumX * sumY) / denominator;
+    const intercept = (sumY - slope * sumX) / n;
+
+    // Calculate R² (coefficient of determination)
+    // R² = 1 - (SS_residual / SS_total)
+    const meanY = sumY / n;
+    
+    // SS_total = Σ(y - ȳ)²
+    const ssTotal = points.reduce((sum, p) => sum + Math.pow(p.y - meanY, 2), 0);
+    
+    // SS_residual = Σ(y - ŷ)² where ŷ = slope*x + intercept
+    const ssResidual = points.reduce((sum, p) => {
+      const predicted = slope * p.x + intercept;
+      return sum + Math.pow(p.y - predicted, 2);
+    }, 0);
+
+    // Handle edge case where all points lie on the mean (ssTotal = 0)
+    let rSquared: number;
+    if (ssTotal < 1e-10) {
+      rSquared = 1.0; // Perfect fit (all points at same y value)
+    } else {
+      rSquared = 1 - (ssResidual / ssTotal);
+      // Clamp R² to [0, 1] range (can be slightly negative due to floating point errors)
+      rSquared = Math.max(0, Math.min(1, rSquared));
+    }
+
+    dbLogger.debug('Advanced trend line calculated', {
+      slope,
+      intercept,
+      rSquared,
+      dataPoints: n,
+      timeSpanSeconds: points[points.length - 1]!.x
+    });
+
+    return {
+      slope: Number(slope.toFixed(2)),
+      intercept: Number(intercept.toFixed(2)),
+      rSquared: Number(rSquared.toFixed(3)),
+      equation: this.formatTrendEquation(slope, intercept)
+    };
+  }
+
+  /**
+   * Format trend line equation for display
+   * Format: "y = mx + b" with coefficients rounded to 2 decimal places
+   * 
+   * @param slope - The slope (m) of the trend line
+   * @param intercept - The y-intercept (b) of the trend line
+   * @returns Formatted equation string
+   */
+  formatTrendEquation(slope: number, intercept: number): string {
+    const m = slope.toFixed(2);
+    const b = Math.abs(intercept).toFixed(2);
+    const sign = intercept >= 0 ? '+' : '-';
+    return `y = ${m}x ${sign} ${b}`;
   }
 
   /**
@@ -1130,6 +1248,305 @@ export class StatisticalAnalysisService {
     }
 
     return anomalies;
+  }
+
+  /**
+   * Calculate Statistical Process Control (SPC) metrics
+   * Computes control limits, capability indices, and identifies out-of-control points
+   * 
+   * @param data - Time-series data points
+   * @param specLimits - Optional specification limits (LSL and USL)
+   * @returns SPCMetrics with control limits, Cp, Cpk, and out-of-control points
+   * @throws Error if insufficient data points (<2) or invalid specification limits
+   */
+  calculateSPCMetrics(
+    data: TimeSeriesData[], 
+    specLimits?: SpecificationLimits
+  ): SPCMetrics {
+    // Validate minimum data points
+    if (data.length < 2) {
+      throw createError('At least 2 data points required for SPC metrics calculation', 400);
+    }
+
+    // Filter out invalid values
+    const validData = data.filter(point => !isNaN(point.value) && isFinite(point.value));
+    
+    if (validData.length < 2) {
+      throw createError('At least 2 valid data points required for SPC metrics calculation', 400);
+    }
+
+    const values = validData.map(d => d.value);
+    const n = values.length;
+    
+    // Calculate mean (X̄)
+    const mean = values.reduce((sum, v) => sum + v, 0) / n;
+    
+    // Calculate standard deviation (σest) using sample standard deviation
+    const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / (n - 1);
+    const stdDev = Math.sqrt(variance);
+    
+    // Calculate control limits using 3-sigma rule
+    // UCL = X̄ + 3σ
+    // LCL = X̄ - 3σ
+    const ucl = mean + 3 * stdDev;
+    const lcl = mean - 3 * stdDev;
+    
+    // Calculate Cp and Cpk if specification limits provided
+    let cp: number | null = null;
+    let cpk: number | null = null;
+    
+    if (specLimits?.lsl !== undefined && specLimits?.usl !== undefined) {
+      // Validate specification limits using the validation utility
+      validateSpecificationLimitsOrThrow(specLimits);
+      
+      // Handle zero standard deviation case
+      if (stdDev === 0) {
+        // If all values are identical and within spec limits, process is perfectly capable
+        if (mean >= specLimits.lsl && mean <= specLimits.usl) {
+          cp = Infinity;
+          cpk = Infinity;
+        } else {
+          // If all values are identical but outside spec limits, process is not capable
+          cp = 0;
+          cpk = 0;
+        }
+      } else {
+        // Cp = (USL - LSL) / (6σ)
+        cp = (specLimits.usl - specLimits.lsl) / (6 * stdDev);
+        
+        // Cpk = min((USL - X̄) / 3σ, (X̄ - LSL) / 3σ)
+        const cpkUpper = (specLimits.usl - mean) / (3 * stdDev);
+        const cpkLower = (mean - specLimits.lsl) / (3 * stdDev);
+        cpk = Math.min(cpkUpper, cpkLower);
+      }
+    }
+    
+    // Identify out-of-control points
+    const outOfControlPoints = this.identifyOutOfControlPoints(data, ucl, lcl);
+    
+    dbLogger.debug('SPC metrics calculated', {
+      mean,
+      stdDev,
+      ucl,
+      lcl,
+      cp,
+      cpk,
+      outOfControlCount: outOfControlPoints.length,
+      dataPoints: n
+    });
+
+    return {
+      mean: Number(mean.toFixed(2)),
+      stdDev: Number(stdDev.toFixed(2)),
+      ucl: Number(ucl.toFixed(2)),
+      lcl: Number(lcl.toFixed(2)),
+      cp: cp !== null && isFinite(cp) ? Number(cp.toFixed(2)) : cp,
+      cpk: cpk !== null && isFinite(cpk) ? Number(cpk.toFixed(2)) : cpk,
+      outOfControlPoints
+    };
+  }
+
+  /**
+   * Identify out-of-control points in time-series data
+   * Points are considered out-of-control if they exceed UCL or fall below LCL
+   * 
+   * @param data - Time-series data points
+   * @param ucl - Upper Control Limit
+   * @param lcl - Lower Control Limit
+   * @returns Array of indices of out-of-control points
+   */
+  identifyOutOfControlPoints(
+    data: TimeSeriesData[], 
+    ucl: number, 
+    lcl: number
+  ): number[] {
+    return data
+      .map((d, index) => ({ value: d.value, index }))
+      .filter(d => !isNaN(d.value) && isFinite(d.value) && (d.value > ucl || d.value < lcl))
+      .map(d => d.index);
+  }
+
+  /**
+   * Assess process capability based on Cp and Cpk values
+   * 
+   * @param cp - Process Capability Index
+   * @param cpk - Process Performance Index
+   * @returns Capability assessment: 'Capable', 'Marginal', 'Not Capable', or 'N/A'
+   * 
+   * Assessment criteria:
+   * - Capable: Cpk >= 1.33
+   * - Marginal: 1.0 <= Cpk < 1.33
+   * - Not Capable: Cpk < 1.0
+   * - N/A: No specification limits provided
+   */
+  assessCapability(cp: number | null, cpk: number | null): 'Capable' | 'Marginal' | 'Not Capable' | 'N/A' {
+    if (cp === null || cpk === null) {
+      return 'N/A';
+    }
+    
+    // Handle infinite values (perfect capability)
+    if (!isFinite(cpk)) {
+      return 'Capable';
+    }
+    
+    if (cpk >= 1.33) {
+      return 'Capable';
+    }
+    
+    if (cpk >= 1.0) {
+      return 'Marginal';
+    }
+    
+    return 'Not Capable';
+  }
+
+  /**
+   * Safely calculate trend line with error handling and graceful degradation
+   * Returns null if calculation fails instead of throwing
+   * 
+   * @param data - Time-series data points
+   * @param tagName - Tag name for error reporting
+   * @returns TrendLineResult or null if calculation fails
+   */
+  safeCalculateTrendLine(data: TimeSeriesData[], tagName: string): TrendLineResult | null {
+    try {
+      // Check minimum data points before attempting calculation
+      if (data.length < 3) {
+        const error = analyticsErrorHandler.createInsufficientDataError(
+          tagName,
+          'trend line calculation',
+          data.length,
+          3
+        );
+        analyticsErrorHandler.handleError(error);
+        return null;
+      }
+
+      return this.calculateAdvancedTrendLine(data);
+    } catch (error) {
+      const analyticsError = analyticsErrorHandler.createCalculationError(
+        'trend_line',
+        error instanceof Error ? error.message : 'Unknown error',
+        tagName,
+        { dataPoints: data.length }
+      );
+      analyticsErrorHandler.handleError(analyticsError);
+      return null;
+    }
+  }
+
+  /**
+   * Safely calculate SPC metrics with error handling and graceful degradation
+   * Returns null if calculation fails instead of throwing
+   * 
+   * @param data - Time-series data points
+   * @param tagName - Tag name for error reporting
+   * @param specLimits - Optional specification limits
+   * @returns SPCMetrics or null if calculation fails
+   */
+  safeCalculateSPCMetrics(
+    data: TimeSeriesData[], 
+    tagName: string,
+    specLimits?: SpecificationLimits
+  ): SPCMetrics | null {
+    try {
+      // Check minimum data points before attempting calculation
+      if (data.length < 2) {
+        const error = analyticsErrorHandler.createInsufficientDataError(
+          tagName,
+          'SPC metrics calculation',
+          data.length,
+          2
+        );
+        analyticsErrorHandler.handleError(error);
+        return null;
+      }
+
+      // Validate specification limits if provided
+      if (specLimits && specLimits.lsl !== undefined && specLimits.usl !== undefined) {
+        if (specLimits.usl <= specLimits.lsl) {
+          const error = analyticsErrorHandler.createInvalidConfigError(
+            `Invalid specification limits: USL (${specLimits.usl}) must be greater than LSL (${specLimits.lsl})`,
+            tagName,
+            { lsl: specLimits.lsl, usl: specLimits.usl }
+          );
+          // For invalid config, just log and return null without throwing
+          // This allows report generation to continue
+          dbLogger.error('Invalid specification limits', {
+            tagName,
+            lsl: specLimits.lsl,
+            usl: specLimits.usl
+          });
+          return null;
+        }
+      }
+
+      return this.calculateSPCMetrics(data, specLimits);
+    } catch (error) {
+      const analyticsError = analyticsErrorHandler.createCalculationError(
+        'spc_metrics',
+        error instanceof Error ? error.message : 'Unknown error',
+        tagName,
+        { 
+          dataPoints: data.length,
+          hasSpecLimits: !!specLimits
+        }
+      );
+      analyticsErrorHandler.handleError(analyticsError);
+      return null;
+    }
+  }
+
+  /**
+   * Safely calculate statistics with error handling
+   * Returns default values if calculation fails instead of throwing
+   * 
+   * @param data - Time-series data points
+   * @param tagName - Tag name for error reporting
+   * @returns StatisticsResult or default values if calculation fails
+   */
+  safeCalculateStatistics(data: TimeSeriesData[], tagName: string): StatisticsResult {
+    try {
+      if (data.length === 0) {
+        const error = analyticsErrorHandler.createInsufficientDataError(
+          tagName,
+          'statistics calculation',
+          0,
+          1
+        );
+        analyticsErrorHandler.handleError(error);
+        
+        // Return default values
+        return {
+          min: 0,
+          max: 0,
+          average: 0,
+          standardDeviation: 0,
+          count: 0,
+          dataQuality: 0
+        };
+      }
+
+      return this.calculateStatisticsSync(data);
+    } catch (error) {
+      const analyticsError = analyticsErrorHandler.createCalculationError(
+        'statistics',
+        error instanceof Error ? error.message : 'Unknown error',
+        tagName,
+        { dataPoints: data.length }
+      );
+      analyticsErrorHandler.handleError(analyticsError);
+      
+      // Return default values
+      return {
+        min: 0,
+        max: 0,
+        average: 0,
+        standardDeviation: 0,
+        count: 0,
+        dataQuality: 0
+      };
+    }
   }
 }
 

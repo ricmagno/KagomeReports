@@ -208,6 +208,11 @@ export class ReportManagementService {
         filters: request.config.filters,
         branding: request.config.branding,
         metadata: request.config.metadata,
+        // Advanced Chart Analytics fields
+        specificationLimits: request.config.specificationLimits,
+        includeSPCCharts: request.config.includeSPCCharts,
+        includeTrendLines: request.config.includeTrendLines,
+        includeStatsSummary: request.config.includeStatsSummary,
         createdBy: userId,
         createdAt: new Date(),
         updatedAt: new Date(),

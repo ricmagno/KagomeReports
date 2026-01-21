@@ -20,6 +20,8 @@ import { Card, CardContent, CardHeader } from '../ui/Card';
 import { TimeRangePicker } from '../forms/TimeRangePicker';
 import { ReportPreview } from '../reports/ReportPreview';
 import { VersionHistory } from '../reports/VersionHistory';
+import { SpecificationLimitsConfig } from '../reports/SpecificationLimitsConfig';
+import { AnalyticsOptions } from '../reports/AnalyticsOptions';
 import { StatusDashboard } from '../status/StatusDashboard';
 import { SchedulesList, SchedulesErrorBoundary } from '../schedules';
 import { apiService, getAuthToken, setAuthToken } from '../../services/api';
@@ -48,6 +50,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     chartTypes: ['line'],
     template: 'default',
     version: undefined, // Track version number
+    // Advanced analytics options (default to true)
+    includeTrendLines: true,
+    includeSPCCharts: true,
+    includeStatsSummary: true,
+    specificationLimits: {},
   });
 
   // Health check with polling for reconnection countdown
@@ -234,6 +241,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     setReportConfig(prev => ({ ...prev, tags }));
   };
 
+  // Validate specification limits
+  const hasSpecificationLimitErrors = (): boolean => {
+    if (!reportConfig.specificationLimits || !reportConfig.includeSPCCharts) {
+      return false;
+    }
+
+    for (const [tagName, limits] of Object.entries(reportConfig.specificationLimits)) {
+      if (limits.lsl !== undefined && limits.usl !== undefined) {
+        if (limits.usl <= limits.lsl) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  };
+
   const handleGenerateReport = async () => {
     if (!reportConfig.name || !reportConfig.tags?.length) {
       alert('Please provide a report name and select at least one tag');
@@ -258,7 +282,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         format: 'pdf' as const,
         includeStatistics: true,
         includeTrends: true,
-        includeAnomalies: false
+        includeAnomalies: false,
+        // Advanced analytics options
+        includeTrendLines: reportConfig.includeTrendLines ?? true,
+        includeSPCCharts: reportConfig.includeSPCCharts ?? true,
+        includeStatsSummary: reportConfig.includeStatsSummary ?? true,
+        specificationLimits: reportConfig.specificationLimits || {}
       };
 
       console.log('Generating report with config:', generateRequest);
@@ -319,7 +348,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           tags: reportConfig.tags,
           timeRange: reportConfig.timeRange!,
           chartTypes: reportConfig.chartTypes || ['line'],
-          template: reportConfig.template || 'default'
+          template: reportConfig.template || 'default',
+          // Advanced analytics options
+          includeTrendLines: reportConfig.includeTrendLines ?? true,
+          includeSPCCharts: reportConfig.includeSPCCharts ?? true,
+          includeStatsSummary: reportConfig.includeStatsSummary ?? true,
+          specificationLimits: reportConfig.specificationLimits || {}
         }
       };
 
@@ -379,7 +413,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           },
           chartTypes: loadedReport.config.chartTypes,
           template: loadedReport.config.template,
-          version: loadedReport.version // Set the version number
+          version: loadedReport.version, // Set the version number
+          // Advanced analytics options
+          includeTrendLines: loadedReport.config.includeTrendLines ?? true,
+          includeSPCCharts: loadedReport.config.includeSPCCharts ?? true,
+          includeStatsSummary: loadedReport.config.includeStatsSummary ?? true,
+          specificationLimits: loadedReport.config.specificationLimits || {}
         });
         setActiveTab('create');
         alert(`Report "${loadedReport.name}" loaded successfully`);
@@ -408,7 +447,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       },
       chartTypes: versionInfo.config.chartTypes,
       template: versionInfo.config.template,
-      version: versionInfo.version // Set the version number
+      version: versionInfo.version, // Set the version number
+      // Advanced analytics options
+      includeTrendLines: versionInfo.config.includeTrendLines ?? true,
+      includeSPCCharts: versionInfo.config.includeSPCCharts ?? true,
+      includeStatsSummary: versionInfo.config.includeStatsSummary ?? true,
+      specificationLimits: versionInfo.config.specificationLimits || {}
     });
     setSelectedReportForHistory(null);
     setActiveTab('create');
@@ -735,6 +779,51 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                         </div>
                       </CardContent>
                     </Card>
+
+                    {/* Advanced Analytics Options */}
+                    <Card>
+                      <CardHeader>
+                        <h3 className="text-lg font-medium">Advanced Analytics</h3>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <AnalyticsOptions
+                          includeTrendLines={reportConfig.includeTrendLines}
+                          includeSPCCharts={reportConfig.includeSPCCharts}
+                          includeStatsSummary={reportConfig.includeStatsSummary}
+                          onIncludeTrendLinesChange={(value) => 
+                            setReportConfig(prev => ({ ...prev, includeTrendLines: value }))
+                          }
+                          onIncludeSPCChartsChange={(value) => 
+                            setReportConfig(prev => ({ ...prev, includeSPCCharts: value }))
+                          }
+                          onIncludeStatsSummaryChange={(value) => 
+                            setReportConfig(prev => ({ ...prev, includeStatsSummary: value }))
+                          }
+                          disabled={!reportConfig.tags?.length}
+                        />
+                      </CardContent>
+                    </Card>
+
+                    {/* Specification Limits Configuration */}
+                    {reportConfig.tags && reportConfig.tags.length > 0 && reportConfig.includeSPCCharts && (
+                      <Card>
+                        <CardHeader>
+                          <h3 className="text-lg font-medium">Specification Limits</h3>
+                          <p className="text-sm text-gray-600 mt-1">
+                            Configure specification limits for SPC analysis
+                          </p>
+                        </CardHeader>
+                        <CardContent>
+                          <SpecificationLimitsConfig
+                            tags={reportConfig.tags}
+                            specificationLimits={reportConfig.specificationLimits}
+                            onChange={(limits) => 
+                              setReportConfig(prev => ({ ...prev, specificationLimits: limits }))
+                            }
+                          />
+                        </CardContent>
+                      </Card>
+                    )}
                   </>
                 ) : (
                   <div className="text-center py-8 text-gray-500">
@@ -754,6 +843,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                       !reportConfig.name ||
                       !reportConfig.tags?.length ||
                       isLoading ||
+                      hasSpecificationLimitErrors() ||
                       (reportConfig.timeRange?.startTime &&
                         reportConfig.timeRange?.endTime &&
                         reportConfig.timeRange.startTime > reportConfig.timeRange.endTime)
@@ -769,6 +859,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                       !reportConfig.name ||
                       !reportConfig.tags?.length ||
                       isLoading ||
+                      hasSpecificationLimitErrors() ||
                       (reportConfig.timeRange?.startTime &&
                         reportConfig.timeRange?.endTime &&
                         reportConfig.timeRange.startTime > reportConfig.timeRange.endTime)

@@ -6,13 +6,14 @@
 
 import { createCanvas } from 'canvas';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
-import { TimeSeriesData, StatisticsResult, TrendResult } from '@/types/historian';
+import annotationPlugin from 'chartjs-plugin-annotation';
+import { TimeSeriesData, StatisticsResult, TrendResult, SPCMetrics, SpecificationLimits } from '@/types/historian';
 import { reportLogger } from '@/utils/logger';
 import { env } from '@/config/environment';
 import { chartBufferValidator } from '@/utils/chartBufferValidator';
 
 // Register Chart.js components
-Chart.register(...registerables);
+Chart.register(...registerables, annotationPlugin);
 
 // Load date adapter using require (works better in CommonJS context)
 try {
@@ -38,6 +39,18 @@ export interface LineChartData {
   tagName: string;
   data: TimeSeriesData[];
   color?: string;
+  trendLine?: {
+    slope: number;
+    intercept: number;
+    rSquared: number;
+    equation: string;
+  };
+  statistics?: {
+    min: number;
+    max: number;
+    mean: number;
+    stdDev: number;
+  };
 }
 
 export interface BarChartData {
@@ -75,7 +88,7 @@ export class ChartGenerationService {
   }
 
   /**
-   * Generate a line chart for time-series data
+   * Generate a line chart for time-series data with optional trend lines and statistics
    */
   async generateLineChart(
     datasets: LineChartData[],
@@ -84,14 +97,17 @@ export class ChartGenerationService {
     const width = options.width || this.defaultWidth;
     const height = options.height || this.defaultHeight;
     const totalDataPoints = datasets.reduce((sum, d) => sum + d.data.length, 0);
+    const grayscale = false; // PRESERVE COLORS for time series trends - only SPC charts use grayscale
     
     try {
-      reportLogger.info('Generating line chart', { 
+      reportLogger.info('Generating line chart with trend lines', { 
         datasets: datasets.length,
         width,
         height,
         totalDataPoints,
-        title: options.title || 'untitled'
+        title: options.title || 'untitled',
+        hasTrendLines: datasets.some(d => d.trendLine),
+        hasStatistics: datasets.some(d => d.statistics)
       });
 
       // Validate input data
@@ -118,23 +134,97 @@ export class ChartGenerationService {
         datasetNames: datasets.map(d => d.tagName)
       });
       
-      const chartDatasets = datasets.map((dataset, index) => ({
-        label: dataset.tagName,
-        data: dataset.data.map(point => ({
-          x: point.timestamp.getTime(),
-          y: point.value
-        })),
-        borderColor: dataset.color || this.defaultColors[index % this.defaultColors.length],
-        backgroundColor: this.addAlpha(dataset.color || this.defaultColors[index % this.defaultColors.length], 0.1),
-        borderWidth: 2,
-        fill: false,
-        tension: 0.1
-      }));
+      const chartDatasets: any[] = [];
+      
+      // Add main data series
+      datasets.forEach((dataset, index) => {
+        const baseColor = grayscale ? '#000000' : (dataset.color || this.defaultColors[index % this.defaultColors.length]);
+        
+        chartDatasets.push({
+          label: dataset.tagName,
+          data: dataset.data.map(point => ({
+            x: point.timestamp.getTime(),
+            y: point.value
+          })),
+          borderColor: baseColor,
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          fill: false,
+          tension: 0.1,
+          pointRadius: 2,
+          pointHoverRadius: 4
+        });
+
+        // Add trend line if available
+        if (dataset.trendLine && dataset.data.length >= 3) {
+          const startTime = dataset.data[0]!.timestamp.getTime();
+          const endTime = dataset.data[dataset.data.length - 1]!.timestamp.getTime();
+          const timeSpanSeconds = (endTime - startTime) / 1000;
+          
+          // Calculate y values at start and end
+          const yStart = dataset.trendLine.intercept;
+          const yEnd = dataset.trendLine.slope * timeSpanSeconds + dataset.trendLine.intercept;
+          
+          // Determine if trend fit is weak (R² < 0.3)
+          const weakFit = dataset.trendLine.rSquared < 0.3;
+          const trendColor = grayscale ? (weakFit ? '#999999' : '#666666') : '#ef4444';
+          
+          chartDatasets.push({
+            label: `Trend: ${dataset.trendLine.equation} (R² = ${dataset.trendLine.rSquared})${weakFit ? ' ⚠' : ''}`,
+            data: [
+              { x: startTime, y: yStart },
+              { x: endTime, y: yEnd }
+            ],
+            borderColor: trendColor,
+            borderDash: [5, 5],
+            borderWidth: 2,
+            pointRadius: 0,
+            fill: false,
+            tension: 0
+          });
+        }
+      });
 
       reportLogger.debug('Chart datasets prepared', {
         datasetCount: chartDatasets.length,
-        totalPoints: chartDatasets.reduce((sum, d) => sum + d.data.length, 0)
+        totalPoints: chartDatasets.reduce((sum, d) => sum + (d.data?.length || 0), 0)
       });
+
+      // Prepare annotations for statistics
+      const annotations: any = {};
+      
+      // Add statistics box if available (only for single dataset)
+      if (datasets.length === 1 && datasets[0]!.statistics) {
+        const stats = datasets[0]!.statistics;
+        annotations.statsBox = {
+          type: 'label',
+          xValue: (ctx: any) => {
+            const xScale = ctx.chart.scales.x;
+            return xScale.max;
+          },
+          yValue: (ctx: any) => {
+            const yScale = ctx.chart.scales.y;
+            return yScale.max;
+          },
+          xAdjust: -10,
+          yAdjust: 10,
+          content: [
+            `Min: ${stats.min.toFixed(2)}`,
+            `Max: ${stats.max.toFixed(2)}`,
+            `Avg: ${stats.mean.toFixed(2)}`,
+            `StdDev: ${stats.stdDev.toFixed(2)}`
+          ],
+          font: {
+            size: 9
+          },
+          color: '#000000',
+          backgroundColor: 'rgba(255, 255, 255, 0.9)',
+          borderColor: '#000000',
+          borderWidth: 1,
+          padding: 6,
+          position: 'end'
+        };
+      }
 
       const config: ChartConfiguration = {
         type: 'line',
@@ -151,11 +241,24 @@ export class ChartGenerationService {
               font: {
                 size: 16,
                 weight: 'bold'
-              }
+              },
+              color: '#000000'
             },
             legend: {
-              display: datasets.length > 1,
-              position: 'top'
+              display: true,
+              position: 'top',
+              labels: {
+                color: '#000000',
+                font: {
+                  size: 10
+                },
+                usePointStyle: false,
+                boxWidth: 20,
+                padding: 10
+              }
+            },
+            annotation: {
+              annotations: annotations
             }
           },
           scales: {
@@ -163,9 +266,11 @@ export class ChartGenerationService {
               type: 'linear',
               title: {
                 display: true,
-                text: 'Time'
+                text: 'Time',
+                color: '#000000'
               },
               ticks: {
+                color: '#000000',
                 callback: function(value) {
                   const date = new Date(value);
                   return date.toLocaleTimeString('en-US', { 
@@ -174,12 +279,22 @@ export class ChartGenerationService {
                     hour12: false 
                   });
                 }
+              },
+              grid: {
+                color: '#e5e7eb'
               }
             },
             y: {
               title: {
                 display: true,
-                text: 'Value'
+                text: 'Value',
+                color: '#000000'
+              },
+              ticks: {
+                color: '#000000'
+              },
+              grid: {
+                color: '#e5e7eb'
               },
               beginAtZero: false
             }
@@ -234,7 +349,9 @@ export class ChartGenerationService {
         bufferSize: buffer.length,
         format: validation.bufferInfo.format,
         dimensions: validation.bufferInfo.dimensions || { width, height },
-        dataPoints: datasets.reduce((sum, d) => sum + d.data.length, 0)
+        dataPoints: datasets.reduce((sum, d) => sum + d.data.length, 0),
+        trendLinesAdded: datasets.filter(d => d.trendLine).length,
+        statisticsAdded: datasets.filter(d => d.statistics).length
       });
 
       return buffer;
@@ -574,7 +691,357 @@ export class ChartGenerationService {
   }
 
   /**
-   * Generate multiple charts for a report
+   * Generate an SPC (Statistical Process Control) chart
+   */
+  async generateSPCChart(
+    tagName: string,
+    data: TimeSeriesData[],
+    spcMetrics: {
+      mean: number;
+      stdDev: number;
+      ucl: number;
+      lcl: number;
+      cp: number | null;
+      cpk: number | null;
+      outOfControlPoints: number[];
+    },
+    specLimits?: {
+      lsl?: number;
+      usl?: number;
+    },
+    options: ChartOptions = {}
+  ): Promise<Buffer> {
+    const width = options.width || this.defaultWidth;
+    const height = options.height || this.defaultHeight;
+    const grayscale = true; // Always use grayscale for printing
+    
+    try {
+      reportLogger.info('Generating SPC chart', { 
+        tagName,
+        dataPoints: data.length,
+        width,
+        height,
+        hasSpecLimits: !!(specLimits?.lsl || specLimits?.usl),
+        outOfControlCount: spcMetrics.outOfControlPoints.length
+      });
+
+      // Validate input data
+      if (data.length === 0) {
+        throw new Error('No data points provided for SPC chart generation');
+      }
+
+      const canvas = createCanvas(width, height);
+      const ctx = canvas.getContext('2d');
+
+      // Prepare data points with color coding for out-of-control points
+      const chartData = data.map((point, index) => ({
+        x: point.timestamp.getTime(),
+        y: point.value
+      }));
+
+      // Determine point colors based on control status
+      const pointColors = data.map((_, index) => {
+        const isOutOfControl = spcMetrics.outOfControlPoints.includes(index);
+        if (grayscale) {
+          return isOutOfControl ? '#000000' : '#666666';
+        }
+        return isOutOfControl ? '#ef4444' : '#3b82f6';
+      });
+
+      // Prepare annotations for control limits and center line
+      const annotations: any = {
+        centerLine: {
+          type: 'line',
+          yMin: spcMetrics.mean,
+          yMax: spcMetrics.mean,
+          borderColor: grayscale ? '#000000' : '#10b981',
+          borderWidth: 2,
+          label: {
+            display: true,
+            content: `X̄ = ${spcMetrics.mean.toFixed(2)}`,
+            position: 'end',
+            backgroundColor: 'rgba(255, 255, 255, 0.8)',
+            color: '#000000',
+            font: {
+              size: 9
+            }
+          }
+        },
+        ucl: {
+          type: 'line',
+          yMin: spcMetrics.ucl,
+          yMax: spcMetrics.ucl,
+          borderColor: grayscale ? '#666666' : '#ef4444',
+          borderDash: [5, 5],
+          borderWidth: 2,
+          label: {
+            display: true,
+            content: `UCL = ${spcMetrics.ucl.toFixed(2)}`,
+            position: 'end',
+            backgroundColor: 'rgba(255, 255, 255, 0.8)',
+            color: '#000000',
+            font: {
+              size: 9
+            }
+          }
+        },
+        lcl: {
+          type: 'line',
+          yMin: spcMetrics.lcl,
+          yMax: spcMetrics.lcl,
+          borderColor: grayscale ? '#666666' : '#ef4444',
+          borderDash: [5, 5],
+          borderWidth: 2,
+          label: {
+            display: true,
+            content: `LCL = ${spcMetrics.lcl.toFixed(2)}`,
+            position: 'end',
+            backgroundColor: 'rgba(255, 255, 255, 0.8)',
+            color: '#000000',
+            font: {
+              size: 9
+            }
+          }
+        }
+      };
+
+      // Add specification limits if provided
+      if (specLimits?.usl !== undefined) {
+        annotations.usl = {
+          type: 'line',
+          yMin: specLimits.usl,
+          yMax: specLimits.usl,
+          borderColor: grayscale ? '#333333' : '#f59e0b',
+          borderDash: [10, 5],
+          borderWidth: 1,
+          label: {
+            display: true,
+            content: `USL = ${specLimits.usl.toFixed(2)}`,
+            position: 'start',
+            backgroundColor: 'rgba(255, 255, 255, 0.8)',
+            color: '#000000',
+            font: {
+              size: 9
+            }
+          }
+        };
+      }
+
+      if (specLimits?.lsl !== undefined) {
+        annotations.lsl = {
+          type: 'line',
+          yMin: specLimits.lsl,
+          yMax: specLimits.lsl,
+          borderColor: grayscale ? '#333333' : '#f59e0b',
+          borderDash: [10, 5],
+          borderWidth: 1,
+          label: {
+            display: true,
+            content: `LSL = ${specLimits.lsl.toFixed(2)}`,
+            position: 'start',
+            backgroundColor: 'rgba(255, 255, 255, 0.8)',
+            color: '#000000',
+            font: {
+              size: 9
+            }
+          }
+        };
+      }
+
+      // Build capability info for subtitle
+      let capabilityInfo = '';
+      if (spcMetrics.cp !== null && spcMetrics.cpk !== null) {
+        capabilityInfo = ` | Cp = ${spcMetrics.cp.toFixed(2)}, Cpk = ${spcMetrics.cpk.toFixed(2)}`;
+      }
+
+      const config: ChartConfiguration = {
+        type: 'line',
+        data: {
+          datasets: [{
+            label: 'Process Data',
+            data: chartData,
+            borderColor: grayscale ? '#000000' : '#3b82f6',
+            backgroundColor: 'transparent',
+            pointRadius: 4,
+            pointBackgroundColor: pointColors,
+            pointBorderColor: pointColors,
+            pointBorderWidth: 2,
+            borderWidth: 1,
+            fill: false,
+            tension: 0
+          }]
+        },
+        options: {
+          responsive: false,
+          animation: false,
+          plugins: {
+            title: {
+              display: true,
+              text: [
+                `${tagName} - Statistical Process Control Chart`,
+                `σ = ${spcMetrics.stdDev.toFixed(2)}${capabilityInfo}`
+              ],
+              font: {
+                size: 14,
+                weight: 'bold'
+              },
+              color: '#000000',
+              padding: {
+                top: 10,
+                bottom: 10
+              }
+            },
+            legend: {
+              display: true,
+              position: 'top',
+              labels: {
+                color: '#000000',
+                font: {
+                  size: 10
+                },
+                generateLabels: (chart) => {
+                  const outOfControlCount = spcMetrics.outOfControlPoints.length;
+                  const labels = [
+                    {
+                      text: `Process Data (${data.length} points)`,
+                      fillStyle: grayscale ? '#666666' : '#3b82f6',
+                      strokeStyle: grayscale ? '#666666' : '#3b82f6',
+                      lineWidth: 2
+                    }
+                  ];
+                  
+                  if (outOfControlCount > 0) {
+                    labels.push({
+                      text: `Out of Control (${outOfControlCount} points)`,
+                      fillStyle: grayscale ? '#000000' : '#ef4444',
+                      strokeStyle: grayscale ? '#000000' : '#ef4444',
+                      lineWidth: 2
+                    });
+                  }
+                  
+                  return labels;
+                }
+              }
+            },
+            annotation: {
+              annotations: annotations
+            }
+          },
+          scales: {
+            x: {
+              type: 'linear',
+              title: {
+                display: true,
+                text: 'Time',
+                color: '#000000',
+                font: {
+                  size: 12
+                }
+              },
+              ticks: {
+                color: '#000000',
+                callback: function(value) {
+                  const date = new Date(value);
+                  return date.toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    hour12: false 
+                  });
+                }
+              },
+              grid: {
+                color: '#e5e7eb'
+              }
+            },
+            y: {
+              title: {
+                display: true,
+                text: 'Value',
+                color: '#000000',
+                font: {
+                  size: 12
+                }
+              },
+              ticks: {
+                color: '#000000'
+              },
+              grid: {
+                color: '#e5e7eb'
+              },
+              beginAtZero: false
+            }
+          },
+          elements: {
+            point: {
+              radius: 4,
+              hoverRadius: 6
+            }
+          }
+        }
+      };
+
+      // Create chart
+      reportLogger.debug('Creating SPC Chart.js instance');
+      const chart = new Chart(ctx, config);
+      reportLogger.debug('SPC Chart.js instance created successfully');
+
+      // Convert to buffer
+      reportLogger.debug('Converting SPC canvas to PNG buffer');
+      const buffer = canvas.toBuffer('image/png');
+      
+      reportLogger.info('SPC canvas converted to buffer successfully', {
+        bufferSize: buffer.length,
+        bufferType: typeof buffer,
+        isBuffer: Buffer.isBuffer(buffer)
+      });
+      
+      // Validate buffer
+      const validation = chartBufferValidator.validateBuffer(buffer, 'spc_chart');
+      
+      if (!validation.valid) {
+        const errorMsg = `Generated SPC chart buffer is invalid: ${validation.errors.join(', ')}`;
+        reportLogger.error(errorMsg, {
+          errors: validation.errors,
+          bufferInfo: validation.bufferInfo
+        });
+        throw new Error(errorMsg);
+      }
+
+      if (validation.warnings.length > 0) {
+        reportLogger.warn('SPC chart buffer validation warnings', {
+          warnings: validation.warnings,
+          bufferInfo: validation.bufferInfo
+        });
+      }
+      
+      // Clean up
+      chart.destroy();
+
+      reportLogger.info('SPC chart generated and validated successfully', {
+        tagName,
+        bufferSize: buffer.length,
+        format: validation.bufferInfo.format,
+        dimensions: validation.bufferInfo.dimensions || { width, height },
+        dataPoints: data.length,
+        outOfControlPoints: spcMetrics.outOfControlPoints.length,
+        hasSpecLimits: !!(specLimits?.lsl || specLimits?.usl)
+      });
+
+      return buffer;
+    } catch (error) {
+      reportLogger.error('Failed to generate SPC chart', { 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        tagName,
+        dataPoints: data.length,
+        dimensions: { width, height }
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Generate multiple charts for a report with trend lines and statistics
    */
   async generateReportCharts(
     data: Record<string, TimeSeriesData[]>,
@@ -585,17 +1052,73 @@ export class ChartGenerationService {
     const charts: Record<string, Buffer> = {};
 
     try {
-      reportLogger.info('Generating report charts', {
+      reportLogger.info('Generating report charts with trend lines', {
         tags: Object.keys(data).length,
-        chartTypes
+        chartTypes,
+        hasStatistics: !!statistics,
+        hasTrends: !!trends
       });
 
-      // Generate line charts for each tag
+      // Import statistical analysis service for trend line calculation
+      const { statisticalAnalysisService } = await import('./statisticalAnalysis');
+      const { classifyTag } = await import('./tagClassificationService');
+
+      // Generate line charts for each tag with trend lines and statistics
       if (chartTypes.includes('line')) {
         for (const [tagName, tagData] of Object.entries(data)) {
           if (tagData.length > 0) {
+            // Classify tag to determine if it's analog or digital
+            const classification = classifyTag(tagData);
+            
+            // Prepare chart data
+            const chartData: LineChartData = {
+              tagName,
+              data: tagData
+            };
+
+            // Add trend line for analog tags with sufficient data
+            if (classification.type === 'analog' && tagData.length >= 3) {
+              try {
+                const trendLine = statisticalAnalysisService.calculateAdvancedTrendLine(tagData);
+                chartData.trendLine = trendLine;
+                reportLogger.debug(`Trend line calculated for ${tagName}`, {
+                  equation: trendLine.equation,
+                  rSquared: trendLine.rSquared
+                });
+              } catch (error) {
+                reportLogger.warn(`Failed to calculate trend line for ${tagName}`, {
+                  error: error instanceof Error ? error.message : 'Unknown error'
+                });
+              }
+            }
+
+            // Add statistics if available
+            if (statistics && statistics[tagName]) {
+              chartData.statistics = {
+                min: statistics[tagName]!.min,
+                max: statistics[tagName]!.max,
+                mean: statistics[tagName]!.average,
+                stdDev: statistics[tagName]!.standardDeviation
+              };
+            } else {
+              // Calculate statistics if not provided
+              try {
+                const stats = statisticalAnalysisService.calculateStatisticsSync(tagData);
+                chartData.statistics = {
+                  min: stats.min,
+                  max: stats.max,
+                  mean: stats.average,
+                  stdDev: stats.standardDeviation
+                };
+              } catch (error) {
+                reportLogger.warn(`Failed to calculate statistics for ${tagName}`, {
+                  error: error instanceof Error ? error.message : 'Unknown error'
+                });
+              }
+            }
+
             const chartBuffer = await this.generateLineChart(
-              [{ tagName, data: tagData }],
+              [chartData],
               { title: `${tagName} - Time Series` }
             );
             charts[`${tagName}_line`] = chartBuffer;
@@ -626,8 +1149,9 @@ export class ChartGenerationService {
         charts['statistics_summary'] = chartBuffer;
       }
 
-      reportLogger.info('Report charts generated successfully', {
-        chartCount: Object.keys(charts).length
+      reportLogger.info('Report charts generated successfully with enhancements', {
+        chartCount: Object.keys(charts).length,
+        chartsWithTrendLines: Object.keys(charts).filter(k => k.includes('line')).length
       });
 
       return charts;

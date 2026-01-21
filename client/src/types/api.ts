@@ -14,6 +14,11 @@ export interface TagInfo {
   lastUpdate: Date;
 }
 
+export interface SpecificationLimits {
+  lsl?: number;  // Lower Specification Limit
+  usl?: number;  // Upper Specification Limit
+}
+
 export interface ReportConfig {
   id?: string;
   name: string;
@@ -30,6 +35,12 @@ export interface ReportConfig {
   updatedAt?: Date;
   version?: number;
   parentId?: string; // For version tracking
+  
+  // Advanced Chart Analytics options
+  specificationLimits?: Record<string, SpecificationLimits>;
+  includeTrendLines?: boolean;
+  includeSPCCharts?: boolean;
+  includeStatsSummary?: boolean;
 }
 
 export interface ReportVersion {

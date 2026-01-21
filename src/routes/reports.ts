@@ -11,9 +11,11 @@ import { asyncHandler, createError } from '@/middleware/errorHandler';
 import { authenticateToken, requirePermission } from '@/middleware/auth';
 import { dataFlowService } from '@/services/dataFlowService';
 import { ReportConfig } from '@/types/reports';
+import { SpecificationLimits } from '@/types/historian';
 import { ReportManagementService } from '@/services/reportManagementService';
 import { ReportVersionService } from '@/services/reportVersionService';
 import { SaveReportRequest } from '@/types/reports';
+import { validateSpecificationLimitsMap } from '@/utils/specificationLimitsValidator';
 import { Database } from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
@@ -35,7 +37,7 @@ const initializeServices = () => {
 };
 
 // Validation schemas
-const reportConfigSchema = z.object({
+const reportConfigBaseSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
   tags: z.array(z.string()).min(1),
@@ -69,13 +71,45 @@ const reportConfigSchema = z.object({
   }).optional(),
   includeStatistics: z.boolean().default(true),
   includeTrends: z.boolean().default(true),
-  includeAnomalies: z.boolean().default(false)
+  includeAnomalies: z.boolean().default(false),
+  // Advanced Chart Analytics fields
+  specificationLimits: z.record(z.string(), z.object({
+    lsl: z.number().finite().optional(),
+    usl: z.number().finite().optional()
+  })).optional().transform(val => val as Record<string, SpecificationLimits> | undefined),
+  includeSPCCharts: z.boolean().default(false),
+  includeTrendLines: z.boolean().default(true),
+  includeStatsSummary: z.boolean().default(true)
 });
+
+const reportConfigSchema = reportConfigBaseSchema.refine(
+  (data) => {
+    // Validate specification limits if provided
+    if (data.specificationLimits) {
+      const validation = validateSpecificationLimitsMap(data.specificationLimits);
+      return validation.isValid;
+    }
+    return true;
+  },
+  (data) => {
+    // Generate error message with details
+    if (data.specificationLimits) {
+      const validation = validateSpecificationLimitsMap(data.specificationLimits);
+      if (!validation.isValid) {
+        return {
+          message: validation.errors.join('; '),
+          path: ['specificationLimits']
+        };
+      }
+    }
+    return { message: 'Invalid specification limits' };
+  }
+);
 
 const saveReportSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
-  config: reportConfigSchema.omit({ name: true, description: true }),
+  config: reportConfigBaseSchema.omit({ name: true, description: true }),
   changeDescription: z.string().max(200).optional()
 }).transform(data => ({
   ...data,
@@ -482,7 +516,7 @@ router.put('/:id', authenticateToken, requirePermission('reports', 'write'), asy
     throw createError('Report ID is required', 400);
   }
 
-  const configResult = reportConfigSchema.partial().safeParse(req.body);
+  const configResult = reportConfigBaseSchema.partial().safeParse(req.body);
   
   if (!configResult.success) {
     throw createError('Invalid report configuration', 400);

@@ -36,6 +36,7 @@
     "canvas": "^3.2.0",
     "chart.js": "^4.5.1",
     "chartjs-adapter-date-fns": "^3.0.0",
+    "chartjs-plugin-annotation": "^3.1.0",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
     "date-fns": "^4.1.0",
