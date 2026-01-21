@@ -11,6 +11,8 @@ import { asyncHandler, createError } from '@/middleware/errorHandler';
 import { authenticateToken, requirePermission } from '@/middleware/auth';
 import { schedulerService, ScheduleConfig } from '@/services/schedulerService';
 import { ReportConfig } from '@/services/reportGeneration';
+import fs from 'fs';
+import path from 'path';
 
 const router = Router();
 
@@ -22,7 +24,8 @@ const reportConfigSchema = z.object({
   tags: z.array(z.string()).min(1),
   timeRange: z.object({
     startTime: z.string().datetime().transform(str => new Date(str)),
-    endTime: z.string().datetime().transform(str => new Date(str))
+    endTime: z.string().datetime().transform(str => new Date(str)),
+    relativeRange: z.enum(['last1h', 'last2h', 'last6h', 'last12h', 'last24h', 'last7d', 'last30d']).optional()
   }),
   chartTypes: z.array(z.enum(['line', 'bar', 'trend', 'scatter'])).default(['line']),
   template: z.string().default('default'),
@@ -107,12 +110,12 @@ const scheduleUpdateSchema = z.object({
  */
 router.get('/', authenticateToken, requirePermission('schedules', 'read'), asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 10, enabled } = req.query;
-  
+
   apiLogger.info('Retrieving scheduled reports', { page, limit, enabled });
 
   try {
     const schedules = await schedulerService.getSchedules();
-    
+
     // Apply filters
     let filteredSchedules = schedules;
     if (enabled !== undefined) {
@@ -155,7 +158,7 @@ router.post('/', authenticateToken, requirePermission('schedules', 'write'), asy
   }
 
   const config = configResult.data;
-  
+
   apiLogger.info('Creating new schedule', { name: config.name });
 
   try {
@@ -182,12 +185,12 @@ router.post('/', authenticateToken, requirePermission('schedules', 'write'), asy
  */
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
-  
+
   apiLogger.info('Retrieving schedule', { id });
 
   try {
     const schedule = await schedulerService.getSchedule(id);
-    
+
     if (!schedule) {
       throw createError('Schedule not found', 404);
     }
@@ -211,7 +214,7 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
  */
 router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
-  
+
   const configResult = scheduleUpdateSchema.safeParse(req.body);
   if (!configResult.success) {
     apiLogger.error('Invalid schedule update configuration', { errors: configResult.error.errors });
@@ -219,7 +222,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
   }
 
   const updates = configResult.data;
-  
+
   apiLogger.info('Updating schedule', { id, updates: Object.keys(updates) });
 
   try {
@@ -248,7 +251,7 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
  */
 router.delete('/:id', authenticateToken, requirePermission('schedules', 'delete'), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
-  
+
   apiLogger.info('Deleting schedule', { id });
 
   try {
@@ -270,33 +273,25 @@ router.delete('/:id', authenticateToken, requirePermission('schedules', 'delete'
  */
 router.post('/:id/execute', asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
-  
+
   apiLogger.info('Manually executing schedule', { id });
 
   try {
-    const schedule = await schedulerService.getSchedule(id);
-    if (!schedule) {
-      throw createError('Schedule not found', 404);
-    }
+    // Trigger the execution through the scheduler service
+    const executionId = await schedulerService.executeScheduleManually(id);
 
-    // Queue the execution with high priority
-    // Note: This is a simplified implementation - in production you might want
-    // to return an execution ID and provide status endpoints
-    const executionId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    // For now, we'll trigger the execution by adding it to the queue
-    // The actual execution will be handled by the scheduler service
-    
     res.json({
       success: true,
-      executionId,
-      status: 'queued',
-      message: 'Schedule execution queued',
-      queuedAt: new Date().toISOString()
+      data: {
+        executionId,
+        status: 'queued',
+        message: 'Schedule execution queued successfully',
+        queuedAt: new Date().toISOString()
+      }
     });
   } catch (error) {
     if (error instanceof Error && error.message.includes('not found')) {
-      throw error;
+      throw createError('Schedule not found', 404);
     }
     apiLogger.error('Failed to execute schedule', { error, id });
     throw createError('Failed to execute schedule', 500);
@@ -309,7 +304,7 @@ router.post('/:id/execute', asyncHandler(async (req: Request, res: Response) => 
  */
 router.post('/:id/enable', asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
-  
+
   apiLogger.info('Enabling schedule', { id });
 
   try {
@@ -338,7 +333,7 @@ router.post('/:id/enable', asyncHandler(async (req: Request, res: Response) => {
  */
 router.post('/:id/disable', asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
-  
+
   apiLogger.info('Disabling schedule', { id });
 
   try {
@@ -368,12 +363,12 @@ router.post('/:id/disable', asyncHandler(async (req: Request, res: Response) => 
 router.get('/:id/executions', asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
   const { page = 1, limit = 10, status } = req.query;
-  
+
   apiLogger.info('Retrieving schedule execution history', { id, page, limit, status });
 
   try {
     const executions = await schedulerService.getExecutionHistory(id, Number(limit) * Number(page));
-    
+
     // Apply status filter if provided
     let filteredExecutions = executions;
     if (status) {
@@ -399,7 +394,54 @@ router.get('/:id/executions', asyncHandler(async (req: Request, res: Response) =
     });
   } catch (error) {
     apiLogger.error('Failed to retrieve execution history', { error, id });
-    throw createError('Failed to retrieve execution history', 500);
+  }
+}));
+
+/**
+ * GET /api/schedules/executions/:executionId/download
+ * Download a report from a specific execution
+ */
+router.get('/executions/:executionId/download', asyncHandler(async (req: Request, res: Response) => {
+  const { executionId } = req.params;
+
+  if (!executionId) {
+    throw createError('Execution ID is required', 400);
+  }
+
+  apiLogger.info('Request to download scheduled report execution', { executionId });
+
+  try {
+    const execution = await schedulerService.getExecution(executionId);
+
+    if (!execution) {
+      throw createError('Execution not found', 404);
+    }
+
+    if (execution.status !== 'success' || !execution.reportPath) {
+      throw createError('Report not available for this execution', 400);
+    }
+
+    const filePath = execution.reportPath;
+
+    if (!fs.existsSync(filePath)) {
+      apiLogger.warn('Report file missing from disk', { executionId, filePath });
+      throw createError('Report file missing from disk', 404);
+    }
+
+    const stats = fs.statSync(filePath);
+    const fileName = path.basename(filePath);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Length', stats.size);
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+    const fileStream = fs.createReadStream(filePath);
+    fileStream.pipe(res);
+
+  } catch (error) {
+    if (error instanceof Error && (error as any).status) throw error;
+    apiLogger.error('Failed to download execution report', { executionId, error });
+    throw createError('Failed to download report', 500);
   }
 }));
 

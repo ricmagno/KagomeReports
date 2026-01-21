@@ -602,6 +602,21 @@ export const apiService = {
     return new EventSource(url);
   },
 
+  async downloadExecutionReport(executionId: string): Promise<Blob> {
+    const token = getAuthToken();
+    const response = await fetch(`${API_BASE_URL}/schedules/executions/${encodeURIComponent(executionId)}/download`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to download execution report');
+    }
+
+    return response.blob();
+  },
+
   // System endpoints
   async getSystemInfo(): Promise<ApiResponse<any>> {
     return fetchWithRetry('/system/info');

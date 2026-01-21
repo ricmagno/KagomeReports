@@ -50,6 +50,7 @@ export interface ScheduleQueue {
   scheduledTime: Date;
   priority: number;
   retryCount: number;
+  manualExecutionId?: string;
 }
 
 export class SchedulerService {
@@ -178,6 +179,9 @@ export class SchedulerService {
       // Database is already initialized in constructor
       // This method is for startup validation
       reportLogger.info('Scheduler service initialization validated');
+
+      // Start all enabled schedules
+      await this.startAllSchedules();
     } catch (error) {
       reportLogger.error('Scheduler service initialization failed:', error);
       throw error;
@@ -230,7 +234,7 @@ export class SchedulerService {
             reject(err);
           } else {
             reportLogger.info('Schedule created', { scheduleId, name: config.name });
-            
+
             // Start the cron job if enabled
             if (config.enabled) {
               const fullConfig: ScheduleConfig = {
@@ -247,7 +251,7 @@ export class SchedulerService {
                 reportLogger.warn('Failed to start cron job during creation', { scheduleId, error });
               }
             }
-            
+
             resolve(scheduleId);
           }
         }
@@ -273,7 +277,7 @@ export class SchedulerService {
                 reportConfig.timeRange.startTime = new Date(reportConfig.timeRange.startTime);
                 reportConfig.timeRange.endTime = new Date(reportConfig.timeRange.endTime);
               }
-              
+
               return {
                 id: row.id,
                 name: row.name,
@@ -319,8 +323,9 @@ export class SchedulerService {
             if (reportConfig.timeRange) {
               reportConfig.timeRange.startTime = new Date(reportConfig.timeRange.startTime);
               reportConfig.timeRange.endTime = new Date(reportConfig.timeRange.endTime);
+              // preserve relativeRange if it exists
             }
-            
+
             resolve({
               id: row.id,
               name: row.name,
@@ -408,31 +413,31 @@ export class SchedulerService {
       // Always update the updated_at timestamp
       fields.push('updated_at = ?');
       values.push(now.toISOString());
-      
+
       // Add scheduleId as the last parameter for the WHERE clause
       values.push(scheduleId);
 
       const sql = `UPDATE schedules SET ${fields.join(', ')} WHERE id = ?`;
-      
-      reportLogger.info('Updating schedule', { 
-        scheduleId, 
+
+      reportLogger.info('Updating schedule', {
+        scheduleId,
         fields: fields.map(f => f.split(' = ')[0]),
-        sql 
+        sql
       });
 
-      this.db.run(sql, values, function(err) {
+      this.db.run(sql, values, function (err) {
         if (err) {
-          reportLogger.error('Failed to update schedule in database', { 
-            scheduleId, 
+          reportLogger.error('Failed to update schedule in database', {
+            scheduleId,
             error: err,
             sql,
-            values 
+            values
           });
           reject(err);
         } else {
-          reportLogger.info('Schedule updated in database', { 
-            scheduleId, 
-            changes: this.changes 
+          reportLogger.info('Schedule updated in database', {
+            scheduleId,
+            changes: this.changes
           });
 
           // Restart cron job if necessary
@@ -500,6 +505,29 @@ export class SchedulerService {
   }
 
   /**
+   * Manually execute a schedule immediately
+   * @param scheduleId - The ID of the schedule to execute
+   * @returns Execution ID for tracking
+   */
+  async executeScheduleManually(scheduleId: string): Promise<string> {
+    // Verify schedule exists
+    const schedule = await this.getSchedule(scheduleId);
+    if (!schedule) {
+      throw new Error(`Schedule not found: ${scheduleId}`);
+    }
+
+    // Generate execution ID
+    const executionId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Queue with high priority (10) for manual executions
+    this.queueExecution(scheduleId, 10, executionId);
+
+    reportLogger.info('Manual execution queued', { scheduleId, executionId, priority: 10 });
+
+    return executionId;
+  }
+
+  /**
    * Start a cron job for a schedule
    */
   private startCronJob(schedule: ScheduleConfig): void {
@@ -539,12 +567,13 @@ export class SchedulerService {
   /**
    * Queue a schedule execution
    */
-  private queueExecution(scheduleId: string, priority: number = 0): void {
+  private queueExecution(scheduleId: string, priority: number = 0, manualExecutionId?: string): void {
     const queueItem: ScheduleQueue = {
       scheduleId,
       scheduledTime: new Date(),
       priority,
-      retryCount: 0
+      retryCount: 0,
+      ...(manualExecutionId ? { manualExecutionId } : {})
     };
 
     this.executionQueue.push(queueItem);
@@ -591,8 +620,8 @@ export class SchedulerService {
    * Execute a scheduled report
    */
   private async executeSchedule(queueItem: ScheduleQueue): Promise<void> {
-    const { scheduleId } = queueItem;
-    const executionId = `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const { scheduleId, manualExecutionId } = queueItem;
+    const executionId = manualExecutionId || `exec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const startTime = new Date();
 
     try {
@@ -603,6 +632,21 @@ export class SchedulerService {
       if (!schedule || !schedule.enabled) {
         reportLogger.warn('Schedule not found or disabled', { scheduleId });
         return;
+      }
+
+      // Recalculate time range if relativeRange is specified
+      if (schedule.reportConfig.timeRange.relativeRange) {
+        const { startTime: newStart, endTime: newEnd } = this.calculateRelativeTimeRange(schedule.reportConfig.timeRange.relativeRange);
+        schedule.reportConfig.timeRange.startTime = newStart;
+        schedule.reportConfig.timeRange.endTime = newEnd;
+
+        reportLogger.info('Recalculated relative time range for scheduled execution', {
+          scheduleId,
+          executionId,
+          relativeRange: schedule.reportConfig.timeRange.relativeRange,
+          startTime: newStart,
+          endTime: newEnd
+        });
       }
 
       // Record execution start
@@ -641,7 +685,7 @@ export class SchedulerService {
       // Determine delivery methods (with defaults)
       const saveToFile = schedule.saveToFile !== undefined ? schedule.saveToFile : true;
       const sendEmail = schedule.sendEmail !== undefined ? schedule.sendEmail : (schedule.recipients && schedule.recipients.length > 0);
-      
+
       let reportPath = reportResult.filePath;
       let fileSaveError: string | undefined;
       let emailSendError: string | undefined;
@@ -653,21 +697,21 @@ export class SchedulerService {
           if (schedule.destinationPath && reportResult.filePath) {
             const fs = await import('fs/promises');
             const path = await import('path');
-            
+
             // Sanitize and validate destination path
             const sanitizedPath = schedule.destinationPath.replace(/\.\./g, '');
-            const destDir = path.isAbsolute(sanitizedPath) 
-              ? sanitizedPath 
+            const destDir = path.isAbsolute(sanitizedPath)
+              ? sanitizedPath
               : path.join(env.REPORTS_DIR, sanitizedPath);
-            
+
             // Create directory if it doesn't exist
             await fs.mkdir(destDir, { recursive: true });
-            
+
             // Copy file to destination
             const fileName = path.basename(reportResult.filePath);
             const destPath = path.join(destDir, fileName);
             await fs.copyFile(reportResult.filePath, destPath);
-            
+
             reportPath = destPath;
             reportLogger.info('Report saved to custom destination', {
               scheduleId,
@@ -689,6 +733,8 @@ export class SchedulerService {
             error: fileSaveError,
             destinationPath: schedule.destinationPath
           });
+          // Rethrow if save to file is required but failed
+          throw new Error(`Failed to save report to destination: ${fileSaveError}`);
         }
       } else {
         reportLogger.info('File saving disabled for this schedule', { scheduleId, executionId });
@@ -879,6 +925,42 @@ export class SchedulerService {
   }
 
   /**
+   * Calculate absolute time range from a relative range string
+   */
+  private calculateRelativeTimeRange(relativeRange: string): { startTime: Date; endTime: Date } {
+    const now = new Date();
+    let startTime: Date;
+
+    switch (relativeRange) {
+      case 'last1h':
+        startTime = new Date(now.getTime() - 60 * 60 * 1000);
+        break;
+      case 'last2h':
+        startTime = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+        break;
+      case 'last6h':
+        startTime = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+        break;
+      case 'last12h':
+        startTime = new Date(now.getTime() - 12 * 60 * 60 * 1000);
+        break;
+      case 'last24h':
+        startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        break;
+      case 'last7d':
+        startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case 'last30d':
+        startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    }
+
+    return { startTime, endTime: now };
+  }
+
+  /**
    * Get next run time for cron expression
    */
   private getNextRunTime(cronExpression: string): Date {
@@ -918,6 +1000,36 @@ export class SchedulerService {
   }
 
   /**
+   * Get a single execution by ID
+   */
+  async getExecution(executionId: string): Promise<ScheduleExecution | null> {
+    return new Promise((resolve, reject) => {
+      this.db.get(
+        'SELECT * FROM schedule_executions WHERE id = ?',
+        [executionId],
+        (err, row: any) => {
+          if (err) {
+            reject(err);
+          } else if (!row) {
+            resolve(null);
+          } else {
+            resolve({
+              id: row.id,
+              scheduleId: row.schedule_id,
+              startTime: new Date(row.start_time),
+              endTime: row.end_time ? new Date(row.end_time) : undefined,
+              status: row.status,
+              reportPath: row.report_path || undefined,
+              error: row.error || undefined,
+              duration: row.duration || undefined
+            } as ScheduleExecution);
+          }
+        }
+      );
+    });
+  }
+
+  /**
    * Get execution statistics for monitoring
    */
   async getExecutionStatistics(timeRange?: { startTime: Date; endTime: Date }): Promise<{
@@ -944,10 +1056,10 @@ export class SchedulerService {
           const totalExecutions = rows.length;
           const successfulExecutions = rows.filter(r => r.status === 'success').length;
           const failedExecutions = rows.filter(r => r.status === 'failed').length;
-          
+
           const durationsWithValues = rows.filter(r => r.duration !== null).map(r => r.duration);
-          const averageDuration = durationsWithValues.length > 0 
-            ? durationsWithValues.reduce((sum, d) => sum + d, 0) / durationsWithValues.length 
+          const averageDuration = durationsWithValues.length > 0
+            ? durationsWithValues.reduce((sum, d) => sum + d, 0) / durationsWithValues.length
             : 0;
 
           const executionsByStatus: Record<string, number> = {};
@@ -1008,8 +1120,8 @@ export class SchedulerService {
         endTime: new Date()
       });
 
-      const failureRate = recentStats.totalExecutions > 0 
-        ? recentStats.failedExecutions / recentStats.totalExecutions 
+      const failureRate = recentStats.totalExecutions > 0
+        ? recentStats.failedExecutions / recentStats.totalExecutions
         : 0;
 
       if (failureRate > 0.5) {
@@ -1032,7 +1144,7 @@ export class SchedulerService {
             }
           );
         });
-        
+
         if (lastExecution) {
           lastExecutionTime = new Date(lastExecution.start_time);
         }
@@ -1100,8 +1212,8 @@ export class SchedulerService {
           const successRate = executionCount > 0 ? successfulExecutions / executionCount : 0;
 
           const durationsWithValues = rows.filter(r => r.duration !== null).map(r => r.duration);
-          const averageDuration = durationsWithValues.length > 0 
-            ? durationsWithValues.reduce((sum, d) => sum + d, 0) / durationsWithValues.length 
+          const averageDuration = durationsWithValues.length > 0
+            ? durationsWithValues.reduce((sum, d) => sum + d, 0) / durationsWithValues.length
             : 0;
 
           const lastExecution = rows.length > 0 ? new Date(rows[0].start_time) : undefined;
@@ -1172,12 +1284,12 @@ export class SchedulerService {
   }
   async cleanupExecutions(olderThanDays: number = 30): Promise<void> {
     const cutoffDate = new Date(Date.now() - (olderThanDays * 24 * 60 * 60 * 1000));
-    
+
     return new Promise((resolve, reject) => {
       this.db.run(
         'DELETE FROM schedule_executions WHERE start_time < ?',
         [cutoffDate.toISOString()],
-        function(err) {
+        function (err) {
           if (err) {
             reject(err);
           } else {

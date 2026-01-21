@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo, memo } from 'react';
+import { Download, AlertCircle, Clock, Calendar, ChevronLeft, ChevronRight, Filter, FileText } from 'lucide-react';
 import { ScheduleExecution, ExecutionHistoryParams } from '../../types/schedule';
 import { Card, CardContent, CardHeader } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { StatusIndicator } from './StatusIndicator';
 import { cn } from '../../utils/cn';
+import { apiService } from '../../services/api';
 
 /**
  * Props for the ExecutionHistory component
@@ -104,14 +106,14 @@ const ExecutionHistoryComponent: React.FC<ExecutionHistoryProps> = ({
       };
 
       const result = await onFetchHistory(scheduleId, params);
-      
+
       // Convert date strings to Date objects
       const executionsWithDates = result.executions.map(execution => ({
         ...execution,
         startTime: execution.startTime instanceof Date ? execution.startTime : new Date(execution.startTime),
         endTime: execution.endTime ? (execution.endTime instanceof Date ? execution.endTime : new Date(execution.endTime)) : undefined,
       }));
-      
+
       setExecutions(executionsWithDates);
       setTotalPages(result.totalPages);
 
@@ -129,6 +131,36 @@ const ExecutionHistoryComponent: React.FC<ExecutionHistoryProps> = ({
     fetchExecutions();
   }, [fetchExecutions]);
 
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const handleDownload = async (execution: ScheduleExecution) => {
+    try {
+      setDownloadingId(execution.id);
+      const blob = await apiService.downloadExecutionReport(execution.id);
+
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+
+      // Get filename from path or use default
+      const fileName = execution.reportPath
+        ? execution.reportPath.split(/[/\\]/).pop()
+        : `report_${execution.id}.pdf`;
+
+      link.download = fileName || 'report.pdf';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download report:', err);
+      alert('Failed to download report. The file may have been moved or deleted.');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   const calculateStatistics = useCallback((execs: ScheduleExecution[]) => {
     const total = execs.length;
     const successful = execs.filter((e) => e.status === 'success').length;
@@ -139,7 +171,7 @@ const ExecutionHistoryComponent: React.FC<ExecutionHistoryProps> = ({
     const avgDuration =
       completedExecutions.length > 0
         ? completedExecutions.reduce((sum, e) => sum + (e.duration || 0), 0) /
-          completedExecutions.length
+        completedExecutions.length
         : 0;
 
     setStatistics({
@@ -190,10 +222,10 @@ const ExecutionHistoryComponent: React.FC<ExecutionHistoryProps> = ({
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900" id="history-title">Execution History</h2>
           <p className="text-sm text-gray-600 mt-1 break-words">{scheduleName}</p>
         </div>
-        <Button 
-          variant="ghost" 
-          onClick={onClose} 
-          aria-label="Close execution history" 
+        <Button
+          variant="ghost"
+          onClick={onClose}
+          aria-label="Close execution history"
           className="self-end sm:self-auto"
         >
           <svg
@@ -215,7 +247,7 @@ const ExecutionHistoryComponent: React.FC<ExecutionHistoryProps> = ({
 
       <CardContent>
         {/* Statistics Summary */}
-        <div 
+        <div
           className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6 p-3 sm:p-4 bg-gray-50 rounded-lg"
           role="region"
           aria-label="Execution statistics"
@@ -341,13 +373,26 @@ const ExecutionHistoryComponent: React.FC<ExecutionHistoryProps> = ({
                       </div>
                     </div>
 
-                    {/* Report Path */}
+                    {/* Report Path & Download */}
                     {execution.reportPath && execution.status === 'success' && (
-                      <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded" role="status">
-                        <p className="text-xs text-green-800 break-all">
-                          <span className="font-medium">Report:</span>{' '}
-                          {execution.reportPath}
-                        </p>
+                      <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded flex flex-col sm:flex-row sm:items-center justify-between gap-3" role="status">
+                        <div className="flex items-start">
+                          <FileText className="h-4 w-4 text-green-600 mt-0.5 mr-2 shrink-0" />
+                          <p className="text-xs text-green-800 break-all">
+                            <span className="font-medium">Report:</span>{' '}
+                            {execution.reportPath}
+                          </p>
+                        </div>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          className="shrink-0"
+                          onClick={() => handleDownload(execution)}
+                          loading={downloadingId === execution.id}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Download Report
+                        </Button>
                       </div>
                     )}
 
@@ -366,7 +411,7 @@ const ExecutionHistoryComponent: React.FC<ExecutionHistoryProps> = ({
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <nav 
+              <nav
                 className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-6 pt-4 border-t border-gray-200"
                 role="navigation"
                 aria-label="Execution history pagination"
