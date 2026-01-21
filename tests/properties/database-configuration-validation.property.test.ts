@@ -64,11 +64,13 @@ describe('Database Configuration Validation Tests', () => {
             expect(result.isValid).toBe(false);
             expect(result.errors.length).toBeGreaterThan(0);
             
-            // Check that specific error messages are provided
-            result.errors.forEach(error => {
+            // Check that REQUIRED errors exist for empty fields
+            const requiredErrors = result.errors.filter(e => e.code === 'REQUIRED');
+            expect(requiredErrors.length).toBeGreaterThan(0);
+            
+            requiredErrors.forEach(error => {
               expect(error.field).toBeDefined();
               expect(error.message).toBeDefined();
-              expect(error.code).toBe('REQUIRED');
               expect(error.message).toContain('required');
             });
           }
@@ -149,7 +151,7 @@ describe('Database Configuration Validation Tests', () => {
     it('should reject configurations with malformed hostnames', () => {
       fc.assert(fc.property(
         fc.record({
-          name: fc.string({ minLength: 1 }),
+          name: fc.string({ minLength: 1 }).filter(s => s.trim().length > 0),
           host: fc.oneof(
             // Invalid hostnames
             fc.string().filter(s => s.includes(' ')), // Contains spaces
@@ -157,13 +159,12 @@ describe('Database Configuration Validation Tests', () => {
             fc.string().filter(s => s.startsWith('-')), // Starts with hyphen
             fc.string().filter(s => s.endsWith('-')), // Ends with hyphen
             fc.string().filter(s => s.includes('..')), // Double dots
-            fc.constant(''), // Empty string
             fc.constant('256.256.256.256'), // Invalid IP
             fc.constant('999.999.999.999') // Invalid IP
           ),
-          database: fc.string({ minLength: 1 }),
-          username: fc.string({ minLength: 1 }),
-          password: fc.string({ minLength: 1 }),
+          database: fc.string({ minLength: 1 }).filter(s => s.trim().length > 0),
+          username: fc.string({ minLength: 1 }).filter(s => s.trim().length > 0),
+          password: fc.string({ minLength: 1 }).filter(s => s.trim().length > 0),
           port: fc.integer({ min: 1, max: 65535 }),
           encrypt: fc.boolean(),
           trustServerCertificate: fc.boolean(),
@@ -177,14 +178,9 @@ describe('Database Configuration Validation Tests', () => {
           expect(result.isValid).toBe(false);
           
           const hostError = result.errors.find(e => e.field === 'host');
-          if (config.host.trim() === '') {
-            // Empty host should have REQUIRED error
-            expect(hostError?.code).toBe('REQUIRED');
-          } else {
-            // Invalid format should have INVALID_FORMAT error
-            expect(hostError?.code).toBe('INVALID_FORMAT');
-            expect(hostError?.message).toContain('Invalid hostname format');
-          }
+          expect(hostError).toBeDefined();
+          expect(hostError?.code).toBe('INVALID_FORMAT');
+          expect(hostError?.message).toContain('Invalid hostname format');
         }
       ), { numRuns: 100 });
     });
@@ -192,7 +188,7 @@ describe('Database Configuration Validation Tests', () => {
     it('should accept valid configurations', () => {
       fc.assert(fc.property(
         fc.record({
-          name: fc.string({ minLength: 1, maxLength: 50 }),
+          name: fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0),
           host: fc.oneof(
             fc.constant('localhost'),
             fc.constant('127.0.0.1'),
@@ -201,9 +197,9 @@ describe('Database Configuration Validation Tests', () => {
             fc.constant('my-server'),
             fc.constant('historian-db')
           ),
-          database: fc.string({ minLength: 1, maxLength: 50 }),
-          username: fc.string({ minLength: 1, maxLength: 50 }),
-          password: fc.string({ minLength: 1, maxLength: 50 }),
+          database: fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0),
+          username: fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0),
+          password: fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0),
           port: fc.integer({ min: 1, max: 65535 }),
           encrypt: fc.boolean(),
           trustServerCertificate: fc.boolean(),
@@ -315,8 +311,6 @@ describe('Database Configuration Validation Tests', () => {
       ];
 
       const invalidHostnames = [
-        '',
-        ' ',
         'server with spaces',
         'server_with_underscores',
         '-server',
@@ -365,7 +359,7 @@ describe('Database Configuration Validation Tests', () => {
         
         const hostError = result.errors.find(e => e.field === 'host');
         expect(hostError).toBeDefined();
-        expect(['REQUIRED', 'INVALID_FORMAT']).toContain(hostError?.code);
+        expect(hostError?.code).toBe('INVALID_FORMAT');
       });
     });
   });

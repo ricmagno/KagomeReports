@@ -14,6 +14,7 @@ import { createError } from '@/middleware/errorHandler';
 import { env } from '@/config/environment';
 import { chartGenerationService } from './chartGeneration';
 import { chartBufferValidator } from '@/utils/chartBufferValidator';
+import { generateReportFilename, getReportNameFromConfig } from '@/utils/reportFilename';
 
 export interface ReportConfig {
   id: string;
@@ -205,7 +206,11 @@ export class ReportGenerationService {
         doc.on('end', () => {
           try {
             const buffer = Buffer.concat(chunks);
-            const fileName = `${reportData.config.id}_${Date.now()}.pdf`;
+            
+            // Generate standardized filename using report name and current date
+            const reportName = getReportNameFromConfig(reportData.config);
+            const fileName = generateReportFilename(reportName, 'pdf');
+            
             const filePath = path.join(this.outputDir, fileName);
 
             // Save to file

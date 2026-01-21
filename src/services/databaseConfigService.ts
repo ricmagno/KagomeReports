@@ -625,8 +625,8 @@ export class DatabaseConfigService {
       errors.push({ field: 'requestTimeout', message: 'Request timeout must be between 1000ms and 300000ms', code: 'INVALID_RANGE' });
     }
 
-    // Host format validation
-    if (config.host && !this.isValidHostname(config.host)) {
+    // Host format validation (only if host is provided and not empty after trimming)
+    if (config.host && config.host.trim() && !this.isValidHostname(config.host.trim())) {
       errors.push({ field: 'host', message: 'Invalid hostname format', code: 'INVALID_FORMAT' });
     }
 
@@ -785,11 +785,49 @@ export class DatabaseConfigService {
    * Validate hostname format
    */
   private isValidHostname(hostname: string): boolean {
-    // Allow IP addresses and domain names
-    const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-    const domainRegex = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
+    // Trim and check for empty
+    const trimmed = hostname.trim();
+    if (!trimmed) {
+      return false;
+    }
 
-    return ipRegex.test(hostname) || domainRegex.test(hostname) || hostname === 'localhost';
+    // Check for invalid characters that should never be in a hostname
+    if (trimmed.includes(' ') || trimmed.includes('_')) {
+      return false;
+    }
+
+    // Check for invalid start/end characters
+    if (trimmed.startsWith('-') || trimmed.endsWith('-') || 
+        trimmed.startsWith('.') || trimmed.endsWith('.')) {
+      return false;
+    }
+
+    // Check for double dots
+    if (trimmed.includes('..')) {
+      return false;
+    }
+
+    // Special case for localhost
+    if (trimmed === 'localhost') {
+      return true;
+    }
+
+    // Check if it looks like an IP address (4 dot-separated parts, all numeric)
+    const parts = trimmed.split('.');
+    if (parts.length === 4 && parts.every(part => /^\d+$/.test(part))) {
+      // Validate as IP address
+      const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+      if (!ipRegex.test(trimmed)) {
+        return false;
+      }
+      // Additional validation: ensure each octet is <= 255
+      const octets = parts.map(Number);
+      return octets.every(octet => octet >= 0 && octet <= 255);
+    }
+
+    // Validate domain name format
+    const domainRegex = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
+    return domainRegex.test(trimmed);
   }
 
   /**
