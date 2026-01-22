@@ -73,8 +73,8 @@ export class ChartGenerationService {
   private defaultColors: string[];
 
   constructor() {
-    this.defaultWidth = (env.CHART_WIDTH as number) || 800;
-    this.defaultHeight = (env.CHART_HEIGHT as number) || 400;
+    this.defaultWidth = (env.CHART_WIDTH as number) || 1200;  // Increased from 800 for better print quality
+    this.defaultHeight = (env.CHART_HEIGHT as number) || 600;  // Increased from 400 for better print quality
     this.defaultColors = [
       '#3b82f6', // Blue
       '#10b981', // Green
@@ -200,11 +200,11 @@ export class ChartGenerationService {
           type: 'label',
           xValue: (ctx: any) => {
             const xScale = ctx.chart.scales.x;
-            return xScale.max;
+            return xScale.max - (xScale.max - xScale.min) * 0.05; // 5% from right edge
           },
           yValue: (ctx: any) => {
             const yScale = ctx.chart.scales.y;
-            return yScale.max;
+            return yScale.max - (yScale.max - yScale.min) * 0.05; // 5% from top
           },
           xAdjust: -10,
           yAdjust: 10,
@@ -253,9 +253,10 @@ export class ChartGenerationService {
                   size: 10
                 },
                 usePointStyle: false,
-                boxWidth: 20,
-                padding: 10
-              }
+                boxWidth: 15,  // Reduced from 20 to save space
+                padding: 8     // Reduced from 10 to save space
+              },
+              maxHeight: 60    // Limit legend height to prevent overflow
             },
             annotation: {
               annotations: annotations
