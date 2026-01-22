@@ -22,7 +22,7 @@ export class StatisticalAnalysisService {
     const dataString = JSON.stringify(data.map(d => ({ timestamp: d.timestamp, value: d.value })));
     return createHash('md5').update(dataString).digest('hex');
   }
-  
+
   /**
    * Calculate basic statistics for time-series data with caching
    */
@@ -66,7 +66,7 @@ export class StatisticalAnalysisService {
 
     const values = data.map(point => point.value);
     const validValues = values.filter(v => !isNaN(v) && isFinite(v));
-    
+
     if (validValues.length === 0) {
       throw createError('No valid numeric values found in dataset', 400);
     }
@@ -75,11 +75,11 @@ export class StatisticalAnalysisService {
     const max = Math.max(...validValues);
     const sum = validValues.reduce((acc, val) => acc + val, 0);
     const average = sum / validValues.length;
-    
+
     // Calculate standard deviation
     const variance = validValues.reduce((acc, val) => acc + Math.pow(val - average, 2), 0) / validValues.length;
     const standardDeviation = Math.sqrt(variance);
-    
+
     // Calculate data quality percentage
     const goodQualityCount = data.filter(point => point.quality === 192).length; // Good quality = 192
     const dataQuality = (goodQualityCount / data.length) * 100;
@@ -182,7 +182,7 @@ export class StatisticalAnalysisService {
 
     // Filter out invalid values
     const validData = data.filter(point => !isNaN(point.value) && isFinite(point.value));
-    
+
     if (validData.length < 3) {
       throw createError('Insufficient valid data for trend calculation: at least 3 valid data points required', 400);
     }
@@ -219,7 +219,7 @@ export class StatisticalAnalysisService {
     // Calculate slope and intercept using least squares method
     // slope = (n*Σ(xy) - Σx*Σy) / (n*Σ(x²) - (Σx)²)
     const denominator = n * sumX2 - sumX * sumX;
-    
+
     if (Math.abs(denominator) < 1e-10) {
       // All x values are identical (shouldn't happen with time-series data)
       throw createError('Cannot calculate trend line: all timestamps are identical', 400);
@@ -231,10 +231,10 @@ export class StatisticalAnalysisService {
     // Calculate R² (coefficient of determination)
     // R² = 1 - (SS_residual / SS_total)
     const meanY = sumY / n;
-    
+
     // SS_total = Σ(y - ȳ)²
     const ssTotal = points.reduce((sum, p) => sum + Math.pow(p.y - meanY, 2), 0);
-    
+
     // SS_residual = Σ(y - ŷ)² where ŷ = slope*x + intercept
     const ssResidual = points.reduce((sum, p) => {
       const predicted = slope * p.x + intercept;
@@ -260,8 +260,8 @@ export class StatisticalAnalysisService {
     });
 
     return {
-      slope: Number(slope.toFixed(2)),
-      intercept: Number(intercept.toFixed(2)),
+      slope: Number(slope.toFixed(6)),
+      intercept: Number(intercept.toFixed(4)),
       rSquared: Number(rSquared.toFixed(3)),
       equation: this.formatTrendEquation(slope, intercept)
     };
@@ -269,14 +269,14 @@ export class StatisticalAnalysisService {
 
   /**
    * Format trend line equation for display
-   * Format: "y = mx + b" with coefficients rounded to 2 decimal places
+   * Format: "y = mx + b" with coefficients rounded for readability
    * 
    * @param slope - The slope (m) of the trend line
    * @param intercept - The y-intercept (b) of the trend line
    * @returns Formatted equation string
    */
   formatTrendEquation(slope: number, intercept: number): string {
-    const m = slope.toFixed(2);
+    const m = Math.abs(slope) < 0.01 ? slope.toExponential(2) : slope.toFixed(4);
     const b = Math.abs(intercept).toFixed(2);
     const sign = intercept >= 0 ? '+' : '-';
     return `y = ${m}x ${sign} ${b}`;
@@ -304,7 +304,7 @@ export class StatisticalAnalysisService {
 
       if (validValues.length > 0) {
         const average = validValues.reduce((sum, val) => sum + val, 0) / validValues.length;
-        
+
         result.push({
           timestamp: data[i]!.timestamp,
           value: average,
@@ -327,7 +327,7 @@ export class StatisticalAnalysisService {
    * Calculate percentage change between time periods
    */
   calculatePercentageChange(
-    startData: TimeSeriesData[], 
+    startData: TimeSeriesData[],
     endData: TimeSeriesData[]
   ): number {
     if (startData.length === 0 || endData.length === 0) {
@@ -370,7 +370,7 @@ export class StatisticalAnalysisService {
     for (const point of data) {
       if (!isNaN(point.value) && isFinite(point.value)) {
         const deviation = Math.abs(point.value - stats.average) / stats.standardDeviation;
-        
+
         if (deviation > threshold) {
           let severity: 'low' | 'medium' | 'high';
           if (deviation > threshold * 2) {
@@ -406,7 +406,7 @@ export class StatisticalAnalysisService {
    * Advanced anomaly detection using multiple algorithms
    */
   detectAdvancedAnomalies(
-    data: TimeSeriesData[], 
+    data: TimeSeriesData[],
     options: {
       statisticalThreshold?: number;
       iqrMultiplier?: number;
@@ -576,7 +576,7 @@ export class StatisticalAnalysisService {
   private detectSeasonalAnomalies(data: TimeSeriesData[]): AnomalyResult[] {
     // Simple seasonal detection based on hourly patterns
     const hourlyAverages = new Map<number, number[]>();
-    
+
     // Group data by hour of day
     for (const point of data) {
       const hour = point.timestamp.getHours();
@@ -603,10 +603,10 @@ export class StatisticalAnalysisService {
     for (const point of data) {
       const hour = point.timestamp.getHours();
       const stats = hourlyStats.get(hour);
-      
+
       if (stats && stats.stdDev > 0) {
         const deviation = Math.abs(point.value - stats.average) / stats.stdDev;
-        
+
         if (deviation > 2) {
           let severity: 'low' | 'medium' | 'high';
           if (deviation > 4) {
@@ -642,8 +642,8 @@ export class StatisticalAnalysisService {
       const key = `${anomaly.timestamp.getTime()}_${anomaly.value}`;
       const existing = uniqueAnomalies.get(key);
 
-      if (!existing || anomaly.severity === 'high' || 
-          (anomaly.severity === 'medium' && existing.severity === 'low')) {
+      if (!existing || anomaly.severity === 'high' ||
+        (anomaly.severity === 'medium' && existing.severity === 'low')) {
         uniqueAnomalies.set(key, anomaly);
       }
     }
@@ -656,7 +656,7 @@ export class StatisticalAnalysisService {
    * Detect significant pattern changes in time-series data with configurable thresholds
    */
   detectPatternChanges(
-    data: TimeSeriesData[], 
+    data: TimeSeriesData[],
     options: {
       windowSize?: number;
       sensitivityThreshold?: number;
@@ -706,7 +706,7 @@ export class StatisticalAnalysisService {
         if (significantMeanChange || significantVarianceChange || significantSlopeChange || significantCorrelationChange) {
           // Determine severity based on multiple factors
           let severity: 'low' | 'medium' | 'high';
-          const severityScore = 
+          const severityScore =
             (significantMeanChange ? 1 : 0) +
             (significantVarianceChange ? 1 : 0) +
             (significantSlopeChange ? 1 : 0) +
@@ -782,15 +782,15 @@ export class StatisticalAnalysisService {
         // Detect trend direction changes
         const slopeChange = Math.abs(afterTrend.slope - beforeTrend.slope);
         const directionChange = (beforeTrend.slope > 0) !== (afterTrend.slope > 0);
-        
+
         // Detect volatility changes
         const volatilityChange = Math.abs(afterStats.standardDeviation - beforeStats.standardDeviation);
-        const volatilityRatio = beforeStats.standardDeviation > 0 ? 
+        const volatilityRatio = beforeStats.standardDeviation > 0 ?
           afterStats.standardDeviation / beforeStats.standardDeviation : 1;
 
         // Detect level shifts
         const levelShift = Math.abs(afterStats.average - beforeStats.average);
-        const levelShiftPercent = beforeStats.average !== 0 ? 
+        const levelShiftPercent = beforeStats.average !== 0 ?
           (levelShift / Math.abs(beforeStats.average)) * 100 : 0;
 
         // Check for significant changes
@@ -801,9 +801,9 @@ export class StatisticalAnalysisService {
 
         if (significantSlopeChange || significantDirectionChange || significantVolatilityChange || significantLevelShift) {
           let severity: 'low' | 'medium' | 'high';
-          
+
           if ((significantDirectionChange && Math.abs(beforeTrend.slope) > trendThreshold * 2) ||
-              levelShiftPercent > 50 || volatilityRatio > volatilityThreshold * 2) {
+            levelShiftPercent > 50 || volatilityRatio > volatilityThreshold * 2) {
             severity = 'high';
           } else if (significantDirectionChange || levelShiftPercent > 25 || volatilityRatio > volatilityThreshold * 1.5) {
             severity = 'medium';
@@ -813,7 +813,7 @@ export class StatisticalAnalysisService {
 
           const changePoint = data[i]!;
           const changes: string[] = [];
-          
+
           if (significantSlopeChange) changes.push(`slope change: ${slopeChange.toFixed(4)}`);
           if (significantDirectionChange) changes.push('trend direction reversal');
           if (significantVolatilityChange) changes.push(`volatility change: ${volatilityRatio.toFixed(2)}x`);
@@ -882,7 +882,7 @@ export class StatisticalAnalysisService {
     if (data.length > 1) {
       const sortedData = [...data].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
       const intervals: number[] = [];
-      
+
       for (let i = 1; i < sortedData.length; i++) {
         const interval = sortedData[i]!.timestamp.getTime() - sortedData[i - 1]!.timestamp.getTime();
         intervals.push(interval);
@@ -891,7 +891,7 @@ export class StatisticalAnalysisService {
       // Calculate median interval
       intervals.sort((a, b) => a - b);
       const medianInterval = intervals[Math.floor(intervals.length / 2)]!;
-      
+
       // Count gaps larger than 2x median interval
       missingDataGaps = intervals.filter(interval => interval > medianInterval * 2).length;
     }
@@ -1065,13 +1065,13 @@ export class StatisticalAnalysisService {
 
     const values = data.map(p => p.value).filter(v => !isNaN(v) && isFinite(v));
     const sortedValues = [...values].sort((a, b) => a - b);
-    
+
     // Calculate basic statistics
     const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
     const median = sortedValues[Math.floor(sortedValues.length / 2)]!;
     const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
     const standardDeviation = Math.sqrt(variance);
-    
+
     // Calculate Median Absolute Deviation (MAD)
     const deviationsFromMedian = values.map(v => Math.abs(v - median));
     const mad = deviationsFromMedian.sort((a, b) => a - b)[Math.floor(deviationsFromMedian.length / 2)]!;
@@ -1111,8 +1111,8 @@ export class StatisticalAnalysisService {
   }
 
   private detectZScoreAnomalies(
-    data: TimeSeriesData[], 
-    stats: { mean: number; standardDeviation: number }, 
+    data: TimeSeriesData[],
+    stats: { mean: number; standardDeviation: number },
     threshold: number
   ): AnomalyResult[] {
     const anomalies: AnomalyResult[] = [];
@@ -1120,7 +1120,7 @@ export class StatisticalAnalysisService {
     for (const point of data) {
       if (!isNaN(point.value) && isFinite(point.value) && stats.standardDeviation > 0) {
         const zScore = Math.abs(point.value - stats.mean) / stats.standardDeviation;
-        
+
         if (zScore > threshold) {
           anomalies.push({
             timestamp: point.timestamp,
@@ -1138,8 +1138,8 @@ export class StatisticalAnalysisService {
   }
 
   private detectModifiedZScoreAnomalies(
-    data: TimeSeriesData[], 
-    stats: { median: number; mad: number }, 
+    data: TimeSeriesData[],
+    stats: { median: number; mad: number },
     threshold: number
   ): AnomalyResult[] {
     const anomalies: AnomalyResult[] = [];
@@ -1147,15 +1147,15 @@ export class StatisticalAnalysisService {
     for (const point of data) {
       if (!isNaN(point.value) && isFinite(point.value) && stats.mad > 0) {
         const modifiedZScore = 0.6745 * (point.value - stats.median) / stats.mad;
-        
+
         if (Math.abs(modifiedZScore) > threshold) {
           anomalies.push({
             timestamp: point.timestamp,
             value: point.value,
             expectedValue: stats.median,
             deviation: Math.abs(modifiedZScore),
-            severity: Math.abs(modifiedZScore) > threshold * 1.5 ? 'high' : 
-                     Math.abs(modifiedZScore) > threshold * 1.2 ? 'medium' : 'low',
+            severity: Math.abs(modifiedZScore) > threshold * 1.5 ? 'high' :
+              Math.abs(modifiedZScore) > threshold * 1.2 ? 'medium' : 'low',
             description: `Modified Z-score anomaly: ${modifiedZScore.toFixed(2)} (threshold: ${threshold})`
           });
         }
@@ -1166,20 +1166,20 @@ export class StatisticalAnalysisService {
   }
 
   private detectGrubbsAnomalies(
-    data: TimeSeriesData[], 
+    data: TimeSeriesData[],
     stats: { mean: number; standardDeviation: number }
   ): AnomalyResult[] {
     // Simplified Grubbs test implementation
     const anomalies: AnomalyResult[] = [];
     const n = data.length;
-    
+
     // Critical values for Grubbs test (approximate)
     const criticalValue = n > 30 ? 3.0 : 2.5 + (30 - n) * 0.02;
 
     for (const point of data) {
       if (!isNaN(point.value) && isFinite(point.value) && stats.standardDeviation > 0) {
         const grubbsStatistic = Math.abs(point.value - stats.mean) / stats.standardDeviation;
-        
+
         if (grubbsStatistic > criticalValue) {
           anomalies.push({
             timestamp: point.timestamp,
@@ -1197,7 +1197,7 @@ export class StatisticalAnalysisService {
   }
 
   private detectDixonAnomalies(
-    data: TimeSeriesData[], 
+    data: TimeSeriesData[],
     stats: { mean: number; standardDeviation: number }
   ): AnomalyResult[] {
     // Simplified Dixon Q-test implementation
@@ -1213,7 +1213,7 @@ export class StatisticalAnalysisService {
 
     // Test lowest value
     if (n >= 3) {
-      const qLow = (sortedValues[1]! - sortedValues[0]!) / (sortedValues[n-1]! - sortedValues[0]!);
+      const qLow = (sortedValues[1]! - sortedValues[0]!) / (sortedValues[n - 1]! - sortedValues[0]!);
       if (qLow > criticalQ) {
         const point = data.find(p => p.value === sortedValues[0]!);
         if (point) {
@@ -1231,9 +1231,9 @@ export class StatisticalAnalysisService {
 
     // Test highest value
     if (n >= 3) {
-      const qHigh = (sortedValues[n-1]! - sortedValues[n-2]!) / (sortedValues[n-1]! - sortedValues[0]!);
+      const qHigh = (sortedValues[n - 1]! - sortedValues[n - 2]!) / (sortedValues[n - 1]! - sortedValues[0]!);
       if (qHigh > criticalQ) {
-        const point = data.find(p => p.value === sortedValues[n-1]!);
+        const point = data.find(p => p.value === sortedValues[n - 1]!);
         if (point) {
           anomalies.push({
             timestamp: point.timestamp,
@@ -1260,7 +1260,7 @@ export class StatisticalAnalysisService {
    * @throws Error if insufficient data points (<2) or invalid specification limits
    */
   calculateSPCMetrics(
-    data: TimeSeriesData[], 
+    data: TimeSeriesData[],
     specLimits?: SpecificationLimits
   ): SPCMetrics {
     // Validate minimum data points
@@ -1270,35 +1270,35 @@ export class StatisticalAnalysisService {
 
     // Filter out invalid values
     const validData = data.filter(point => !isNaN(point.value) && isFinite(point.value));
-    
+
     if (validData.length < 2) {
       throw createError('At least 2 valid data points required for SPC metrics calculation', 400);
     }
 
     const values = validData.map(d => d.value);
     const n = values.length;
-    
+
     // Calculate mean (X̄)
     const mean = values.reduce((sum, v) => sum + v, 0) / n;
-    
+
     // Calculate standard deviation (σest) using sample standard deviation
     const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / (n - 1);
     const stdDev = Math.sqrt(variance);
-    
+
     // Calculate control limits using 3-sigma rule
     // UCL = X̄ + 3σ
     // LCL = X̄ - 3σ
     const ucl = mean + 3 * stdDev;
     const lcl = mean - 3 * stdDev;
-    
+
     // Calculate Cp and Cpk if specification limits provided
     let cp: number | null = null;
     let cpk: number | null = null;
-    
+
     if (specLimits?.lsl !== undefined && specLimits?.usl !== undefined) {
       // Validate specification limits using the validation utility
       validateSpecificationLimitsOrThrow(specLimits);
-      
+
       // Handle zero standard deviation case
       if (stdDev === 0) {
         // If all values are identical and within spec limits, process is perfectly capable
@@ -1313,17 +1313,17 @@ export class StatisticalAnalysisService {
       } else {
         // Cp = (USL - LSL) / (6σ)
         cp = (specLimits.usl - specLimits.lsl) / (6 * stdDev);
-        
+
         // Cpk = min((USL - X̄) / 3σ, (X̄ - LSL) / 3σ)
         const cpkUpper = (specLimits.usl - mean) / (3 * stdDev);
         const cpkLower = (mean - specLimits.lsl) / (3 * stdDev);
         cpk = Math.min(cpkUpper, cpkLower);
       }
     }
-    
+
     // Identify out-of-control points
     const outOfControlPoints = this.identifyOutOfControlPoints(data, ucl, lcl);
-    
+
     dbLogger.debug('SPC metrics calculated', {
       mean,
       stdDev,
@@ -1356,8 +1356,8 @@ export class StatisticalAnalysisService {
    * @returns Array of indices of out-of-control points
    */
   identifyOutOfControlPoints(
-    data: TimeSeriesData[], 
-    ucl: number, 
+    data: TimeSeriesData[],
+    ucl: number,
     lcl: number
   ): number[] {
     return data
@@ -1383,20 +1383,20 @@ export class StatisticalAnalysisService {
     if (cp === null || cpk === null) {
       return 'N/A';
     }
-    
+
     // Handle infinite values (perfect capability)
     if (!isFinite(cpk)) {
       return 'Capable';
     }
-    
+
     if (cpk >= 1.33) {
       return 'Capable';
     }
-    
+
     if (cpk >= 1.0) {
       return 'Marginal';
     }
-    
+
     return 'Not Capable';
   }
 
@@ -1445,7 +1445,7 @@ export class StatisticalAnalysisService {
    * @returns SPCMetrics or null if calculation fails
    */
   safeCalculateSPCMetrics(
-    data: TimeSeriesData[], 
+    data: TimeSeriesData[],
     tagName: string,
     specLimits?: SpecificationLimits
   ): SPCMetrics | null {
@@ -1487,7 +1487,7 @@ export class StatisticalAnalysisService {
         'spc_metrics',
         error instanceof Error ? error.message : 'Unknown error',
         tagName,
-        { 
+        {
           dataPoints: data.length,
           hasSpecLimits: !!specLimits
         }
@@ -1515,7 +1515,7 @@ export class StatisticalAnalysisService {
           1
         );
         analyticsErrorHandler.handleError(error);
-        
+
         // Return default values
         return {
           min: 0,
@@ -1536,7 +1536,7 @@ export class StatisticalAnalysisService {
         { dataPoints: data.length }
       );
       analyticsErrorHandler.handleError(analyticsError);
-      
+
       // Return default values
       return {
         min: 0,

@@ -52,6 +52,7 @@ export interface ReportConfig {
   includeSPCCharts?: boolean | undefined;
   includeTrendLines?: boolean | undefined;
   includeStatsSummary?: boolean | undefined;
+  version?: number | undefined;
 }
 
 export interface ReportData {
@@ -152,7 +153,7 @@ export class ReportGenerationService {
         reportLogger.info('Classifying tags for analytics', {
           tagCount: Object.keys(reportData.data).length
         });
-        
+
         const tagClassifications = new Map<string, TagClassification>();
         for (const [tagName, data] of Object.entries(reportData.data)) {
           if (data.length > 0) {
@@ -168,13 +169,13 @@ export class ReportGenerationService {
         const trendLines = new Map<string, any>();
         const spcMetrics = new Map<string, any>();
         const spcMetricsSummary: SPCMetricsSummary[] = [];
-        
+
         const includeTrendLines = reportData.config.includeTrendLines !== false; // Default true
         const includeSPCCharts = reportData.config.includeSPCCharts !== false; // Default true
-        
+
         for (const [tagName, data] of Object.entries(reportData.data)) {
           const classification = tagClassifications.get(tagName);
-          
+
           // Only process analog tags
           if (classification?.type === 'analog' && data.length >= 3) {
             // Calculate trend line if enabled (with graceful error handling)
@@ -190,15 +191,15 @@ export class ReportGenerationService {
                 reportLogger.warn(`Trend line calculation failed for ${tagName}, continuing without trend line`);
               }
             }
-            
+
             // Calculate SPC metrics if enabled and spec limits provided (with graceful error handling)
             if (includeSPCCharts) {
               const specLimits = reportData.config.specificationLimits?.[tagName];
               const metrics = statisticalAnalysisService.safeCalculateSPCMetrics(data, tagName, specLimits);
-              
+
               if (metrics) {
                 spcMetrics.set(tagName, metrics);
-                
+
                 // Add to summary table
                 const capability = statisticalAnalysisService.assessCapability(metrics.cp, metrics.cpk);
                 spcMetricsSummary.push({
@@ -211,7 +212,7 @@ export class ReportGenerationService {
                   cpk: metrics.cpk,
                   capability
                 });
-                
+
                 reportLogger.debug(`SPC metrics calculated for ${tagName}`, {
                   mean: metrics.mean,
                   cp: metrics.cp,
@@ -227,13 +228,13 @@ export class ReportGenerationService {
 
         // Step 3: Generate enhanced charts with trend lines and statistics
         const enhancedCharts = new Map<string, Buffer>();
-        
+
         for (const [tagName, data] of Object.entries(reportData.data)) {
           if (data.length === 0) continue;
-          
+
           const classification = tagClassifications.get(tagName);
           const stats = reportData.statistics?.[tagName];
-          
+
           // Generate standard chart with trend line and statistics
           const trendLine = trendLines.get(tagName);
           const statistics = stats ? {
@@ -242,14 +243,14 @@ export class ReportGenerationService {
             mean: stats.average,
             stdDev: stats.standardDeviation
           } : undefined;
-          
+
           const lineChartData: any = {
             tagName,
             data,
             trendLine,
             statistics
           };
-          
+
           try {
             const chartBuffer = await chartGenerationService.generateLineChart(
               [lineChartData],
@@ -259,7 +260,7 @@ export class ReportGenerationService {
                 height: 600
               }
             );
-            
+
             enhancedCharts.set(`${tagName} - Data Trend`, chartBuffer);
             reportLogger.debug(`Enhanced chart generated for ${tagName}`);
           } catch (error) {
@@ -269,12 +270,12 @@ export class ReportGenerationService {
             // Chart generation failed - report will continue without this chart
             // The addChartsSection method will handle missing charts gracefully
           }
-          
+
           // Generate SPC chart for analog tags if enabled
           if (classification?.type === 'analog' && includeSPCCharts) {
             const metrics = spcMetrics.get(tagName);
             const specLimits = reportData.config.specificationLimits?.[tagName];
-            
+
             if (metrics) {
               try {
                 const spcChartBuffer = await chartGenerationService.generateSPCChart(
@@ -288,7 +289,7 @@ export class ReportGenerationService {
                     height: 600
                   }
                 );
-                
+
                 enhancedCharts.set(`${tagName} - SPC Chart`, spcChartBuffer);
                 reportLogger.debug(`SPC chart generated for ${tagName}`);
               } catch (error) {
@@ -304,7 +305,7 @@ export class ReportGenerationService {
         // Step 4: Create PDF document
         const doc = new PDFDocument({
           size: 'A4',
-          margins: { top: 40, bottom: 60, left: 40, right: 40 },
+          margins: { top: 80, bottom: 60, left: 30, right: 30 },
           bufferPages: true, // Enable page buffering for footer addition
           info: {
             Title: reportData.config.name,
@@ -353,7 +354,7 @@ export class ReportGenerationService {
         // Separate standard charts from SPC charts
         const standardCharts = new Map<string, Buffer>();
         const spcCharts = new Map<string, Buffer>();
-        
+
         for (const [chartName, chartBuffer] of enhancedCharts.entries()) {
           if (chartName.includes('SPC Chart')) {
             spcCharts.set(chartName, chartBuffer);
@@ -377,20 +378,20 @@ export class ReportGenerationService {
         if (spcCharts.size > 0 || spcMetricsSummary.length > 0) {
           // Always start SPC section on a new page
           doc.addPage();
-          
+
           // Add SPC section header
           doc.fontSize(16)
             .fillColor('#111827')
             .font('Helvetica-Bold')
             .text('Statistical Process Control Analysis', { align: 'center' });
-          
+
           doc.moveDown(1);
-          
+
           // Add SPC charts first
           if (spcCharts.size > 0) {
             this.addChartsSection(doc, Object.fromEntries(spcCharts));
           }
-          
+
           // Add SPC metrics summary table after charts
           if (spcMetricsSummary.length > 0) {
             // Only add page if we're too far down the current page
@@ -435,9 +436,9 @@ export class ReportGenerationService {
           try {
             const buffer = Buffer.concat(chunks);
 
-            // Generate standardized filename using report name and current date
+            // Generate standardized filename using reportId, report name and current date
             const reportName = getReportNameFromConfig(reportData.config);
-            const fileName = generateReportFilename(reportName, 'pdf');
+            const fileName = `${reportData.config.id}_${generateReportFilename(reportName, 'pdf')}`;
 
             const filePath = path.join(this.outputDir, fileName);
 
@@ -470,7 +471,7 @@ export class ReportGenerationService {
                   metric: e.metric
                 }))
               });
-              
+
               // Clear errors for next report
               analyticsErrorHandler.clearErrors();
             }
@@ -523,17 +524,22 @@ export class ReportGenerationService {
 
     // Reset position and color
     doc.fillColor('#111827');
-    doc.y = 90;  // Increased from 75 for better spacing
+    doc.y = 130;  // Increased from 110 for further improved spacing to avoid overlap
+    doc.x = 40;   // Explicitly reset x to margin
   }
 
   /**
    * Add report title and basic information
    */
   private addReportTitle(doc: PDFKit.PDFDocument, config: ReportConfig): void {
+    const title = config.version
+      ? `${config.name} (v${config.version})`
+      : config.name;
+
     doc.fontSize(20)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text(config.name, { align: 'center' });
+      .text(title, { align: 'center' });
 
     doc.moveDown();
 
@@ -609,6 +615,7 @@ export class ReportGenerationService {
     // Reset to default
     doc.fillColor('#111827');
     doc.y = startY + 40;
+    doc.x = 40; // Explicitly reset x to margin after the two-column metadata
     doc.moveDown(0.5);
   }
 
@@ -634,9 +641,9 @@ export class ReportGenerationService {
         `containing a total of ${totalDataPoints} data points. ` +
         `The analysis includes statistical summaries, trend analysis, and data quality metrics.`,
         40, doc.y, {  // Explicit x position and current y
-          width: doc.page.width - 80,  // Full width minus margins
-          align: 'left'
-        });
+        width: doc.page.width - 80,  // Full width minus margins
+        align: 'left'
+      });
 
     doc.moveDown(0.5);
 
@@ -654,9 +661,9 @@ export class ReportGenerationService {
           `Range ${stats.min.toFixed(2)} - ${stats.max.toFixed(2)}, ` +
           `Data Quality ${stats.dataQuality.toFixed(1)}%`,
           40, doc.y, {  // Explicit x position
-            width: doc.page.width - 80,
-            align: 'left'
-          });
+          width: doc.page.width - 80,
+          align: 'left'
+        });
       }
     }
 
@@ -769,8 +776,8 @@ export class ReportGenerationService {
       }
 
       const y = doc.y;
-      const chartWidth = 515;  // Full page width minus margins (A4 width 595 - 40*2)
-      const chartHeight = 350; // Proportional increase for better quality
+      const chartWidth = 535;  // Increased from 515 for wider appearance
+      const chartHeight = 320; // Slightly reduced height to fit better with wider aspect
 
       doc.fontSize(12)
         .fillColor('#111827')
@@ -887,7 +894,7 @@ export class ReportGenerationService {
     doc.fontSize(14)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text('Statistical Summary', 40);  // Explicit x position
+      .text('Statistical Summary', 40); // Explicit x position
 
     doc.moveDown(0.5);
 
@@ -979,7 +986,7 @@ export class ReportGenerationService {
     const checkPageBreak = (currentY: number) => {
       if (currentY > doc.page.height - 100) {
         doc.addPage();
-        return 50; // Reset to top margin
+        return doc.page.margins.top; // Reset to top margin
       }
       return currentY;
     };
@@ -1171,14 +1178,14 @@ export class ReportGenerationService {
     doc.fontSize(14)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text('SPC Metrics Summary');
+      .text('SPC Metrics Summary', 40); // Explicit x position
 
     doc.moveDown(0.5);
 
     const tableTop = doc.y + 10;
     const tableLeft = 40;
-    const colWidths: number[] = [120, 60, 60, 60, 60, 60, 60, 80];
-    const headers = ['Tag Name', 'Mean', 'StdDev', 'LSL', 'USL', 'Cp', 'Cpk', 'Capability'];
+    const colWidths: number[] = [120, 65, 65, 60, 60, 55, 55, 50];
+    const headers = ['Tag Name', 'Average', 'Std Dev', 'LSL', 'USL', 'Cp', 'Cpk', 'Stat'];
     const rowHeight = 20;
     const headerHeight = 25;
 
@@ -1186,7 +1193,7 @@ export class ReportGenerationService {
     const checkPageBreak = (currentY: number) => {
       if (currentY > doc.page.height - 100) {
         doc.addPage();
-        return 50; // Reset to top margin
+        return doc.page.margins.top; // Reset to top margin
       }
       return currentY;
     };

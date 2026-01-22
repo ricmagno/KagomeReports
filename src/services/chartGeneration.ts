@@ -21,7 +21,7 @@ try {
   const adapter = require('chartjs-adapter-date-fns');
   reportLogger.info('Chart.js date adapter loaded successfully');
 } catch (error) {
-  reportLogger.error('Failed to load Chart.js date adapter', { 
+  reportLogger.error('Failed to load Chart.js date adapter', {
     error: error instanceof Error ? error.message : 'Unknown error',
     stack: error instanceof Error ? error.stack : undefined
   });
@@ -73,8 +73,8 @@ export class ChartGenerationService {
   private defaultColors: string[];
 
   constructor() {
-    this.defaultWidth = (env.CHART_WIDTH as number) || 1200;  // Increased from 800 for better print quality
-    this.defaultHeight = (env.CHART_HEIGHT as number) || 600;  // Increased from 400 for better print quality
+    this.defaultWidth = (env.CHART_WIDTH as number) || 2400;  // Increased to 2400 for high resolution
+    this.defaultHeight = (env.CHART_HEIGHT as number) || 1200; // Increased to 1200 for high resolution
     this.defaultColors = [
       '#3b82f6', // Blue
       '#10b981', // Green
@@ -98,9 +98,9 @@ export class ChartGenerationService {
     const height = options.height || this.defaultHeight;
     const totalDataPoints = datasets.reduce((sum, d) => sum + d.data.length, 0);
     const grayscale = false; // PRESERVE COLORS for time series trends - only SPC charts use grayscale
-    
+
     try {
-      reportLogger.info('Generating line chart with trend lines', { 
+      reportLogger.info('Generating line chart with trend lines', {
         datasets: datasets.length,
         width,
         height,
@@ -122,7 +122,7 @@ export class ChartGenerationService {
       reportLogger.debug('Creating canvas for line chart', { width, height });
       const canvas = createCanvas(width, height);
       const ctx = canvas.getContext('2d');
-      
+
       reportLogger.debug('Canvas created successfully', {
         canvasWidth: canvas.width,
         canvasHeight: canvas.height
@@ -133,13 +133,13 @@ export class ChartGenerationService {
         datasetCount: datasets.length,
         datasetNames: datasets.map(d => d.tagName)
       });
-      
+
       const chartDatasets: any[] = [];
-      
+
       // Add main data series
       datasets.forEach((dataset, index) => {
         const baseColor = grayscale ? '#000000' : (dataset.color || this.defaultColors[index % this.defaultColors.length]);
-        
+
         chartDatasets.push({
           label: dataset.tagName,
           data: dataset.data.map(point => ({
@@ -160,15 +160,15 @@ export class ChartGenerationService {
           const startTime = dataset.data[0]!.timestamp.getTime();
           const endTime = dataset.data[dataset.data.length - 1]!.timestamp.getTime();
           const timeSpanSeconds = (endTime - startTime) / 1000;
-          
+
           // Calculate y values at start and end
           const yStart = dataset.trendLine.intercept;
           const yEnd = dataset.trendLine.slope * timeSpanSeconds + dataset.trendLine.intercept;
-          
+
           // Determine if trend fit is weak (R² < 0.3)
           const weakFit = dataset.trendLine.rSquared < 0.3;
           const trendColor = grayscale ? (weakFit ? '#999999' : '#666666') : '#ef4444';
-          
+
           chartDatasets.push({
             label: `Trend: ${dataset.trendLine.equation} (R² = ${dataset.trendLine.rSquared})${weakFit ? ' ⚠' : ''}`,
             data: [
@@ -192,7 +192,7 @@ export class ChartGenerationService {
 
       // Prepare annotations for statistics
       const annotations: any = {};
-      
+
       // Add statistics box if available (only for single dataset)
       if (datasets.length === 1 && datasets[0]!.statistics) {
         const stats = datasets[0]!.statistics;
@@ -200,14 +200,14 @@ export class ChartGenerationService {
           type: 'label',
           xValue: (ctx: any) => {
             const xScale = ctx.chart.scales.x;
-            return xScale.max - (xScale.max - xScale.min) * 0.05; // 5% from right edge
+            return xScale.max - (xScale.max - xScale.min) * 0.15; // Moved further from right edge (15%)
           },
           yValue: (ctx: any) => {
             const yScale = ctx.chart.scales.y;
-            return yScale.max - (yScale.max - yScale.min) * 0.05; // 5% from top
+            return yScale.max - (yScale.max - yScale.min) * 0.15; // Moved further from top (15%)
           },
-          xAdjust: -10,
-          yAdjust: 10,
+          xAdjust: 0,
+          yAdjust: 0,
           content: [
             `Min: ${stats.min.toFixed(2)}`,
             `Max: ${stats.max.toFixed(2)}`,
@@ -256,7 +256,7 @@ export class ChartGenerationService {
                 boxWidth: 15,  // Reduced from 20 to save space
                 padding: 8     // Reduced from 10 to save space
               },
-              maxHeight: 60    // Limit legend height to prevent overflow
+              maxHeight: 100   // Increased from 60 to prevent legend cutoff
             },
             annotation: {
               annotations: annotations
@@ -272,12 +272,12 @@ export class ChartGenerationService {
               },
               ticks: {
                 color: '#000000',
-                callback: function(value) {
+                callback: function (value) {
                   const date = new Date(value);
-                  return date.toLocaleTimeString('en-US', { 
-                    hour: '2-digit', 
+                  return date.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
                     minute: '2-digit',
-                    hour12: false 
+                    hour12: false
                   });
                 }
               },
@@ -317,16 +317,16 @@ export class ChartGenerationService {
       // Convert to buffer
       reportLogger.debug('Converting canvas to PNG buffer');
       const buffer = canvas.toBuffer('image/png');
-      
+
       reportLogger.info('Canvas converted to buffer successfully', {
         bufferSize: buffer.length,
         bufferType: typeof buffer,
         isBuffer: Buffer.isBuffer(buffer)
       });
-      
+
       // Validate buffer
       const validation = chartBufferValidator.validateBuffer(buffer, 'line_chart');
-      
+
       if (!validation.valid) {
         const errorMsg = `Generated line chart buffer is invalid: ${validation.errors.join(', ')}`;
         reportLogger.error(errorMsg, {
@@ -342,7 +342,7 @@ export class ChartGenerationService {
           bufferInfo: validation.bufferInfo
         });
       }
-      
+
       // Clean up
       chart.destroy();
 
@@ -357,7 +357,7 @@ export class ChartGenerationService {
 
       return buffer;
     } catch (error) {
-      reportLogger.error('Failed to generate line chart', { 
+      reportLogger.error('Failed to generate line chart', {
         error: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : undefined,
         datasets: datasets.length,
@@ -377,12 +377,12 @@ export class ChartGenerationService {
   ): Promise<Buffer> {
     const width = options.width || this.defaultWidth;
     const height = options.height || this.defaultHeight;
-    
+
     try {
-      reportLogger.info('Generating bar chart', { 
+      reportLogger.info('Generating bar chart', {
         dataPoints: data.values.length,
         width,
-        height 
+        height
       });
 
       const canvas = createCanvas(width, height);
@@ -439,7 +439,7 @@ export class ChartGenerationService {
 
       // Convert to buffer
       const buffer = canvas.toBuffer('image/png');
-      
+
       // Clean up
       chart.destroy();
 
@@ -463,12 +463,12 @@ export class ChartGenerationService {
   ): Promise<Buffer> {
     const width = options.width || this.defaultWidth;
     const height = options.height || this.defaultHeight;
-    
+
     try {
-      reportLogger.info('Generating trend chart', { 
+      reportLogger.info('Generating trend chart', {
         dataPoints: data.data.length,
         width,
-        height 
+        height
       });
 
       const canvas = createCanvas(width, height);
@@ -534,12 +534,12 @@ export class ChartGenerationService {
                 text: 'Time'
               },
               ticks: {
-                callback: function(value) {
+                callback: function (value) {
                   const date = new Date(value);
-                  return date.toLocaleTimeString('en-US', { 
-                    hour: '2-digit', 
+                  return date.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
                     minute: '2-digit',
-                    hour12: false 
+                    hour12: false
                   });
                 }
               }
@@ -566,7 +566,7 @@ export class ChartGenerationService {
 
       // Convert to buffer
       const buffer = canvas.toBuffer('image/png');
-      
+
       // Clean up
       chart.destroy();
 
@@ -592,12 +592,12 @@ export class ChartGenerationService {
   ): Promise<Buffer> {
     const width = options.width || this.defaultWidth;
     const height = options.height || this.defaultHeight;
-    
+
     try {
-      reportLogger.info('Generating statistics chart', { 
+      reportLogger.info('Generating statistics chart', {
         tags: Object.keys(statistics).length,
         width,
-        height 
+        height
       });
 
       const canvas = createCanvas(width, height);
@@ -676,7 +676,7 @@ export class ChartGenerationService {
 
       // Convert to buffer
       const buffer = canvas.toBuffer('image/png');
-      
+
       // Clean up
       chart.destroy();
 
@@ -715,9 +715,9 @@ export class ChartGenerationService {
     const width = options.width || this.defaultWidth;
     const height = options.height || this.defaultHeight;
     const grayscale = true; // Always use grayscale for printing
-    
+
     try {
-      reportLogger.info('Generating SPC chart', { 
+      reportLogger.info('Generating SPC chart', {
         tagName,
         dataPoints: data.length,
         width,
@@ -759,7 +759,7 @@ export class ChartGenerationService {
           borderWidth: 2,
           label: {
             display: true,
-            content: `X̄ = ${spcMetrics.mean.toFixed(2)}`,
+            content: `Mean = ${spcMetrics.mean.toFixed(2)}`,
             position: 'end',
             backgroundColor: 'rgba(255, 255, 255, 0.8)',
             color: '#000000',
@@ -910,7 +910,7 @@ export class ChartGenerationService {
                       lineWidth: 2
                     }
                   ];
-                  
+
                   if (outOfControlCount > 0) {
                     labels.push({
                       text: `Out of Control (${outOfControlCount} points)`,
@@ -919,7 +919,7 @@ export class ChartGenerationService {
                       lineWidth: 2
                     });
                   }
-                  
+
                   return labels;
                 }
               }
@@ -941,12 +941,12 @@ export class ChartGenerationService {
               },
               ticks: {
                 color: '#000000',
-                callback: function(value) {
+                callback: function (value) {
                   const date = new Date(value);
-                  return date.toLocaleTimeString('en-US', { 
-                    hour: '2-digit', 
+                  return date.toLocaleTimeString('en-US', {
+                    hour: '2-digit',
                     minute: '2-digit',
-                    hour12: false 
+                    hour12: false
                   });
                 }
               },
@@ -989,16 +989,16 @@ export class ChartGenerationService {
       // Convert to buffer
       reportLogger.debug('Converting SPC canvas to PNG buffer');
       const buffer = canvas.toBuffer('image/png');
-      
+
       reportLogger.info('SPC canvas converted to buffer successfully', {
         bufferSize: buffer.length,
         bufferType: typeof buffer,
         isBuffer: Buffer.isBuffer(buffer)
       });
-      
+
       // Validate buffer
       const validation = chartBufferValidator.validateBuffer(buffer, 'spc_chart');
-      
+
       if (!validation.valid) {
         const errorMsg = `Generated SPC chart buffer is invalid: ${validation.errors.join(', ')}`;
         reportLogger.error(errorMsg, {
@@ -1014,7 +1014,7 @@ export class ChartGenerationService {
           bufferInfo: validation.bufferInfo
         });
       }
-      
+
       // Clean up
       chart.destroy();
 
@@ -1030,7 +1030,7 @@ export class ChartGenerationService {
 
       return buffer;
     } catch (error) {
-      reportLogger.error('Failed to generate SPC chart', { 
+      reportLogger.error('Failed to generate SPC chart', {
         error: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : undefined,
         tagName,
@@ -1070,7 +1070,7 @@ export class ChartGenerationService {
           if (tagData.length > 0) {
             // Classify tag to determine if it's analog or digital
             const classification = classifyTag(tagData);
-            
+
             // Prepare chart data
             const chartData: LineChartData = {
               tagName,
@@ -1173,17 +1173,17 @@ export class ChartGenerationService {
 
     const firstTime = data[0]?.timestamp.getTime() || 0;
     const lastTime = data[data.length - 1]?.timestamp.getTime() || 0;
-    
+
     // Generate points for the trend line
     const points = [];
     const numPoints = Math.min(100, data.length); // Limit to 100 points for performance
-    
+
     for (let i = 0; i <= numPoints; i++) {
       const x = firstTime + (lastTime - firstTime) * (i / numPoints);
       // Convert timestamp to a normalized value for the trend calculation
       const normalizedX = (x - firstTime) / (lastTime - firstTime);
       const y = trend.slope * normalizedX + trend.intercept;
-      
+
       points.push({ x, y });
     }
 
@@ -1195,7 +1195,7 @@ export class ChartGenerationService {
    */
   private addAlpha(color: string | undefined, alpha: number): string {
     if (!color) return `rgba(0, 0, 0, ${alpha})`;
-    
+
     // Simple implementation for hex colors
     if (color.startsWith('#')) {
       const hex = color.slice(1);

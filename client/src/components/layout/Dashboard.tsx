@@ -56,6 +56,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     includeStatsSummary: true,
     specificationLimits: {},
   });
+  const [savedConfig, setSavedConfig] = useState<Partial<ReportConfig> | null>(null);
+
+  // Compare current config with saved config to detect changes
+  const hasChanges = React.useMemo(() => {
+    if (!savedConfig) return !!(reportConfig.name || (reportConfig.tags && reportConfig.tags.length > 0));
+
+    // Basic fields comparison
+    if (reportConfig.name !== savedConfig.name) return true;
+    if (reportConfig.description !== savedConfig.description) return true;
+    if (reportConfig.template !== savedConfig.template) return true;
+    if (reportConfig.includeTrendLines !== savedConfig.includeTrendLines) return true;
+    if (reportConfig.includeSPCCharts !== savedConfig.includeSPCCharts) return true;
+    if (reportConfig.includeStatsSummary !== savedConfig.includeStatsSummary) return true;
+
+    // Array comparisons (tags, chartTypes)
+    if (JSON.stringify(reportConfig.tags?.sort()) !== JSON.stringify(savedConfig.tags?.sort())) return true;
+    if (JSON.stringify(reportConfig.chartTypes?.sort()) !== JSON.stringify(savedConfig.chartTypes?.sort())) return true;
+
+    // Nested object comparison (specificationLimits)
+    if (JSON.stringify(reportConfig.specificationLimits) !== JSON.stringify(savedConfig.specificationLimits)) return true;
+
+    // Time range comparison
+    const tr1 = reportConfig.timeRange;
+    const tr2 = savedConfig.timeRange;
+    if (tr1?.relativeRange !== tr2?.relativeRange) return true;
+    if (tr1?.startTime.getTime() !== new Date(tr2?.startTime || 0).getTime()) return true;
+    if (tr1?.endTime.getTime() !== new Date(tr2?.endTime || 0).getTime()) return true;
+
+    return false;
+  }, [reportConfig, savedConfig]);
 
   // Health check with polling for reconnection countdown
   useEffect(() => {
@@ -266,7 +296,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
     try {
       setIsLoading(true);
-      
+
       // Prepare report generation request
       const generateRequest = {
         name: reportConfig.name,
@@ -287,23 +317,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         includeTrendLines: reportConfig.includeTrendLines ?? true,
         includeSPCCharts: reportConfig.includeSPCCharts ?? true,
         includeStatsSummary: reportConfig.includeStatsSummary ?? true,
-        specificationLimits: reportConfig.specificationLimits || {}
+        specificationLimits: reportConfig.specificationLimits || {},
+        version: reportConfig.version
       };
 
       console.log('Generating report with config:', generateRequest);
-      
+
       const response = await apiService.generateReport(generateRequest);
-      
+
       if (response.success && response.data) {
         const reportId = response.data.reportId;
-        
+
         // Show success message
         alert(`Report "${reportConfig.name}" generated successfully! Click OK to download.`);
-        
+
         // Download the generated report using the API service
         try {
           const blob = await apiService.downloadReport(reportId);
-          
+
           // Create download link
           const url = window.URL.createObjectURL(blob);
           const link = document.createElement('a');
@@ -313,7 +344,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           link.click();
           document.body.removeChild(link);
           window.URL.revokeObjectURL(url);
-          
+
           console.log('Report downloaded successfully');
         } catch (downloadError) {
           console.error('Failed to download report:', downloadError);
@@ -338,7 +369,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
     try {
       setIsLoading(true);
-      
+
       const saveRequest = {
         name: reportConfig.name,
         description: reportConfig.description || '',
@@ -358,7 +389,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       };
 
       const response = await apiService.saveReport(saveRequest);
-      
+
       if (response.success) {
         // Update the version in the current config
         setReportConfig(prev => ({
@@ -371,6 +402,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         if (activeTab === 'reports') {
           loadSavedReports();
         }
+        // Update savedConfig to current state after successful save
+        setSavedConfig({ ...reportConfig, version: response.data.version });
       } else {
         alert('Failed to save report: ' + response.data);
       }
@@ -420,6 +453,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           includeStatsSummary: loadedReport.config.includeStatsSummary ?? true,
           specificationLimits: loadedReport.config.specificationLimits || {}
         });
+        setSavedConfig(response.data.config);
         setActiveTab('create');
         alert(`Report "${loadedReport.name}" loaded successfully`);
       }
@@ -454,6 +488,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       includeStatsSummary: versionInfo.config.includeStatsSummary ?? true,
       specificationLimits: versionInfo.config.specificationLimits || {}
     });
+    setSavedConfig(versionInfo.config);
     setSelectedReportForHistory(null);
     setActiveTab('create');
     alert(`Version ${versionInfo.version} loaded successfully`);
@@ -556,8 +591,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           <h3 className="text-lg font-medium">Report Configuration</h3>
                           <div className={cn(
                             "px-3 py-1 rounded-full text-sm font-medium",
-                            reportConfig.version 
-                              ? "bg-blue-100 text-blue-800 border border-blue-200" 
+                            reportConfig.version
+                              ? "bg-blue-100 text-blue-800 border border-blue-200"
                               : "bg-green-100 text-green-800 border border-green-200"
                           )}>
                             {reportConfig.version ? `Version ${reportConfig.version}` : 'New'}
@@ -588,7 +623,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                             onChange={range => setReportConfig(prev => ({ ...prev, timeRange: range }))}
                           />
                         </div>
-                        
+
                         {/* Retrieval Mode */}
                         <div className="space-y-2">
                           <label className="block text-sm font-medium text-gray-700">
@@ -608,7 +643,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                             Delta mode returns actual stored values (recommended for most cases)
                           </p>
                         </div>
-                        
+
                         {/* Search Tags */}
                         <div className="space-y-2">
                           <Input
@@ -790,13 +825,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           includeTrendLines={reportConfig.includeTrendLines}
                           includeSPCCharts={reportConfig.includeSPCCharts}
                           includeStatsSummary={reportConfig.includeStatsSummary}
-                          onIncludeTrendLinesChange={(value) => 
+                          onIncludeTrendLinesChange={(value) =>
                             setReportConfig(prev => ({ ...prev, includeTrendLines: value }))
                           }
-                          onIncludeSPCChartsChange={(value) => 
+                          onIncludeSPCChartsChange={(value) =>
                             setReportConfig(prev => ({ ...prev, includeSPCCharts: value }))
                           }
-                          onIncludeStatsSummaryChange={(value) => 
+                          onIncludeStatsSummaryChange={(value) =>
                             setReportConfig(prev => ({ ...prev, includeStatsSummary: value }))
                           }
                           disabled={!reportConfig.tags?.length}
@@ -817,7 +852,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           <SpecificationLimitsConfig
                             tags={reportConfig.tags}
                             specificationLimits={reportConfig.specificationLimits}
-                            onChange={(limits) => 
+                            onChange={(limits) =>
                               setReportConfig(prev => ({ ...prev, specificationLimits: limits }))
                             }
                           />
@@ -846,7 +881,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                       hasSpecificationLimitErrors() ||
                       (reportConfig.timeRange?.startTime &&
                         reportConfig.timeRange?.endTime &&
-                        reportConfig.timeRange.startTime > reportConfig.timeRange.endTime)
+                        reportConfig.timeRange.startTime > reportConfig.timeRange.endTime) ||
+                      !hasChanges
                     }
                     loading={isLoading}
                   >
@@ -886,7 +922,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           template: reportConfig.template || 'default',
                           retrievalMode: reportConfig.retrievalMode || 'Delta'
                         }}
-                        onGenerate={handleGenerateReport}
                       />
                     </div>
                   )

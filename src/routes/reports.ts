@@ -79,7 +79,8 @@ const reportConfigBaseSchema = z.object({
   })).optional().transform(val => val as Record<string, SpecificationLimits> | undefined),
   includeSPCCharts: z.boolean().default(false),
   includeTrendLines: z.boolean().default(true),
-  includeStatsSummary: z.boolean().default(true)
+  includeStatsSummary: z.boolean().default(true),
+  version: z.number().int().positive().optional()
 });
 
 const reportConfigSchema = reportConfigBaseSchema.refine(
@@ -151,7 +152,8 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
     template: config.template,
     format: config.format,
     branding: config.branding,
-    metadata: config.metadata
+    metadata: config.metadata,
+    version: config.version
   };
 
   apiLogger.info('Starting end-to-end report generation', {
@@ -238,7 +240,7 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
  */
 router.get('/', authenticateToken, requirePermission('reports', 'read'), asyncHandler(async (req: Request, res: Response) => {
   initializeServices();
-  
+
   const { page = 1, limit = 10, search, userId } = req.query;
   const currentUserId = (req as any).user?.id; // Get from authentication middleware
 
@@ -288,7 +290,7 @@ router.get('/', authenticateToken, requirePermission('reports', 'read'), asyncHa
  */
 router.post('/save', authenticateToken, requirePermission('reports', 'write'), asyncHandler(async (req: Request, res: Response) => {
   initializeServices();
-  
+
   const requestResult = saveReportSchema.safeParse(req.body);
   if (!requestResult.success) {
     apiLogger.error('Invalid save report request', { errors: requestResult.error.errors });
@@ -298,9 +300,9 @@ router.post('/save', authenticateToken, requirePermission('reports', 'write'), a
   const saveRequest = requestResult.data as any;
   const currentUserId = (req as any).user?.id || 'anonymous'; // Get from authentication middleware
 
-  apiLogger.info('Saving report configuration', { 
-    name: saveRequest.name, 
-    userId: currentUserId 
+  apiLogger.info('Saving report configuration', {
+    name: saveRequest.name,
+    userId: currentUserId
   });
 
   try {
@@ -345,9 +347,9 @@ router.post('/', authenticateToken, requirePermission('reports', 'write'), async
   const saveRequest = requestResult.data as any;
   const currentUserId = (req as any).user?.id || 'anonymous';
 
-  apiLogger.info('Saving report configuration (legacy endpoint)', { 
-    name: saveRequest.name, 
-    userId: currentUserId 
+  apiLogger.info('Saving report configuration (legacy endpoint)', {
+    name: saveRequest.name,
+    userId: currentUserId
   });
 
   try {
@@ -383,7 +385,7 @@ router.post('/', authenticateToken, requirePermission('reports', 'write'), async
  */
 router.get('/:id', authenticateToken, requirePermission('reports', 'read'), asyncHandler(async (req: Request, res: Response) => {
   initializeServices();
-  
+
   const { id } = req.params;
 
   if (!id) {
@@ -419,7 +421,7 @@ router.get('/:id', authenticateToken, requirePermission('reports', 'read'), asyn
  */
 router.get('/:id/versions', authenticateToken, requirePermission('reports', 'read'), asyncHandler(async (req: Request, res: Response) => {
   initializeServices();
-  
+
   const { id } = req.params;
 
   if (!id) {
@@ -460,7 +462,7 @@ router.get('/:id/versions', authenticateToken, requirePermission('reports', 'rea
  */
 router.post('/:id/versions', authenticateToken, requirePermission('reports', 'write'), asyncHandler(async (req: Request, res: Response) => {
   initializeServices();
-  
+
   const { id } = req.params;
 
   if (!id) {
@@ -468,7 +470,7 @@ router.post('/:id/versions', authenticateToken, requirePermission('reports', 'wr
   }
 
   const configResult = reportConfigSchema.safeParse(req.body);
-  
+
   if (!configResult.success) {
     apiLogger.error('Invalid report configuration for new version', { errors: configResult.error.errors });
     throw createError('Invalid report configuration', 400);
@@ -482,9 +484,9 @@ router.post('/:id/versions', authenticateToken, requirePermission('reports', 'wr
 
   try {
     const newVersion = await reportManagementService.createNewVersion(
-      id, 
-      config as any, 
-      currentUserId, 
+      id,
+      config as any,
+      currentUserId,
       changeDescription
     );
 
@@ -509,7 +511,7 @@ router.post('/:id/versions', authenticateToken, requirePermission('reports', 'wr
  */
 router.put('/:id', authenticateToken, requirePermission('reports', 'write'), asyncHandler(async (req: Request, res: Response) => {
   initializeServices();
-  
+
   const { id } = req.params;
 
   if (!id) {
@@ -517,7 +519,7 @@ router.put('/:id', authenticateToken, requirePermission('reports', 'write'), asy
   }
 
   const configResult = reportConfigBaseSchema.partial().safeParse(req.body);
-  
+
   if (!configResult.success) {
     throw createError('Invalid report configuration', 400);
   }
@@ -583,7 +585,7 @@ router.put('/:id', authenticateToken, requirePermission('reports', 'write'), asy
  */
 router.delete('/:id', authenticateToken, requirePermission('reports', 'delete'), asyncHandler(async (req: Request, res: Response) => {
   initializeServices();
-  
+
   const { id } = req.params;
 
   if (!id) {
