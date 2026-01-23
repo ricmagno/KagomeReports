@@ -21,7 +21,7 @@ export interface User {
   role: 'user' | 'admin' | 'view-only';
   passwordHash: string;
   isActive: boolean;
-  lastLogin?: Date;
+  lastLogin?: Date | undefined;
   createdAt: Date;
   updatedAt: Date;
   parentUserId?: string | null;

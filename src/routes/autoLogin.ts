@@ -40,7 +40,7 @@ router.post('/check', asyncHandler(async (req: Request, res: Response) => {
   const validationResult = fingerprintSchema.safeParse(req.body);
   
   if (!validationResult.success) {
-    throw createError('Invalid fingerprint data', 400, validationResult.error.errors);
+    throw createError('Invalid fingerprint data', 400);
   }
 
   const { fingerprint } = validationResult.data;
@@ -56,8 +56,7 @@ router.post('/check', asyncHandler(async (req: Request, res: Response) => {
     success: true,
     data: {
       available: result.available,
-      userId: result.userId,
-      username: result.username
+      userId: result.userId
     }
   });
 }));
@@ -70,7 +69,7 @@ router.post('/enable', authenticateToken, asyncHandler(async (req: Request, res:
   const validationResult = enableAutoLoginSchema.safeParse(req.body);
   
   if (!validationResult.success) {
-    throw createError('Invalid auto-login data', 400, validationResult.error.errors);
+    throw createError('Invalid auto-login data', 400);
   }
 
   const { fingerprint, machineName } = validationResult.data;
@@ -90,9 +89,7 @@ router.post('/enable', authenticateToken, asyncHandler(async (req: Request, res:
   const machineId = await autoLoginService.enableAutoLogin(
     req.user!.id,
     fingerprint,
-    machineName,
-    req.ip,
-    req.get('User-Agent')
+    machineName
   );
 
   // Log audit event
@@ -120,19 +117,25 @@ router.post('/enable', authenticateToken, asyncHandler(async (req: Request, res:
  * Disable auto-login for current user
  */
 router.post('/disable', authenticateToken, asyncHandler(async (req: Request, res: Response) => {
+  const { fingerprint } = req.body;
+
+  if (!fingerprint) {
+    throw createError('Fingerprint required', 400);
+  }
+
   apiLogger.info('Disable auto-login request', { 
     userId: req.user?.id,
     username: req.user?.username 
   });
 
-  await autoLoginService.disableAutoLogin(req.user!.id);
+  await autoLoginService.disableAutoLogin(req.user!.id, fingerprint);
 
   // Log audit event
   await authService.logAuditEvent(
     req.user!.id,
     'auto_login_disabled',
     'auth',
-    'Auto-login disabled for all machines',
+    'Auto-login disabled for machine',
     req.ip,
     req.get('User-Agent')
   );
@@ -151,43 +154,35 @@ router.post('/authenticate', asyncHandler(async (req: Request, res: Response) =>
   const validationResult = authenticateAutoLoginSchema.safeParse(req.body);
   
   if (!validationResult.success) {
-    throw createError('Invalid authentication data', 400, validationResult.error.errors);
+    throw createError('Invalid authentication data', 400);
   }
 
   const { fingerprint } = validationResult.data;
 
   apiLogger.info('Auto-login authentication attempt', { 
     fingerprintHash: fingerprint.substring(0, 10) + '...',
-    ip: req.ip 
+    ip: req.ip || 'unknown'
   });
 
   // Validate auto-login token
   const validation = await autoLoginService.validateAutoLoginToken(
     fingerprint,
-    req.ip,
-    req.get('User-Agent')
+    req.ip || 'unknown'
   );
 
-  if (!validation.valid || !validation.user) {
+  if (!validation.success || !validation.user) {
     // Log failed attempt
     await authService.logAuditEvent(
       null,
       'auto_login_failed',
       'auth',
-      `Failed auto-login attempt from IP: ${req.ip}`,
-      req.ip,
+      `Failed auto-login attempt from IP: ${req.ip || 'unknown'}`,
+      req.ip || 'unknown',
       req.get('User-Agent')
     );
 
     throw createError('Auto-login authentication failed', 401);
   }
-
-  // Generate regular JWT token for the session
-  const authResult = await authService.authenticate(
-    validation.user.username,
-    '', // Password not needed for auto-login
-    false
-  );
 
   // Log successful auto-login
   await authService.logAuditEvent(
@@ -237,9 +232,15 @@ router.post('/fingerprint', asyncHandler(async (req: Request, res: Response) => 
  * Check if auto-login is enabled for current user
  */
 router.get('/status', authenticateToken, asyncHandler(async (req: Request, res: Response) => {
+  const { fingerprint } = req.query;
+
+  if (!fingerprint || typeof fingerprint !== 'string') {
+    throw createError('Fingerprint required', 400);
+  }
+
   apiLogger.info('Auto-login status request', { userId: req.user?.id });
 
-  const isEnabled = await autoLoginService.isAutoLoginEnabled(req.user!.id);
+  const isEnabled = await autoLoginService.isAutoLoginEnabled(req.user!.id, fingerprint);
 
   res.json({
     success: true,

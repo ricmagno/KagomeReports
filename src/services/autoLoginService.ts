@@ -17,7 +17,7 @@ export interface MachineInfo {
   machineName?: string;
   fingerprint: string;
   enabled: boolean;
-  lastUsed?: Date;
+  lastUsed?: Date | undefined;
   createdAt: Date;
 }
 
@@ -104,7 +104,7 @@ export class AutoLoginService {
         apiLogger.info('Auto-login updated', { userId, machineId: existing.id });
       } else {
         // Create new auto-login entry
-        const id = `autologin_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const id = `autologin_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 
         await new Promise<void>((resolve, reject) => {
           this.db.run(
@@ -242,10 +242,10 @@ export class AutoLoginService {
         autoLogin: true,
         machineFingerprint: machineFingerprint.substring(0, 12), // Only store prefix for security
         iat: Math.floor(Date.now() / 1000),
-        jti: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        jti: `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
       };
 
-      const token = jwt.sign(payload, this.jwtSecret, { expiresIn: this.autoLoginTokenExpiry });
+      const token = jwt.sign(payload, this.jwtSecret, { expiresIn: this.autoLoginTokenExpiry } as jwt.SignOptions);
 
       // Update last_used timestamp
       await new Promise<void>((resolve, reject) => {
@@ -348,7 +348,11 @@ export class AutoLoginService {
           isActive: Boolean(user.is_active),
           lastLogin: user.last_login ? new Date(user.last_login) : undefined,
           createdAt: new Date(user.created_at),
-          updatedAt: new Date(user.updated_at)
+          updatedAt: new Date(user.updated_at),
+          parentUserId: user.parent_user_id || null,
+          isViewOnly: Boolean(user.is_view_only),
+          autoLoginEnabled: Boolean(user.auto_login_enabled),
+          requirePasswordChange: Boolean(user.require_password_change)
         },
         token,
         expiresIn: this.autoLoginTokenExpiry

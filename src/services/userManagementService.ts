@@ -41,11 +41,11 @@ export interface CreateUserRequest {
 }
 
 export interface UpdateUserRequest {
-  email?: string;
-  firstName?: string;
-  lastName?: string;
-  role?: 'admin' | 'user' | 'view-only';
-  isActive?: boolean;
+  email?: string | undefined;
+  firstName?: string | undefined;
+  lastName?: string | undefined;
+  role?: 'admin' | 'user' | 'view-only' | undefined;
+  isActive?: boolean | undefined;
 }
 
 export interface UserResponse {

@@ -21,7 +21,7 @@ declare global {
         lastName: string;
         role: 'user' | 'admin' | 'view-only';
         isActive: boolean;
-        lastLogin?: Date;
+        lastLogin?: Date | undefined;
         createdAt: Date;
         updatedAt: Date;
         parentUserId?: string | null;
