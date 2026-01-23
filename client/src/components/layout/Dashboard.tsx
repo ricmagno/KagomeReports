@@ -11,7 +11,8 @@ import {
   Database,
   LogIn,
   LogOut,
-  Activity
+  Activity,
+  Users
 } from 'lucide-react';
 import { ReportConfig, TagInfo, ReportVersion } from '../../types/api';
 import { Button } from '../ui/Button';
@@ -24,6 +25,7 @@ import { SpecificationLimitsConfig } from '../reports/SpecificationLimitsConfig'
 import { AnalyticsOptions } from '../reports/AnalyticsOptions';
 import { StatusDashboard } from '../status/StatusDashboard';
 import { SchedulesList, SchedulesErrorBoundary } from '../schedules';
+import { UserManagement } from '../users';
 import { apiService, getAuthToken, setAuthToken } from '../../services/api';
 import { cn } from '../../utils/cn';
 
@@ -32,7 +34,7 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
-  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'categories' | 'database' | 'status'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'categories' | 'database' | 'status' | 'users'>('create');
   const [healthStatus, setHealthStatus] = useState<string>('checking...');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -559,6 +561,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 { id: 'categories', label: 'Categories', icon: Tag },
                 { id: 'status', label: 'Status', icon: Activity },
                 { id: 'database', label: 'Database', icon: Database },
+                ...(currentUser?.role === 'admin' ? [{ id: 'users', label: 'Users', icon: Users }] : []),
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -1120,6 +1123,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                     </div>
                   </div>
                 </div>
+              )
+            }
+
+            {
+              activeTab === 'users' && currentUser?.role === 'admin' && (
+                <UserManagement />
               )
             }
           </>

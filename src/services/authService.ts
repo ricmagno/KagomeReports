@@ -18,12 +18,16 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
-  role: 'user' | 'admin';
+  role: 'user' | 'admin' | 'view-only';
   passwordHash: string;
   isActive: boolean;
   lastLogin?: Date;
   createdAt: Date;
   updatedAt: Date;
+  parentUserId?: string | null;
+  isViewOnly: boolean;
+  autoLoginEnabled: boolean;
+  requirePasswordChange: boolean;
 }
 
 export interface UserSession {
@@ -202,7 +206,11 @@ export class AuthService {
       { role: 'user', resource: 'reports', action: 'write' },
       { role: 'user', resource: 'schedules', action: 'read' },
       { role: 'user', resource: 'schedules', action: 'write' },
-      { role: 'user', resource: 'system', action: 'read' }
+      { role: 'user', resource: 'system', action: 'read' },
+      
+      // View-Only permissions
+      { role: 'view-only', resource: 'reports', action: 'read' },
+      { role: 'view-only', resource: 'system', action: 'read' }
     ];
 
     permissions.forEach(perm => {
@@ -246,7 +254,11 @@ export class AuthService {
                 isActive: Boolean(row.is_active),
                 lastLogin: row.last_login ? new Date(row.last_login) : undefined,
                 createdAt: new Date(row.created_at),
-                updatedAt: new Date(row.updated_at)
+                updatedAt: new Date(row.updated_at),
+                parentUserId: row.parent_user_id || null,
+                isViewOnly: Boolean(row.is_view_only),
+                autoLoginEnabled: Boolean(row.auto_login_enabled),
+                requirePasswordChange: Boolean(row.require_password_change)
               } as User : null);
             }
           }
@@ -468,7 +480,11 @@ export class AuthService {
               isActive: Boolean(row.is_active),
               lastLogin: row.last_login ? new Date(row.last_login) : undefined,
               createdAt: new Date(row.created_at),
-              updatedAt: new Date(row.updated_at)
+              updatedAt: new Date(row.updated_at),
+              parentUserId: row.parent_user_id || null,
+              isViewOnly: Boolean(row.is_view_only),
+              autoLoginEnabled: Boolean(row.auto_login_enabled),
+              requirePasswordChange: Boolean(row.require_password_change)
             } as User : null);
           }
         }

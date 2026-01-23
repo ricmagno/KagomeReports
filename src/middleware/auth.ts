@@ -19,11 +19,15 @@ declare global {
         email: string;
         firstName: string;
         lastName: string;
-        role: 'user' | 'admin';
+        role: 'user' | 'admin' | 'view-only';
         isActive: boolean;
         lastLogin?: Date;
         createdAt: Date;
         updatedAt: Date;
+        parentUserId?: string | null;
+        isViewOnly: boolean;
+        autoLoginEnabled: boolean;
+        requirePasswordChange: boolean;
       };
     }
   }
@@ -75,14 +79,21 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
 /**
  * Middleware to check if user has required role
  */
-export const requireRole = (requiredRole: 'user' | 'admin') => {
+export const requireRole = (requiredRole: 'user' | 'admin' | 'view-only') => {
   return (req: Request, res: Response, next: NextFunction): void => {
     if (!req.user) {
       next(createError('Authentication required', 401));
       return;
     }
 
-    if (req.user.role !== requiredRole && req.user.role !== 'admin') {
+    // Admin has access to everything
+    if (req.user.role === 'admin') {
+      next();
+      return;
+    }
+
+    // Check if user has the required role
+    if (req.user.role !== requiredRole) {
       apiLogger.warn('Insufficient permissions', {
         userId: req.user.id,
         userRole: req.user.role,
@@ -246,4 +257,37 @@ export const validateSession = async (req: Request, res: Response, next: NextFun
   } catch (error) {
     next(error);
   }
+};
+
+/**
+ * Middleware to check if password change is required
+ */
+export const checkPasswordChangeRequired = (req: Request, res: Response, next: NextFunction): void => {
+  if (!req.user) {
+    next(createError('Authentication required', 401));
+    return;
+  }
+
+  // Allow password change endpoint even if password change is required
+  if (req.path === '/api/auth/password' || req.path === '/api/users/me/change-password') {
+    next();
+    return;
+  }
+
+  if (req.user.requirePasswordChange) {
+    apiLogger.warn('Password change required', {
+      userId: req.user.id,
+      path: req.path
+    });
+    
+    res.status(403).json({
+      success: false,
+      error: 'Password change required',
+      requirePasswordChange: true,
+      message: 'You must change your password before accessing this resource'
+    });
+    return;
+  }
+
+  next();
 };

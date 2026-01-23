@@ -16,6 +16,8 @@ import autoUpdateRoutes from './autoUpdate';
 import databaseConfigRoutes from './databaseConfig';
 import statusRoutes from './status';
 import filesystemRoutes from './filesystem';
+import usersRoutes from './users';
+import autoLoginRoutes from './autoLogin';
 
 const router = Router();
 
@@ -32,6 +34,8 @@ router.use('/auto-update', autoUpdateRoutes);
 router.use('/database', databaseConfigRoutes);
 router.use('/status', statusRoutes);
 router.use('/filesystem', filesystemRoutes);
+router.use('/users', usersRoutes);
+router.use('/auth/auto-login', autoLoginRoutes);
 
 // API info endpoint
 router.get('/', (req, res) => {
@@ -51,7 +55,9 @@ router.get('/', (req, res) => {
       autoUpdate: '/api/auto-update',
       database: '/api/database',
       status: '/api/status',
-      filesystem: '/api/filesystem'
+      filesystem: '/api/filesystem',
+      users: '/api/users',
+      autoLogin: '/api/auth/auto-login'
     }
   });
 });
