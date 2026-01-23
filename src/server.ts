@@ -90,6 +90,15 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
   setupDatabaseConfigIntegration();
   logger.info('✓ Database configuration integration setup completed');
 
+  // Seed initial users
+  try {
+    const { userManagementService } = await import('@/services/userManagementService');
+    await userManagementService.seedInitialUsers();
+    logger.info('✓ Initial users seeded/verified');
+  } catch (error) {
+    logger.error('✗ Failed to seed initial users:', error);
+  }
+
   // 1. Environment Configuration Validation
   try {
     const envStart = Date.now();

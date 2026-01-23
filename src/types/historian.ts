@@ -106,6 +106,8 @@ export interface TrendLineResult {
   intercept: number;    // b in y = mx + b
   rSquared: number;     // Coefficient of determination (0-1)
   equation: string;     // Formatted equation string
+  correlation: number;  // Correlation coefficient (r)
+  confidence: number;   // Statistical confidence (usually same as rSquared)
 }
 
 // Trend line calculator interface

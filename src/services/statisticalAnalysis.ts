@@ -206,7 +206,9 @@ export class StatisticalAnalysisService implements SPCCalculator, TrendLineCalcu
         slope: 0,
         intercept: Number(value.toFixed(2)),
         rSquared: 1.0, // Perfect fit for horizontal line
-        equation: this.formatTrendEquation(0, value)
+        equation: this.formatTrendEquation(0, value),
+        correlation: 1.0,
+        confidence: 1.0
       };
     }
 
@@ -273,7 +275,9 @@ export class StatisticalAnalysisService implements SPCCalculator, TrendLineCalcu
       slope: Number(slope.toFixed(6)),
       intercept: Number(intercept.toFixed(4)),
       rSquared: Number(rSquared.toFixed(3)),
-      equation: this.formatTrendEquation(slope, intercept)
+      equation: this.formatTrendEquation(slope, intercept),
+      correlation: Number((Math.sqrt(rSquared) * (slope >= 0 ? 1 : -1)).toFixed(3)),
+      confidence: Number(rSquared.toFixed(3))
     };
   }
 
