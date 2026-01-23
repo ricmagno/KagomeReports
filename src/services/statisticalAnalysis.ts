@@ -3,15 +3,25 @@
  * Provides mathematical functions for trend analysis, statistics, and anomaly detection
  */
 
-import { TimeSeriesData, StatisticsResult, TrendResult, AnomalyResult, TrendLineResult, SPCMetrics, SpecificationLimits } from '@/types/historian';
+import {
+  TimeSeriesData,
+  StatisticsResult,
+  TrendResult,
+  AnomalyResult,
+  TrendLineResult,
+  SPCMetrics,
+  SpecificationLimits,
+  TrendLineCalculator,
+  SPCCalculator
+} from '@/types/historian';
 import { dbLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
 import { validateSpecificationLimitsOrThrow } from '@/utils/specificationLimitsValidator';
 import { CacheService } from './cacheService';
 import { createHash } from 'crypto';
-import { analyticsErrorHandler, AnalyticsResult } from '@/utils/analyticsErrorHandler';
+import { analyticsErrorHandler } from '@/utils/analyticsErrorHandler';
 
-export class StatisticalAnalysisService {
+export class StatisticalAnalysisService implements SPCCalculator, TrendLineCalculator {
   private cacheService: CacheService | undefined;
 
   constructor(cacheService?: CacheService) {
@@ -104,9 +114,9 @@ export class StatisticalAnalysisService {
   }
 
   /**
-   * Calculate linear regression trend line
+   * Calculate basic regression trend line (Internal version)
    */
-  calculateTrendLine(data: TimeSeriesData[]): TrendResult {
+  calculateBasicTrendLine(data: TimeSeriesData[]): TrendResult {
     if (data.length < 2) {
       throw createError('At least 2 data points required for trend analysis', 400);
     }
@@ -280,6 +290,21 @@ export class StatisticalAnalysisService {
     const b = Math.abs(intercept).toFixed(2);
     const sign = intercept >= 0 ? '+' : '-';
     return `y = ${m}x ${sign} ${b}`;
+  }
+
+  /**
+   * Calculate linear regression trend line
+   * Implementation of TrendLineCalculator interface
+   */
+  calculateTrendLine(data: TimeSeriesData[]): TrendLineResult {
+    return this.calculateAdvancedTrendLine(data);
+  }
+
+  /**
+   * Format trend line equation for display
+   */
+  formatEquation(slope: number, intercept: number): string {
+    return this.formatTrendEquation(slope, intercept);
   }
 
   /**
@@ -533,8 +558,8 @@ export class StatisticalAnalysisService {
       const currentPoint = data[i]!;
 
       // Calculate trends for before and after windows
-      const beforeTrend = this.calculateTrendLine(beforeWindow);
-      const afterTrend = this.calculateTrendLine(afterWindow);
+      const beforeTrend = this.calculateBasicTrendLine(beforeWindow);
+      const afterTrend = this.calculateBasicTrendLine(afterWindow);
 
       // Detect significant trend changes
       const slopeChange = Math.abs(afterTrend.slope - beforeTrend.slope);
@@ -686,8 +711,8 @@ export class StatisticalAnalysisService {
         const meanChangePercent = previousStats.average !== 0 ? (meanChange / Math.abs(previousStats.average)) * 100 : 0;
 
         // Calculate trend changes
-        const currentTrend = this.calculateTrendLine(currentWindow);
-        const previousTrend = this.calculateTrendLine(previousWindow);
+        const currentTrend = this.calculateBasicTrendLine(currentWindow);
+        const previousTrend = this.calculateBasicTrendLine(previousWindow);
         const slopeChange = Math.abs(currentTrend.slope - previousTrend.slope);
         const correlationChange = Math.abs(currentTrend.correlation - previousTrend.correlation);
 
@@ -774,8 +799,8 @@ export class StatisticalAnalysisService {
       const afterWindow = data.slice(i, i + windowSize);
 
       if (beforeWindow.length === windowSize && afterWindow.length === windowSize) {
-        const beforeTrend = this.calculateTrendLine(beforeWindow);
-        const afterTrend = this.calculateTrendLine(afterWindow);
+        const beforeTrend = this.calculateBasicTrendLine(beforeWindow);
+        const afterTrend = this.calculateBasicTrendLine(afterWindow);
         const beforeStats = this.calculateStatisticsSync(beforeWindow);
         const afterStats = this.calculateStatisticsSync(afterWindow);
 
@@ -1343,6 +1368,35 @@ export class StatisticalAnalysisService {
       cp: cp !== null && isFinite(cp) ? Number(cp.toFixed(2)) : cp,
       cpk: cpk !== null && isFinite(cpk) ? Number(cpk.toFixed(2)) : cpk,
       outOfControlPoints
+    };
+  }
+
+  /**
+   * Calculate Control Limits (UCL and LCL) for a dataset
+   * Uses the 3-sigma rule (X̄ ± 3σ)
+   * 
+   * @param data - Time-series data points
+   * @returns Object containing ucl and lcl
+   */
+  calculateControlLimits(data: TimeSeriesData[]): { ucl: number; lcl: number; mean: number; stdDev: number } {
+    const validData = data.filter(point => !isNaN(point.value) && isFinite(point.value));
+
+    if (validData.length < 2) {
+      throw createError('At least 2 valid data points required for control limits calculation', 400);
+    }
+
+    const values = validData.map(d => d.value);
+    const n = values.length;
+
+    const mean = values.reduce((sum, v) => sum + v, 0) / n;
+    const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / (n - 1);
+    const stdDev = Math.sqrt(variance);
+
+    return {
+      mean: Number(mean.toFixed(2)),
+      stdDev: Number(stdDev.toFixed(2)),
+      ucl: Number((mean + 3 * stdDev).toFixed(2)),
+      lcl: Number((mean - 3 * stdDev).toFixed(2))
     };
   }
 

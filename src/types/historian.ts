@@ -114,7 +114,7 @@ export interface TrendLineCalculator {
    * Calculate linear regression trend line
    */
   calculateTrendLine(data: TimeSeriesData[]): TrendLineResult;
-  
+
   /**
    * Format trend line equation for display
    */
@@ -177,19 +177,19 @@ export interface SPCCalculator {
    * Calculate SPC metrics for a dataset
    */
   calculateSPCMetrics(
-    data: TimeSeriesData[], 
+    data: TimeSeriesData[],
     specLimits?: SpecificationLimits
   ): SPCMetrics;
-  
+
   /**
    * Identify out-of-control points
    */
   identifyOutOfControlPoints(
-    data: TimeSeriesData[], 
-    ucl: number, 
+    data: TimeSeriesData[],
+    ucl: number,
     lcl: number
   ): number[];
-  
+
   /**
    * Assess process capability
    */
@@ -201,6 +201,8 @@ export interface SPCMetricsSummary {
   tagName: string;
   mean: number;
   stdDev: number;
+  ucl: number;    // Upper Control Limit
+  lcl: number;    // Lower Control Limit
   lsl: number | null;
   usl: number | null;
   cp: number | null;
@@ -221,7 +223,7 @@ export interface TagClassificationService {
    * Classify a tag based on its data characteristics
    */
   classifyTag(data: TimeSeriesData[]): TagClassification;
-  
+
   /**
    * Classify multiple tags in batch
    */

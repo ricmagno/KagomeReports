@@ -206,6 +206,8 @@ export class ReportGenerationService {
                   tagName,
                   mean: metrics.mean,
                   stdDev: metrics.stdDev,
+                  ucl: metrics.ucl,
+                  lcl: metrics.lcl,
                   lsl: specLimits?.lsl ?? null,
                   usl: specLimits?.usl ?? null,
                   cp: metrics.cp,
@@ -1184,8 +1186,8 @@ export class ReportGenerationService {
 
     const tableTop = doc.y + 10;
     const tableLeft = 40;
-    const colWidths: number[] = [120, 65, 65, 60, 60, 55, 55, 50];
-    const headers = ['Tag Name', 'Average', 'Std Dev', 'LSL', 'USL', 'Cp', 'Cpk', 'Stat'];
+    const colWidths: number[] = [100, 50, 50, 50, 50, 45, 45, 45, 45, 50];
+    const headers = ['Tag Name', 'Average', 'Std Dev', 'LCL', 'UCL', 'LSL', 'USL', 'Cp', 'Cpk', 'Stat'];
     const rowHeight = 20;
     const headerHeight = 25;
 
@@ -1207,14 +1209,14 @@ export class ReportGenerationService {
 
     // Draw table header text
     let x = tableLeft;
-    doc.fontSize(10)
+    doc.fontSize(8) // Reduced from 10 to fit more columns
       .fillColor('#374151')
       .font('Helvetica-Bold');
 
     headers.forEach((header, i) => {
       const width = colWidths[i] || 60;
-      doc.text(header, x + 5, currentY + 7, {
-        width: width - 10,
+      doc.text(header, x + 2, currentY + 7, { // Reduced padding
+        width: width - 4,
         align: 'center'
       });
       x += width;
@@ -1223,7 +1225,7 @@ export class ReportGenerationService {
     currentY += headerHeight;
 
     // Draw table rows
-    doc.fontSize(9)
+    doc.fontSize(8) // Reduced from 9 to fit
       .fillColor('#111827')
       .font('Helvetica');
 
@@ -1241,78 +1243,91 @@ export class ReportGenerationService {
 
       // Tag name (left-aligned)
       doc.fillColor('#111827')
-        .text(metric.tagName, x + 5, currentY + 5, {
-          width: colWidths[0]! - 10,
+        .text(metric.tagName, x + 2, currentY + 5, {
+          width: colWidths[0]! - 4,
           align: 'left'
         });
       x += colWidths[0]!;
 
       // Mean (X̄)
-      doc.text(metric.mean.toFixed(2), x + 5, currentY + 5, {
-        width: colWidths[1]! - 10,
+      doc.text(metric.mean.toFixed(2), x + 2, currentY + 5, {
+        width: colWidths[1]! - 4,
         align: 'center'
       });
       x += colWidths[1]!;
 
       // StdDev (σest)
-      doc.text(metric.stdDev.toFixed(2), x + 5, currentY + 5, {
-        width: colWidths[2]! - 10,
+      doc.text(metric.stdDev.toFixed(2), x + 2, currentY + 5, {
+        width: colWidths[2]! - 4,
         align: 'center'
       });
       x += colWidths[2]!;
 
+      // LCL
+      doc.text(metric.lcl.toFixed(2), x + 2, currentY + 5, {
+        width: colWidths[3]! - 4,
+        align: 'center'
+      });
+      x += colWidths[3]!;
+
+      // UCL
+      doc.text(metric.ucl.toFixed(2), x + 2, currentY + 5, {
+        width: colWidths[4]! - 4,
+        align: 'center'
+      });
+      x += colWidths[4]!;
+
       // LSL
       doc.text(
         metric.lsl !== null ? metric.lsl.toFixed(2) : 'N/A',
-        x + 5,
+        x + 2,
         currentY + 5,
-        { width: colWidths[3]! - 10, align: 'center' }
+        { width: colWidths[5]! - 4, align: 'center' }
       );
-      x += colWidths[3]!;
+      x += colWidths[5]!;
 
       // USL
       doc.text(
         metric.usl !== null ? metric.usl.toFixed(2) : 'N/A',
-        x + 5,
+        x + 2,
         currentY + 5,
-        { width: colWidths[4]! - 10, align: 'center' }
+        { width: colWidths[6]! - 4, align: 'center' }
       );
-      x += colWidths[4]!;
+      x += colWidths[6]!;
 
       // Cp
       doc.text(
         metric.cp !== null ? metric.cp.toFixed(2) : 'N/A',
-        x + 5,
+        x + 2,
         currentY + 5,
-        { width: colWidths[5]! - 10, align: 'center' }
+        { width: colWidths[7]! - 4, align: 'center' }
       );
-      x += colWidths[5]!;
+      x += colWidths[7]!;
 
       // Cpk
       doc.text(
         metric.cpk !== null ? metric.cpk.toFixed(2) : 'N/A',
-        x + 5,
+        x + 2,
         currentY + 5,
-        { width: colWidths[6]! - 10, align: 'center' }
+        { width: colWidths[8]! - 4, align: 'center' }
       );
-      x += colWidths[6]!;
+      x += colWidths[8]!;
 
       // Capability assessment with visual indicator
       const capabilityText = metric.capability;
       let capabilityColor = '#111827'; // Default black
 
-      // Use grayscale indicators for capability
       if (metric.capability === 'Capable') {
-        capabilityColor = '#111827'; // Dark (good)
+        capabilityColor = '#111827'; // Dark
       } else if (metric.capability === 'Marginal') {
-        capabilityColor = '#6b7280'; // Medium gray (warning)
+        capabilityColor = '#6b7280'; // Gray
       } else if (metric.capability === 'Not Capable') {
-        capabilityColor = '#9ca3af'; // Light gray (poor)
+        capabilityColor = '#9ca3af'; // Light gray
       }
 
       doc.fillColor(capabilityColor)
-        .text(capabilityText, x + 5, currentY + 5, {
-          width: colWidths[7]! - 10,
+        .text(capabilityText, x + 2, currentY + 5, {
+          width: colWidths[9]! - 4,
           align: 'center'
         });
 
