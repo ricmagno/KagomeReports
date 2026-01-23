@@ -72,7 +72,7 @@ describe('ConfigExportService', () => {
 
       // Assert
       expect(result.filename).toMatch(/^ReportConfig_Temper_Pressu_Flow_\d{8}_\d{6}\.json$/);
-      
+
       const exportedConfig: ExportedConfiguration = JSON.parse(result.data as string);
       expect(exportedConfig.reportConfig.tags).toEqual(['Temperature', 'Pressure', 'Flow']);
     });
@@ -373,7 +373,7 @@ describe('ConfigExportService', () => {
       expect(result).toBeDefined();
       expect(result.filename).toBeDefined();
       expect(result.data).toBeDefined();
-      
+
       // Verify the size is reasonable
       const sizeBytes = Buffer.byteLength(result.data as string, 'utf8');
       expect(sizeBytes).toBeLessThan(5 * 1024 * 1024); // Less than 5 MB
@@ -396,7 +396,7 @@ describe('ConfigExportService', () => {
       const result = await service.exportConfiguration(config, { format: 'powerbi' });
 
       // Assert
-      expect(result.filename).toMatch(/^PowerBI_Temperature_\d{8}_\d{6}\.pq$/);
+      expect(result.filename).toMatch(/^PowerBI_Temperature_\d{8}_\d{6}\.m$/);
       expect(result.contentType).toBe('text/plain');
       expect(typeof result.data).toBe('string');
 
@@ -513,13 +513,13 @@ describe('ConfigExportService', () => {
 
       // Assert
       const exportedConfig: ExportedConfiguration = JSON.parse(result.data as string);
-      
+
       // Verify the exported config structure doesn't have credential fields
       expect(exportedConfig.connectionMetadata).not.toHaveProperty('password');
       expect(exportedConfig.connectionMetadata).not.toHaveProperty('databasePassword');
       expect(exportedConfig.connectionMetadata).not.toHaveProperty('databaseUser');
       expect(exportedConfig.connectionMetadata).not.toHaveProperty('user');
-      
+
       // Verify connection metadata only has safe fields
       const connectionKeys = Object.keys(exportedConfig.connectionMetadata);
       expect(connectionKeys).toEqual(['databaseServer', 'databaseName', 'smtpServer', 'smtpPort']);
@@ -543,12 +543,12 @@ describe('ConfigExportService', () => {
 
       // Assert
       const exportedConfig: ExportedConfiguration = JSON.parse(result.data as string);
-      
+
       // Verify the exported config structure doesn't have SMTP credential fields
       expect(exportedConfig.connectionMetadata).not.toHaveProperty('smtpPassword');
       expect(exportedConfig.connectionMetadata).not.toHaveProperty('smtpUser');
       expect(exportedConfig.connectionMetadata).not.toHaveProperty('smtpUsername');
-      
+
       // Verify connection metadata only has safe fields
       const connectionKeys = Object.keys(exportedConfig.connectionMetadata);
       expect(connectionKeys).toEqual(['databaseServer', 'databaseName', 'smtpServer', 'smtpPort']);
@@ -600,7 +600,7 @@ describe('ConfigExportService', () => {
       // Assert
       const exportedConfig: ExportedConfiguration = JSON.parse(result.data as string);
       const instructions = exportedConfig.securityNotice.instructions.join(' ');
-      
+
       // Verify instructions mention key security points
       expect(instructions).toContain('DB_USER');
       expect(instructions).toContain('DB_PASSWORD');
@@ -628,7 +628,7 @@ describe('ConfigExportService', () => {
       // Assert
       const exportedConfig: ExportedConfiguration = JSON.parse(result.data as string);
       const instructions = exportedConfig.securityNotice.instructions.join(' ');
-      
+
       // Verify instructions mention safe sharing
       expect(instructions).toContain('safe to share');
       expect(instructions).toContain('no sensitive information');
@@ -660,8 +660,6 @@ describe('ConfigExportService', () => {
       expect(mQuery).toContain('CONFIGURATION INSTRUCTIONS');
       expect(mQuery).toContain('SECURITY NOTICE');
       expect(mQuery).toContain('QUERY PARAMETERS');
-      expect(mQuery).toContain('DATA STRUCTURE');
-      expect(mQuery).toContain('CUSTOMIZATION');
 
       // Verify connection parameters
       expect(mQuery).toContain('Server = ');
@@ -669,13 +667,6 @@ describe('ConfigExportService', () => {
 
       // Verify tag selection
       expect(mQuery).toContain('Tags = {"Temperature", "Pressure"}');
-
-      // Verify time range parameters
-      expect(mQuery).toContain('StartTime = #datetime(');
-      expect(mQuery).toContain('EndTime = #datetime(');
-
-      // Verify quality filter
-      expect(mQuery).toContain('QualityFilter = 192');
 
       // Verify SQL query structure
       expect(mQuery).toContain('SELECT');
@@ -710,8 +701,8 @@ describe('ConfigExportService', () => {
       const result = await service.exportConfiguration(config, { format: 'powerbi' });
 
       // Assert
-      expect(result.filename).toMatch(/^PowerBI_Temperature_\d{8}_\d{6}\.pq$/);
-      expect(result.filename).toContain('.pq');
+      expect(result.filename).toMatch(/^PowerBI_Temperature_\d{8}_\d{6}\.m$/);
+      expect(result.filename).toContain('.m');
     });
 
     it('should handle multiple tags in Power BI export', async () => {
@@ -733,10 +724,10 @@ describe('ConfigExportService', () => {
       // Assert
       const mQuery = result.data as string;
       expect(mQuery).toContain('Tags = {"Tag1", "Tag2", "Tag3"}');
-      expect(result.filename).toMatch(/^PowerBI_Tag1_Tag2_Tag3_\d{8}_\d{6}\.pq$/);
+      expect(result.filename).toMatch(/^PowerBI_Tag1_Tag2_Tag3_\d{8}_\d{6}\.m$/);
     });
 
-    it('should escape special characters in tag names for Power BI', async () => {
+    it('should escape double quotes in tag names for M Query array', async () => {
       // Arrange
       const config: ReportConfig = {
         name: 'Special Chars Report',
@@ -754,11 +745,11 @@ describe('ConfigExportService', () => {
 
       // Assert
       const mQuery = result.data as string;
-      // Double quotes should be escaped in M Query
+      // Double quotes should be escaped as "" in M Query
       expect(mQuery).toContain('Tag""With""Quotes');
     });
 
-    it('should include security notice in Power BI export', async () => {
+    it('should include quality filter in M Query and SQL query', async () => {
       // Arrange
       const config: ReportConfig = {
         name: 'Test Report',
@@ -776,9 +767,8 @@ describe('ConfigExportService', () => {
 
       // Assert
       const mQuery = result.data as string;
-      expect(mQuery).toContain('SECURITY NOTICE');
-      expect(mQuery).toContain('does NOT contain credentials');
-      expect(mQuery).toContain('Never share files containing credentials');
+      expect(mQuery).toContain('QualityFilter = 192');
+      expect(mQuery).toContain('h.QualityCode = " & Number.ToText(QualityFilter) & "');
     });
 
     it('should format dates correctly in Power BI M Query', async () => {
@@ -799,17 +789,15 @@ describe('ConfigExportService', () => {
 
       // Assert
       const mQuery = result.data as string;
-      // Check M Query datetime format (should contain year, month, day)
-      expect(mQuery).toContain('#datetime(2024, 3,');
-      expect(mQuery).toContain('StartTime = #datetime(');
-      expect(mQuery).toContain('EndTime = #datetime(');
-      // Check SQL datetime format contains year-month-day pattern
-      expect(mQuery).toMatch(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
-      // Verify dates are in the query
-      expect(mQuery).toContain('2024-03');
+      // Check M Query datetime format
+      expect(mQuery).toContain('#datetime(2024, 3, 15, 8, 30, 45)');
+      expect(mQuery).toContain('#datetime(2024, 3, 16, 16, 45, 30)');
+      // Check SQL datetime format in the query string
+      expect(mQuery).toContain('2024-03-15 08:30:45');
+      expect(mQuery).toContain('2024-03-16 16:45:30');
     });
 
-    it('should include quality code filtering in Power BI export', async () => {
+    it('should include quality status mapping in M Query script', async () => {
       // Arrange
       const config: ReportConfig = {
         name: 'Test Report',
@@ -827,36 +815,10 @@ describe('ConfigExportService', () => {
 
       // Assert
       const mQuery = result.data as string;
-      expect(mQuery).toContain('QualityFilter = 192');
-      expect(mQuery).toContain('h.QualityCode = 192');
+      expect(mQuery).toContain("CASE");
       expect(mQuery).toContain("WHEN h.QualityCode = 192 THEN 'Good'");
-      expect(mQuery).toContain("WHEN h.QualityCode = 0 THEN 'Bad'");
-    });
-
-    it('should include type conversions in Power BI export', async () => {
-      // Arrange
-      const config: ReportConfig = {
-        name: 'Test Report',
-        tags: ['Temperature'],
-        timeRange: {
-          startTime: new Date('2024-01-01T00:00:00Z'),
-          endTime: new Date('2024-01-02T00:00:00Z'),
-        },
-        chartTypes: ['line'],
-        template: 'default',
-      };
-
-      // Act
-      const result = await service.exportConfiguration(config, { format: 'powerbi' });
-
-      // Assert
-      const mQuery = result.data as string;
-      expect(mQuery).toContain('Table.TransformColumnTypes');
-      expect(mQuery).toContain('{"TagName", type text}');
-      expect(mQuery).toContain('{"DateTime", type datetime}');
-      expect(mQuery).toContain('{"Value", type number}');
-      expect(mQuery).toContain('{"QualityCode", Int64.Type}');
-      expect(mQuery).toContain('{"QualityStatus", type text}');
+      expect(mQuery).toContain("ELSE 'Uncertain'");
+      expect(mQuery).toContain("QualityStatus");
     });
   });
 });

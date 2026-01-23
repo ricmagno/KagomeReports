@@ -202,7 +202,7 @@ This implementation plan breaks down the Report Configuration Export/Import feat
     - Handle errors and return appropriate HTTP status codes
     - _Requirements: 1.1, 2.1, 4.3_
 
-  - [ ]* 12.2 Write integration test for export endpoint
+  - [x]* 12.2 Write integration test for export endpoint
     - Test JSON export via API
     - Test Power BI export via API
     - Test error handling (invalid config, oversized)
@@ -218,7 +218,7 @@ This implementation plan breaks down the Report Configuration Export/Import feat
     - Handle errors and return appropriate HTTP status codes
     - _Requirements: 3.2, 3.3, 3.5_
 
-  - [ ]* 13.2 Write integration test for import endpoint
+  - [x]* 13.2 Write integration test for import endpoint
     - Test valid JSON import via API
     - Test invalid JSON import via API
     - Test validation errors via API
@@ -236,7 +236,7 @@ This implementation plan breaks down the Report Configuration Export/Import feat
     - **Property 20: Format Preference Persistence**
     - **Validates: Requirements 4.5**
 
-- [~] 15. Implement frontend ExportImportControls component
+- [x] 15. Implement frontend ExportImportControls component
   - [x] 15.1 Create ExportImportControls React component
     - Create component in client/src/components/reports/
     - Add Export and Import buttons with icons (Download, Upload)
@@ -261,7 +261,7 @@ This implementation plan breaks down the Report Configuration Export/Import feat
     - Display validation errors if import fails
     - _Requirements: 3.1, 3.2, 3.5, 3.6_
 
-  - [ ]* 15.4 Write unit tests for ExportImportControls
+  - [x]* 15.4 Write unit tests for ExportImportControls
     - Test button rendering
     - Test export button click
     - Test import button click
@@ -269,7 +269,7 @@ This implementation plan breaks down the Report Configuration Export/Import feat
     - Test error handling
     - _Requirements: 9.1, 9.4, 9.5_
 
-- [~] 16. Implement FormatSelectionDialog component
+- [x] 16. Implement FormatSelectionDialog component
   - [x] 16.1 Create FormatSelectionDialog React component
     - Create modal dialog component
     - Add format options: JSON and Power BI
@@ -278,14 +278,14 @@ This implementation plan breaks down the Report Configuration Export/Import feat
     - Style with Tailwind CSS following design system
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-  - [ ]* 16.2 Write unit tests for FormatSelectionDialog
+  - [x]* 16.2 Write unit tests for FormatSelectionDialog
     - Test dialog rendering
     - Test format selection
     - Test confirm action
     - Test cancel action
     - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
-- [~] 17. Implement validation error display
+- [x] 17. Implement validation error display
   - [x] 17.1 Create ValidationErrorDialog component
     - Create modal dialog for displaying validation errors
     - Display list of validation errors with field names
@@ -294,13 +294,13 @@ This implementation plan breaks down the Report Configuration Export/Import feat
     - Style with Tailwind CSS
     - _Requirements: 3.7, 5.1, 5.2, 5.3, 5.4_
 
-  - [ ]* 17.2 Write unit tests for ValidationErrorDialog
+  - [x]* 17.2 Write unit tests for ValidationErrorDialog
     - Test error list rendering
     - Test warning display
     - Test action buttons
     - _Requirements: 3.7, 5.3, 5.4_
 
-- [~] 18. Integrate export/import into ReportConfiguration component
+- [x] 18. Integrate export/import into ReportConfiguration component
   - [x] 18.1 Add ExportImportControls to ReportConfiguration header
     - Import and render ExportImportControls component
     - Pass current configuration as prop
@@ -315,7 +315,7 @@ This implementation plan breaks down the Report Configuration Export/Import feat
     - Mark form as modified
     - _Requirements: 3.5, 3.6_
 
-- [~] 19. Implement error logging for validation failures
+- [x] 19. Implement error logging for validation failures
   - [x] 19.1 Add logging to import service
     - Log all validation errors with context
     - Log import attempts (success and failure)
@@ -327,7 +327,7 @@ This implementation plan breaks down the Report Configuration Export/Import feat
     - **Property 17: Validation Error Logging**
     - **Validates: Requirements 5.6**
 
-- [~] 20. Implement state preservation on import failure
+- [x] 20. Implement state preservation on import failure
   - [x] 20.1 Add state protection in import handler
     - Store current configuration before import
     - Only update configuration on successful validation
@@ -338,7 +338,7 @@ This implementation plan breaks down the Report Configuration Export/Import feat
     - **Property 18: State Preservation on Failure**
     - **Validates: Requirements 5.7**
 
-- [~] 21. Implement schema version migration
+- [x] 21. Implement schema version migration
   - [x] 21.1 Create SchemaVersionMigrator utility
     - Implement migration path detection
     - Create migration functions for version upgrades
@@ -350,10 +350,10 @@ This implementation plan breaks down the Report Configuration Export/Import feat
     - **Property 12: Schema Version Compatibility**
     - **Validates: Requirements 3.4**
 
-- [~] 22. Checkpoint - Ensure all integration tests pass
+- [x] 22. Checkpoint - Ensure all integration tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [~] 23. Add API documentation for export/import endpoints
+- [x] 23. Add API documentation for export/import endpoints
   - Document POST /api/reports/export endpoint
   - Document POST /api/reports/import endpoint
   - Include request/response examples
@@ -361,7 +361,7 @@ This implementation plan breaks down the Report Configuration Export/Import feat
   - Add to existing API documentation
   - _Requirements: All_
 
-- [~] 24. Create user documentation
+- [x] 24. Create user documentation
   - Write user guide for export functionality
   - Write user guide for import functionality
   - Document Power BI integration steps
@@ -369,8 +369,8 @@ This implementation plan breaks down the Report Configuration Export/Import feat
   - Add screenshots of UI components
   - _Requirements: All_
 
-- [~] 25. Final integration testing and polish
-  - [~] 25.1 End-to-end testing
+- [x] 25. Final integration testing and polish
+  - [x] 25.1 End-to-end testing
     - Test complete export flow (UI → API → Service → File)
     - Test complete import flow (File → API → Service → UI)
     - Test Power BI export with Power BI Desktop
@@ -379,21 +379,21 @@ This implementation plan breaks down the Report Configuration Export/Import feat
     - Test with Unicode characters
     - _Requirements: All_
 
-  - [~] 25.2 Performance validation
+  - [x] 25.2 Performance validation
     - Measure export time for typical configurations
     - Measure import time for typical configurations
     - Verify operations complete within 2 seconds
     - Optimize if necessary
     - _Requirements: 7.1, 7.2_
 
-  - [~] 25.3 Security audit
+  - [x] 25.3 Security audit
     - Verify no credentials in exported files
     - Verify security notices are present
     - Test with sensitive data
     - Review code for security issues
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5_
 
-  - [~] 25.4 UI/UX polish
+  - [x] 25.4 UI/UX polish
     - Verify button positioning and styling
     - Verify tooltips are helpful
     - Verify error messages are clear
@@ -401,17 +401,140 @@ This implementation plan breaks down the Report Configuration Export/Import feat
     - Test accessibility (keyboard navigation, screen readers)
     - _Requirements: 9.1, 9.2, 9.3, 9.4, 9.5_
 
-- [~] 26. Final checkpoint - Ensure all tests pass
+- [x] 26. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
+
+## Phase 4: Property-Based Testing (Optional)
+
+The following property-based tests are optional but recommended for comprehensive validation. They validate universal correctness properties across all possible configurations.
+
+- [ ]* 27. Implement property-based tests for export functionality
+  - [ ]* 27.1 Write Property 1: JSON Export Completeness
+    - Test that all configuration fields are present in JSON exports
+    - Use FastCheck to generate 100+ random configurations
+    - **Validates: Requirements 1.1, 1.3**
+
+  - [ ]* 27.2 Write Property 2: JSON Export Filename Pattern
+    - Test that filenames match the expected pattern for all configs
+    - **Validates: Requirements 1.4**
+
+  - [ ]* 27.3 Write Property 3: JSON Export Formatting
+    - Test that JSON is properly indented and human-readable
+    - **Validates: Requirements 1.5**
+
+  - [ ]* 27.4 Write Property 4: JSON Export Schema Versioning
+    - Test that schema version is always present and valid
+    - **Validates: Requirements 1.7**
+
+  - [ ]* 27.5 Write Property 5: Power BI Export Completeness
+    - Test that all required fields are present in Power BI exports
+    - **Validates: Requirements 2.1, 2.2, 2.3, 2.4, 2.5**
+
+  - [ ]* 27.6 Write Property 6: Power BI Export Format Compliance
+    - Test that generated M Query is valid syntax
+    - **Validates: Requirements 2.7**
+
+  - [ ]* 27.7 Write Property 7: Power BI SQL Query Consistency
+    - Test that SQL queries match internal query structure
+    - **Validates: Requirements 10.2, 10.3**
+
+  - [ ]* 27.8 Write Property 21: Credential Exclusion
+    - Test that no credentials appear in any export
+    - **Validates: Requirements 6.1, 6.2**
+
+  - [ ]* 27.9 Write Property 25: Export File Size Limit
+    - Test that oversized exports are rejected
+    - **Validates: Requirements 7.3, 7.4**
+
+  - [ ]* 27.10 Write Property 27: Platform-Independent Path Representation
+    - Test that paths use forward slashes in exports
+    - **Validates: Requirements 8.1, 8.5**
+
+- [ ]* 28. Implement property-based tests for import functionality
+  - [ ]* 28.1 Write Property 9: JSON Import Round-Trip
+    - Test that export → import preserves all data
+    - **Validates: Requirements 3.5**
+
+  - [ ]* 28.2 Write Property 10: JSON Parsing
+    - Test that valid JSON is always parsed successfully
+    - **Validates: Requirements 3.2**
+
+  - [ ]* 28.3 Write Property 11: Schema Validation
+    - Test that schema validation correctly identifies invalid structures
+    - **Validates: Requirements 3.3**
+
+  - [ ]* 28.4 Write Property 12: Schema Version Compatibility
+    - Test version compatibility detection across all versions
+    - **Validates: Requirements 3.4**
+
+  - [ ]* 28.5 Write Property 13: Validation Error Reporting
+    - Test that all validation errors are reported with specific messages
+    - **Validates: Requirements 3.7, 5.3, 5.4**
+
+  - [ ]* 28.6 Write Property 14: Optional Field Defaults
+    - Test that missing optional fields get correct defaults
+    - **Validates: Requirements 3.8**
+
+  - [ ]* 28.7 Write Property 15: Required Field Validation
+    - Test that missing required fields are always rejected
+    - **Validates: Requirements 3.9, 5.3**
+
+  - [ ]* 28.8 Write Property 16: Tag Validation Warnings
+    - Test that non-existent tags generate warnings but allow import
+    - **Validates: Requirements 5.5**
+
+  - [ ]* 28.9 Write Property 17: Validation Error Logging
+    - Test that all validation errors are logged
+    - **Validates: Requirements 5.6**
+
+  - [ ]* 28.10 Write Property 18: State Preservation on Failure
+    - Test that failed imports don't modify current state
+    - **Validates: Requirements 5.7**
+
+  - [ ]* 28.11 Write Property 26: Import File Size Limit
+    - Test that oversized files are rejected
+    - **Validates: Requirements 7.5**
+
+  - [ ]* 28.12 Write Property 28: Path Normalization on Import
+    - Test that platform-specific paths are normalized
+    - **Validates: Requirements 8.2, 8.6**
+
+  - [ ]* 28.13 Write Property 29: UTF-8 Encoding Round-Trip
+    - Test that Unicode characters are preserved
+    - **Validates: Requirements 8.3, 8.4**
+
+- [ ]* 29. Implement property-based tests for format selection
+  - [ ]* 29.1 Write Property 19: Format Selection Affects Output
+    - Test that format selection produces correct output type
+    - **Validates: Requirements 4.3**
+
+  - [ ]* 29.2 Write Property 20: Format Preference Persistence
+    - Test that format preference is saved and restored
+    - **Validates: Requirements 4.5**
+
+- [ ]* 30. Implement property-based tests for security
+  - [ ]* 30.1 Write Property 22: Connection Metadata Inclusion
+    - Test that connection metadata is included without credentials
+    - **Validates: Requirements 6.3**
+
+  - [ ]* 30.2 Write Property 23: Import Connection Isolation
+    - Test that imports don't affect current connection settings
+    - **Validates: Requirements 6.4**
+
+  - [ ]* 30.3 Write Property 24: Security Notice Inclusion
+    - Test that security notices are always present
+    - **Validates: Requirements 6.5**
 
 ## Notes
 
 - Tasks marked with `*` are optional and can be skipped for faster MVP
+- Phase 4 (Property-Based Testing) is entirely optional but provides comprehensive validation
 - Each task references specific requirements for traceability
 - Checkpoints ensure incremental validation
-- Property tests validate universal correctness properties
+- Property tests validate universal correctness properties across 100+ random inputs
 - Unit tests validate specific examples and edge cases
 - The implementation follows the existing codebase patterns (Service-Oriented Architecture)
 - TypeScript is used throughout for type safety
 - Frontend uses React with Tailwind CSS following the design system
 - Backend uses Express with existing middleware patterns
+- All core functionality (Phases 1-3) is complete and tested

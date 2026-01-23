@@ -12,7 +12,8 @@ import {
   LogIn,
   LogOut,
   Activity,
-  Users
+  Users,
+  Trash2
 } from 'lucide-react';
 import { ReportConfig, TagInfo, ReportVersion } from '../../types/api';
 import { Button } from '../ui/Button';
@@ -28,6 +29,8 @@ import { StatusDashboard } from '../status/StatusDashboard';
 import { SchedulesList, SchedulesErrorBoundary } from '../schedules';
 import { UserManagement } from '../users';
 import { apiService, getAuthToken, setAuthToken } from '../../services/api';
+import { useToast } from '../../hooks/useToast';
+import { ToastContainer } from '../ui/ToastContainer';
 import { cn } from '../../utils/cn';
 
 interface DashboardProps {
@@ -41,6 +44,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loginForm, setLoginForm] = useState({ username: 'admin', password: 'admin123' });
   const [loginLoading, setLoginLoading] = useState(false);
+  const { toasts, removeToast, success, error: toastError, warning, info } = useToast();
   const [reportConfig, setReportConfig] = useState<Partial<ReportConfig>>({
     name: '',
     description: '',
@@ -99,7 +103,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s timeout
 
-        const response = await fetch('http://127.0.0.1:3000/api/health/historian', {
+        const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3000/api'}/health/historian`, {
           signal: controller.signal
         });
         clearTimeout(timeoutId);
@@ -135,7 +139,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           const timeoutBasic = setTimeout(() => controllerBasic.abort(), 1000);
 
           try {
-            const basicResponse = await fetch('http://127.0.0.1:3000/api/health', {
+            const basicResponse = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:3000/api'}/health`, {
               signal: controllerBasic.signal
             });
             clearTimeout(timeoutBasic);
@@ -521,13 +525,77 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       includeStatsSummary: importedConfig.includeStatsSummary ?? true,
       specificationLimits: importedConfig.specificationLimits || {},
     });
-    
+
     // Clear saved config since this is a new imported configuration
     setSavedConfig(null);
-    
+
     // Switch to create tab if not already there
     if (activeTab !== 'create') {
       setActiveTab('create');
+    }
+  };
+
+  /**
+   * Handle export report configuration
+   * Opens format selection dialog for the selected report
+   */
+  const handleExportReport = async (report: any) => {
+    try {
+      // Load the full report configuration first
+      const reportResponse = await apiService.getReportVersion(report.id, report.version);
+      const fullConfig = reportResponse.data.config;
+
+      // Export the configuration
+      const { blob, filename } = await apiService.exportConfiguration(fullConfig, 'json');
+
+      // Trigger download
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      success('Export successful', `Report "${report.name}" has been exported`);
+    } catch (err: any) {
+      console.error('Export error:', err);
+      toastError('Export failed', err.response?.data?.message || 'Failed to export report configuration');
+    }
+  };
+
+  /**
+   * Handle delete report
+   * Confirms and deletes the selected report
+   */
+  const handleDeleteReport = async (reportId: string, reportName: string) => {
+    if (!window.confirm(`Are you sure you want to delete "${reportName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      await apiService.deleteReport(reportId);
+      
+      // Reload saved reports list
+      await loadSavedReports();
+      
+      success('Report deleted', `"${reportName}" has been deleted successfully`);
+    } catch (err: any) {
+      console.error('Delete error:', err);
+      toastError('Delete failed', err.response?.data?.message || 'Failed to delete report');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleToast = (type: 'success' | 'error' | 'warning' | 'info', message: string, description?: string) => {
+    switch (type) {
+      case 'success': success(message, description); break;
+      case 'error': toastError(message, description); break;
+      case 'warning': warning(message, description); break;
+      case 'info': info(message, description); break;
     }
   };
 
@@ -632,6 +700,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                             <ExportImportControls
                               currentConfig={reportConfig as ReportConfig}
                               onImportComplete={handleImportComplete}
+                              onToast={handleToast}
                               disabled={false}
                             />
                             {/* Version Indicator */}
@@ -1079,6 +1148,27 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                                             History
                                           </Button>
                                         )}
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handleExportReport(report)}
+                                          disabled={isLoading}
+                                          title="Export report configuration"
+                                        >
+                                          <Download className="h-4 w-4 mr-1" />
+                                          Export
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          onClick={() => handleDeleteReport(report.id, report.name)}
+                                          disabled={isLoading}
+                                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                          title="Delete report"
+                                        >
+                                          <Trash2 className="h-4 w-4 mr-1" />
+                                          Delete
+                                        </Button>
                                       </div>
                                     </td>
                                   </tr>
@@ -1178,6 +1268,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           </>
         )}
       </main>
+      <ToastContainer toasts={toasts} onClose={id => removeToast(id)} />
     </div>
   );
 };

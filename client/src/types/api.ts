@@ -35,7 +35,7 @@ export interface ReportConfig {
   updatedAt?: Date;
   version?: number;
   parentId?: string; // For version tracking
-  
+
   // Advanced Chart Analytics options
   specificationLimits?: Record<string, SpecificationLimits>;
   includeTrendLines?: boolean;
@@ -107,4 +107,19 @@ export interface PaginatedResponse<T> {
     total: number;
     totalPages: number;
   };
+}
+
+export type ExportFormat = 'json' | 'powerbi';
+
+export interface ValidationError {
+  field?: string;
+  message: string;
+  severity: 'error' | 'warning';
+}
+
+export interface ImportResult {
+  success: boolean;
+  config?: ReportConfig;
+  errors?: ValidationError[];
+  warnings?: string[];
 }

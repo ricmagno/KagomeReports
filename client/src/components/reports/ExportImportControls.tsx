@@ -10,12 +10,11 @@
 import React, { useState, useRef } from 'react';
 import { Download, Upload, Loader2 } from 'lucide-react';
 import { Button } from '../ui/Button';
-import { FormatSelectionDialog, ExportFormat } from './FormatSelectionDialog';
+import { FormatSelectionDialog } from './FormatSelectionDialog';
 import { ValidationErrorDialog, ValidationError } from './ValidationErrorDialog';
 import { getFormatPreference, setFormatPreference } from '../../utils/formatPreference';
-import { ReportConfig } from '../../types/api';
-
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+import { ReportConfig, ExportFormat, ImportResult } from '../../types/api';
+import { apiService } from '../../services/api';
 
 export interface ExportImportControlsProps {
   /** Current report configuration to export */
@@ -30,12 +29,6 @@ export interface ExportImportControlsProps {
   onToast?: (type: 'success' | 'error' | 'warning' | 'info', message: string, description?: string) => void;
 }
 
-interface ImportResult {
-  success: boolean;
-  config?: ReportConfig;
-  errors?: ValidationError[];
-  warnings?: string[];
-}
 
 export const ExportImportControls: React.FC<ExportImportControlsProps> = ({
   currentConfig,
@@ -53,10 +46,10 @@ export const ExportImportControls: React.FC<ExportImportControlsProps> = ({
   const [showValidationDialog, setShowValidationDialog] = useState(false);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [validationWarnings, setValidationWarnings] = useState<ValidationError[]>([]);
-  
+
   // State protection: Store original config before import attempt
   const [savedConfigBeforeImport, setSavedConfigBeforeImport] = useState<ReportConfig | null>(null);
-  
+
   // File input ref for import
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -92,36 +85,8 @@ export const ExportImportControls: React.FC<ExportImportControlsProps> = ({
       // Save format preference for next time
       setFormatPreference(format);
 
-      // Make API call to export endpoint
-      const response = await fetch(`${API_BASE_URL}/reports/export`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          config: currentConfig,
-          format: format,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || `Export failed with status ${response.status}`);
-      }
-
-      // Get filename from Content-Disposition header or generate default
-      const contentDisposition = response.headers.get('Content-Disposition');
-      let filename = `report-config-${Date.now()}.${format === 'json' ? 'json' : 'pq'}`;
-      
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-        if (filenameMatch && filenameMatch[1]) {
-          filename = filenameMatch[1].replace(/['"]/g, '');
-        }
-      }
-
-      // Get the file content
-      const blob = await response.blob();
+      // Make API call to export endpoint via service (handles auth)
+      const { blob, filename } = await apiService.exportConfiguration(currentConfig, format);
 
       // Trigger download
       const url = window.URL.createObjectURL(blob);
@@ -192,20 +157,10 @@ export const ExportImportControls: React.FC<ExportImportControlsProps> = ({
       // Read file content
       const fileContent = await file.text();
 
-      // Make API call to import endpoint
-      const response = await fetch(`${API_BASE_URL}/reports/import`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          fileContent: fileContent,
-        }),
-      });
+      // Make API call to import endpoint via service (handles auth)
+      const result = await apiService.importConfiguration(fileContent);
 
-      const result: ImportResult = await response.json();
-
-      if (!response.ok || !result.success) {
+      if (!result.success) {
         // Import failed - show validation errors
         // STATE PROTECTION: Configuration remains unchanged (onImportComplete not called)
         const errors = result.errors || [];
@@ -215,7 +170,7 @@ export const ExportImportControls: React.FC<ExportImportControlsProps> = ({
         setValidationErrors(errorMessages);
         setValidationWarnings(warningMessages);
         setShowValidationDialog(true);
-        
+
         // Clear saved config since we're not proceeding with import
         setSavedConfigBeforeImport(null);
         return;
@@ -225,10 +180,10 @@ export const ExportImportControls: React.FC<ExportImportControlsProps> = ({
       if (result.config) {
         // STATE PROTECTION: Only update configuration on successful validation
         onImportComplete(result.config);
-        
+
         // Clear saved config since import was successful
         setSavedConfigBeforeImport(null);
-        
+
         // Show success message with warnings if any
         if (result.warnings && result.warnings.length > 0) {
           showToast(
@@ -248,13 +203,13 @@ export const ExportImportControls: React.FC<ExportImportControlsProps> = ({
       }
     } catch (error) {
       console.error('Import error:', error);
-      
+
       // STATE PROTECTION: Restore original configuration on unexpected error
       if (savedConfigBeforeImport) {
         onImportComplete(savedConfigBeforeImport);
         setSavedConfigBeforeImport(null);
       }
-      
+
       showToast(
         'error',
         'Import failed',

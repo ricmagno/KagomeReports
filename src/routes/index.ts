@@ -41,8 +41,8 @@ router.use('/auth/auto-login', autoLoginRoutes);
 router.get('/', (req, res) => {
   res.json({
     name: 'Historian Reports API',
-    version: '1.0.0',
-    description: 'Professional reporting application for AVEVA Historian database',
+    version: '1.0.1',
+    description: 'Reporting application for AVEVA Historian',
     endpoints: {
       data: '/api/data',
       health: '/api/health',

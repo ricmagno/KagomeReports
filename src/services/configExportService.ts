@@ -153,13 +153,13 @@ export class ConfigExportService {
   private generatePowerBIExport(config: ReportConfig): ExportResult {
     // Extract configuration parameters
     const queryParams = this.buildPowerBIQueryParams(config);
-    
+
     // Generate M Query template
     const mQuery = this.generateMQueryTemplate(queryParams);
-    
+
     // Generate filename
     const filename = this.generateFilename(config, 'powerbi');
-    
+
     return {
       filename,
       contentType: 'text/plain',
@@ -210,22 +210,11 @@ export class ConfigExportService {
    */
   private generateMQueryTemplate(params: PowerBIQueryParams): string {
     // Format dates for SQL query (YYYY-MM-DD HH:mm:ss)
-    const formatDateForSQL = (date: Date): string => {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const day = String(date.getDate()).padStart(2, '0');
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      const seconds = String(date.getSeconds()).padStart(2, '0');
-      return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-    };
+    const startTimeStr = this.formatDateForSQL(params.startTime);
+    const endTimeStr = this.formatDateForSQL(params.endTime);
 
     // Build tag list for SQL IN clause
     const tagList = params.tags.map(tag => `'${tag.replace(/'/g, "''")}'`).join(', ');
-
-    // Format dates
-    const startTimeStr = formatDateForSQL(params.startTime);
-    const endTimeStr = formatDateForSQL(params.endTime);
 
     // Generate M Query
     const mQuery = `/*
@@ -236,9 +225,9 @@ export class ConfigExportService {
  * 
  * CONFIGURATION INSTRUCTIONS:
  * 1. Open Power BI Desktop
- * 2. Go to Home → Get Data → Blank Query
- * 3. Open Advanced Editor (Home → Advanced Editor)
- * 4. Paste this entire query
+ * 2. Go to Home -> Get Data -> Blank Query
+ * 3. Open Advanced Editor (Home -> Advanced Editor)
+ * 4. Replace EVERYTHING in the editor with this script
  * 5. Click Done
  * 6. When prompted, provide database credentials:
  *    - Authentication: Windows or Database
@@ -255,20 +244,6 @@ export class ConfigExportService {
  * - Tags: ${params.tags.length} tag(s) selected
  * - Time Range: ${startTimeStr} to ${endTimeStr}
  * - Quality Filter: ${params.qualityFilter} (Good quality only)
- * 
- * DATA STRUCTURE:
- * The query returns a table with the following columns:
- * - TagName: Name of the tag
- * - DateTime: Timestamp of the data point
- * - Value: Numeric value
- * - QualityCode: Quality code (192 = Good, 0 = Bad)
- * - QualityStatus: Human-readable quality status
- * 
- * CUSTOMIZATION:
- * You can modify the query parameters below to adjust the data retrieval:
- * - Change tag list in the Tags variable
- * - Adjust time range in StartTime and EndTime variables
- * - Modify quality filter in QualityFilter variable
  */
 
 let
@@ -291,14 +266,8 @@ let
     QualityFilter = ${params.qualityFilter},
     
     // ========================================================================
-    // Query Construction
+    // Query Construction & Execution
     // ========================================================================
-    
-    // Build tag list for SQL IN clause
-    TagList = Text.Combine(
-        List.Transform(Tags, each "'" & Text.Replace(_, "'", "''") & "'"),
-        ", "
-    ),
     
     // Build SQL query
     SqlQuery = "
@@ -314,16 +283,12 @@ let
             END as QualityStatus
         FROM History h
         INNER JOIN Tag t ON h.TagId = t.TagId
-        WHERE t.TagName IN (" & TagList & ")
+        WHERE t.TagName IN (" & Text.Combine(List.Transform(Tags, each "'" & Text.Replace(_, "'", "''") & "'"), ", ") & ")
           AND h.DateTime >= '${startTimeStr}'
           AND h.DateTime <= '${endTimeStr}'
           AND h.QualityCode = " & Number.ToText(QualityFilter) & "
         ORDER BY t.TagName, h.DateTime
     ",
-    
-    // ========================================================================
-    // Query Execution
-    // ========================================================================
     
     // Connect to database and execute query
     Source = Sql.Database(Server, Database, [Query=SqlQuery]),
@@ -340,6 +305,23 @@ in
     TypedData`;
 
     return mQuery;
+  }
+
+  /**
+   * Format date for SQL query (YYYY-MM-DD HH:mm:ss)
+   * 
+   * @param date - Date object
+   * @returns Formatted date string
+   * @private
+   */
+  private formatDateForSQL(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   }
 
   /**
@@ -600,7 +582,7 @@ in
     }
 
     // Determine file extension
-    const extension = format === 'json' ? 'json' : 'pq';
+    const extension = format === 'json' ? 'json' : 'm';
 
     // Determine prefix
     const prefix = format === 'powerbi' ? 'PowerBI' : 'ReportConfig';
@@ -645,10 +627,10 @@ in
     // Normalize any path fields in customSettings
     if (normalized.reportConfig.customSettings) {
       const customSettings = normalized.reportConfig.customSettings;
-      
+
       // Check for common path fields in custom settings
       const pathFields = ['outputPath', 'templatePath', 'dataPath', 'reportPath'];
-      
+
       for (const field of pathFields) {
         if (customSettings[field] && typeof customSettings[field] === 'string') {
           customSettings[field] = normalizePathsInObject(

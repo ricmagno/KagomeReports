@@ -7,7 +7,9 @@ import {
   ReportVersion,
   ReportVersionHistory,
   StatisticsResult,
-  TrendResult
+  TrendResult,
+  ExportFormat,
+  ImportResult
 } from '../types/api';
 import {
   DatabaseConfig,
@@ -787,6 +789,50 @@ export const apiService = {
     params.append('path', path);
     params.append('baseType', baseType);
     return fetchWithRetry(`/filesystem/validate-path?${params.toString()}`);
+  },
+
+  // Export/Import Configuration
+  async exportConfiguration(config: ReportConfig, format: ExportFormat): Promise<{ blob: Blob; filename: string }> {
+    // We use raw fetch here because we need both the blob and the headers
+    const response = await fetch(`${API_BASE_URL}/reports/export`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+      },
+      body: JSON.stringify({ config, format }),
+    });
+
+    if (!response.ok) {
+      let errorMessage = `Export failed with status ${response.status}`;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorData.error || errorMessage;
+      } catch {
+        // Not a JSON error
+      }
+      throw new ApiError(response.status, errorMessage);
+    }
+
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = `report-config-${Date.now()}.${format === 'json' ? 'json' : 'm'}`;
+
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1].replace(/['"]/g, '');
+      }
+    }
+
+    const blob = await response.blob();
+    return { blob, filename };
+  },
+
+  async importConfiguration(fileContent: string): Promise<ImportResult> {
+    return fetchWithRetry<ImportResult>('/reports/import', {
+      method: 'POST',
+      body: JSON.stringify({ fileContent }),
+    });
   },
 };
 
