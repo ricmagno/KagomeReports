@@ -23,6 +23,7 @@ import { ReportPreview } from '../reports/ReportPreview';
 import { VersionHistory } from '../reports/VersionHistory';
 import { SpecificationLimitsConfig } from '../reports/SpecificationLimitsConfig';
 import { AnalyticsOptions } from '../reports/AnalyticsOptions';
+import { ExportImportControls } from '../reports/ExportImportControls';
 import { StatusDashboard } from '../status/StatusDashboard';
 import { SchedulesList, SchedulesErrorBoundary } from '../schedules';
 import { UserManagement } from '../users';
@@ -496,6 +497,40 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     alert(`Version ${versionInfo.version} loaded successfully`);
   };
 
+  /**
+   * Handle import completion from ExportImportControls
+   * Populates the form with imported configuration
+   */
+  const handleImportComplete = (importedConfig: ReportConfig) => {
+    // Map imported config to form state
+    setReportConfig({
+      name: importedConfig.name,
+      description: importedConfig.description,
+      tags: importedConfig.tags,
+      timeRange: {
+        startTime: new Date(importedConfig.timeRange.startTime),
+        endTime: new Date(importedConfig.timeRange.endTime),
+        relativeRange: importedConfig.timeRange.relativeRange,
+      },
+      chartTypes: importedConfig.chartTypes,
+      template: importedConfig.template,
+      version: undefined, // Clear version since this is an imported config (not saved yet)
+      // Advanced analytics options
+      includeTrendLines: importedConfig.includeTrendLines ?? true,
+      includeSPCCharts: importedConfig.includeSPCCharts ?? true,
+      includeStatsSummary: importedConfig.includeStatsSummary ?? true,
+      specificationLimits: importedConfig.specificationLimits || {},
+    });
+    
+    // Clear saved config since this is a new imported configuration
+    setSavedConfig(null);
+    
+    // Switch to create tab if not already there
+    if (activeTab !== 'create') {
+      setActiveTab('create');
+    }
+  };
+
   return (
     <div className={cn("min-h-screen bg-gray-50", className)}>
       <nav className="bg-white shadow-sm border-b border-gray-200">
@@ -592,13 +627,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                       <CardHeader>
                         <div className="flex items-center justify-between">
                           <h3 className="text-lg font-medium">Report Configuration</h3>
-                          <div className={cn(
-                            "px-3 py-1 rounded-full text-sm font-medium",
-                            reportConfig.version
-                              ? "bg-blue-100 text-blue-800 border border-blue-200"
-                              : "bg-green-100 text-green-800 border border-green-200"
-                          )}>
-                            {reportConfig.version ? `Version ${reportConfig.version}` : 'New'}
+                          <div className="flex items-center gap-3">
+                            {/* Export/Import Controls */}
+                            <ExportImportControls
+                              currentConfig={reportConfig as ReportConfig}
+                              onImportComplete={handleImportComplete}
+                              disabled={false}
+                            />
+                            {/* Version Indicator */}
+                            <div className={cn(
+                              "px-3 py-1 rounded-full text-sm font-medium",
+                              reportConfig.version
+                                ? "bg-blue-100 text-blue-800 border border-blue-200"
+                                : "bg-green-100 text-green-800 border border-green-200"
+                            )}>
+                              {reportConfig.version ? `Version ${reportConfig.version}` : 'New'}
+                            </div>
                           </div>
                         </div>
                       </CardHeader>

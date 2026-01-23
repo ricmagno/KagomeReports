@@ -14,8 +14,10 @@ import { ReportConfig } from '@/types/reports';
 import { SpecificationLimits } from '@/types/historian';
 import { ReportManagementService } from '@/services/reportManagementService';
 import { ReportVersionService } from '@/services/reportVersionService';
-import { SaveReportRequest } from '@/types/reports';
 import { validateSpecificationLimitsMap } from '@/utils/specificationLimitsValidator';
+import { configExportService } from '@/services/configExportService';
+import { configImportService } from '@/services/configImportService';
+import { ExportRequest, ImportRequest, isValidExportFormat } from '@/types/reportExportImport';
 import { Database } from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
@@ -614,6 +616,140 @@ router.delete('/:id', authenticateToken, requirePermission('reports', 'delete'),
     }
     apiLogger.error('Error deleting report:', error);
     throw createError('Failed to delete report', 500);
+  }
+}));
+
+/**
+ * POST /api/reports/export
+ * Export a report configuration to JSON or Power BI format
+ * Requirements: 1.1, 2.1, 4.3
+ */
+router.post('/export', authenticateToken, requirePermission('reports', 'read'), asyncHandler(async (req: Request, res: Response) => {
+  const { config, format } = req.body as ExportRequest;
+
+  // Validate request body
+  if (!config) {
+    apiLogger.error('Export failed: missing config');
+    throw createError('Report configuration is required', 400);
+  }
+
+  if (!format || !isValidExportFormat(format)) {
+    apiLogger.error('Export failed: invalid format', { format });
+    throw createError('Invalid export format. Must be "json" or "powerbi"', 400);
+  }
+
+  apiLogger.info('Starting report configuration export', {
+    format,
+    configName: config.name,
+    tags: config.tags?.length || 0,
+  });
+
+  try {
+    // Call export service
+    const result = await configExportService.exportConfiguration(config, {
+      format,
+      includeMetadata: true,
+    });
+
+    // Set response headers
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.setHeader('Cache-Control', 'no-cache');
+
+    // Return file data
+    res.send(result.data);
+
+    apiLogger.info('Export completed successfully', {
+      format,
+      filename: result.filename,
+      size: Buffer.isBuffer(result.data) ? result.data.length : Buffer.byteLength(result.data, 'utf8'),
+    });
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    apiLogger.error('Export failed', {
+      format,
+      configName: config.name,
+      error: errorMessage,
+    });
+
+    // Check for specific error types
+    if (errorMessage.includes('exceeds maximum export size')) {
+      throw createError(errorMessage, 413); // Payload Too Large
+    } else if (errorMessage.includes('Unsupported export format')) {
+      throw createError(errorMessage, 400); // Bad Request
+    } else {
+      throw createError('Failed to export configuration', 500);
+    }
+  }
+}));
+
+/**
+ * POST /api/reports/import
+ * Import a report configuration from JSON file
+ * Requirements: 3.2, 3.3, 3.5
+ */
+router.post('/import', authenticateToken, requirePermission('reports', 'write'), asyncHandler(async (req: Request, res: Response) => {
+  const { fileContent } = req.body as ImportRequest;
+
+  // Validate request body
+  if (!fileContent || typeof fileContent !== 'string') {
+    apiLogger.error('Import failed: missing or invalid fileContent');
+    throw createError('File content is required and must be a string', 400);
+  }
+
+  apiLogger.info('Starting report configuration import', {
+    contentLength: fileContent.length,
+  });
+
+  try {
+    // Call import service
+    const result = await configImportService.importConfiguration(fileContent);
+
+    if (result.success) {
+      apiLogger.info('Import completed successfully', {
+        configName: result.config?.name,
+        tags: result.config?.tags?.length || 0,
+        warnings: result.warnings?.length || 0,
+      });
+
+      // Return success response with config and warnings
+      res.json({
+        success: true,
+        data: result.config,
+        warnings: result.warnings,
+        metadata: {
+          schemaVersion: result.config?.importMetadata?.schemaVersion,
+        },
+      });
+    } else {
+      apiLogger.warn('Import validation failed', {
+        errorCount: result.errors?.length || 0,
+      });
+
+      // Return validation errors
+      res.status(400).json({
+        success: false,
+        error: {
+          code: 'VALIDATION_FAILED',
+          message: 'Configuration validation failed',
+          validationErrors: result.errors,
+        },
+      });
+    }
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    apiLogger.error('Import failed with exception', {
+      error: errorMessage,
+    });
+
+    // Check for specific error types
+    if (errorMessage.includes('exceeds maximum allowed size')) {
+      throw createError(errorMessage, 413); // Payload Too Large
+    } else {
+      throw createError('Failed to import configuration', 500);
+    }
   }
 }));
 

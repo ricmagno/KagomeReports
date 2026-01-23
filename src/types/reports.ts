@@ -53,6 +53,14 @@ export interface ReportConfig {
   includeSPCCharts?: boolean;      // Include Statistical Process Control charts
   includeTrendLines?: boolean;     // Include trend lines on standard charts
   includeStatsSummary?: boolean;   // Include statistical summaries on charts
+  
+  // Import tracking metadata (for configurations loaded from export files)
+  importMetadata?: {
+    importedFrom?: string;     // Original filename
+    importDate?: Date;         // When the import occurred
+    originalExportDate?: Date; // Original export date from the file
+    schemaVersion?: string;    // Schema version of the imported file
+  };
 }
 
 // Saved report with metadata
