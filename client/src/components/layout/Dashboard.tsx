@@ -579,10 +579,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     try {
       setIsLoading(true);
       await apiService.deleteReport(reportId);
-      
+
       // Reload saved reports list
       await loadSavedReports();
-      
+
       success('Report deleted', `"${reportName}" has been deleted successfully`);
     } catch (err: any) {
       console.error('Delete error:', err);
@@ -666,8 +666,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 { id: 'categories', label: 'Categories', icon: Tag },
                 { id: 'status', label: 'Status', icon: Activity },
                 { id: 'database', label: 'Database', icon: Database },
-                { id: 'about', label: 'About', icon: Info },
                 ...(currentUser?.role === 'admin' ? [{ id: 'users', label: 'Users', icon: Users }] : []),
+                { id: 'about', label: 'About', icon: Info },
               ].map(tab => (
                 <button
                   key={tab.id}
