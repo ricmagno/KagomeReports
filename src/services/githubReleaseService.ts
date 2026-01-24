@@ -145,11 +145,46 @@ export class GitHubReleaseService {
       try {
         githubLogger.debug('Downloading release', { url: downloadUrl });
 
-        https.get(downloadUrl, (response) => {
+        const url = new URL(downloadUrl);
+        const options: https.RequestOptions = {
+          hostname: url.hostname,
+          path: url.pathname + url.search,
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Historian-Reports',
+            'Accept': 'application/vnd.github.v3+json'
+          }
+        };
+
+        // Add authentication if token is available
+        if (this.GITHUB_TOKEN && options.headers) {
+          (options.headers as Record<string, string>)['Authorization'] = `token ${this.GITHUB_TOKEN}`;
+        }
+
+        const request = https.get(options, (response) => {
           if (response.statusCode && response.statusCode >= 300 && response.statusCode < 400) {
             // Handle redirects
             const redirectUrl = response.headers.location;
             if (redirectUrl) {
+              // For AWS / S3 / Codeload redirects, we might NOT want to send the Authorization header 
+              // if domain changes, as it can cause 400 Bad Request or leak tokens.
+              // GitHub zipball usually redirects to codeload.github.com.
+              // Let's check if hostname remains api.github.com or github.com.
+
+              const newUrl = new URL(redirectUrl);
+              const isGitHubApi = newUrl.hostname === 'api.github.com';
+
+              if (!isGitHubApi) {
+                // If redirecting away from API, strip auth header
+                // Recursive call will rebuild headers based on class state, 
+                // but we might need a way to pass "no-auth" if we recurse.
+                // Actually, downloadRelease helper is instance method.
+                // Simpler: just do a raw https.get for the redirect if it's not the API.
+
+                this.downloadRedirect(redirectUrl).then(resolve).catch(reject);
+                return;
+              }
+
               this.downloadRelease(redirectUrl).then(resolve).catch(reject);
               return;
             }
@@ -172,10 +207,34 @@ export class GitHubReleaseService {
             });
             resolve(buffer);
           });
-        }).on('error', reject);
+        });
+
+        request.on('error', reject);
       } catch (error) {
         reject(error);
       }
+    });
+  }
+
+  /**
+   * Helper to download from redirect URL (likely no auth needed if pre-signed)
+   */
+  private async downloadRedirect(urlStr: string): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      https.get(urlStr, { headers: { 'User-Agent': 'Historian-Reports' } }, (res) => {
+        if (res.statusCode !== 200) {
+          // Handle nested redirects if necessary, but typically one hop
+          if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            this.downloadRedirect(res.headers.location).then(resolve).catch(reject);
+            return;
+          }
+          reject(new Error(`Failed to download redirect: ${res.statusCode}`));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+      }).on('error', reject);
     });
   }
 
