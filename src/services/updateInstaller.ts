@@ -324,20 +324,25 @@ export class UpdateInstaller {
    * Private method to recursively copy directory
    */
   private copyRecursive(src: string, dest: string): void {
-    if (!fs.existsSync(dest)) {
-      fs.mkdirSync(dest, { recursive: true });
-    }
+    const stats = fs.statSync(src);
 
-    const files = fs.readdirSync(src);
-    for (const file of files) {
-      const srcPath = path.join(src, file);
-      const destPath = path.join(dest, file);
-
-      if (fs.statSync(srcPath).isDirectory()) {
-        this.copyRecursive(srcPath, destPath);
-      } else {
-        fs.copyFileSync(srcPath, destPath);
+    if (stats.isDirectory()) {
+      if (!fs.existsSync(dest)) {
+        fs.mkdirSync(dest, { recursive: true });
       }
+
+      const files = fs.readdirSync(src);
+      for (const file of files) {
+        const srcPath = path.join(src, file);
+        const destPath = path.join(dest, file);
+        this.copyRecursive(srcPath, destPath);
+      }
+    } else {
+      const parentDir = path.dirname(dest);
+      if (!fs.existsSync(parentDir)) {
+        fs.mkdirSync(parentDir, { recursive: true });
+      }
+      fs.copyFileSync(src, dest);
     }
   }
 
