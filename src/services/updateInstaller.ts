@@ -161,8 +161,13 @@ export class UpdateInstaller {
    */
   verifyUpdate(data: Buffer, checksum: string, algorithm: 'sha256' | 'sha512' = 'sha256'): boolean {
     try {
+      if (!checksum) {
+        installerLogger.warn('No checksum provided for update, skipping verification');
+        return true;
+      }
+
       const isValid = githubReleaseService.verifyChecksum(data, checksum, algorithm);
-      
+
       if (isValid) {
         installerLogger.debug('Update verification successful', { algorithm });
       } else {
