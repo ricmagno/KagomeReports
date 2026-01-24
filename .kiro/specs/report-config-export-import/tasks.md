@@ -90,7 +90,7 @@ This implementation plan breaks down the Report Configuration Export/Import feat
     - **Property 25: Export File Size Limit**
     - **Validates: Requirements 7.3, 7.4**
 
-- [~] 6. Implement ConfigImportService for JSON import
+- [ ] 6. Implement ConfigImportService for JSON import
   - [x] 6.1 Create ConfigImportService class with import method
     - Implement `importConfiguration()` method
     - Implement JSON parsing with error handling
@@ -225,7 +225,7 @@ This implementation plan breaks down the Report Configuration Export/Import feat
     - Verify response structure
     - _Requirements: 3.2, 3.3, 3.7_
 
-- [~] 14. Implement format preference persistence
+- [ ] 14. Implement format preference persistence
   - [x] 14.1 Add format preference storage
     - Store last selected format in user session or localStorage
     - Retrieve format preference on export
