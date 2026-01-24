@@ -350,18 +350,19 @@ export class UpdateInstaller {
    * Private method to get directory size
    */
   private getDirectorySize(dir: string): number {
+    const stats = fs.statSync(dir);
+
+    if (!stats.isDirectory()) {
+      return stats.size;
+    }
+
     let size = 0;
     const files = fs.readdirSync(dir);
 
     for (const file of files) {
       const filePath = path.join(dir, file);
-      const stat = fs.statSync(filePath);
-
-      if (stat.isDirectory()) {
-        size += this.getDirectorySize(filePath);
-      } else {
-        size += stat.size;
-      }
+      // Recursively call getDirectorySize, which now handles both files and directories
+      size += this.getDirectorySize(filePath);
     }
 
     return size;
