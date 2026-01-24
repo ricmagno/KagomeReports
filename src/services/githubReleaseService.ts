@@ -39,11 +39,35 @@ export class GitHubReleaseService {
         return this.cacheToRelease(cached);
       }
 
-      const response = await this.makeGitHubRequest(
+      githubLogger.debug('Fetching latest release from GitHub', {
+        owner: this.GITHUB_OWNER,
+        repo: this.GITHUB_REPO,
+        hasToken: !!this.GITHUB_TOKEN
+      });
+
+      // First try the /releases/latest endpoint
+      let response = await this.makeGitHubRequest(
         `/repos/${this.GITHUB_OWNER}/${this.GITHUB_REPO}/releases/latest`
       );
 
+      // If that returns null (404), try fetching all releases and getting the first one
+      // This handles pre-releases which /releases/latest doesn't return
       if (!response) {
+        githubLogger.debug('Latest endpoint returned 404, fetching all releases');
+        const allReleases = await this.makeGitHubRequest(
+          `/repos/${this.GITHUB_OWNER}/${this.GITHUB_REPO}/releases?per_page=1`
+        );
+        
+        if (!allReleases || !Array.isArray(allReleases) || allReleases.length === 0) {
+          githubLogger.warn('No releases found in GitHub repository');
+          return null;
+        }
+        
+        response = allReleases[0];
+      }
+
+      if (!response) {
+        githubLogger.warn('No response from GitHub API for latest release');
         return null;
       }
 
@@ -53,12 +77,17 @@ export class GitHubReleaseService {
       this.cacheRelease(cacheKey, release);
 
       githubLogger.info('Latest release fetched', {
-        version: release.version
+        version: release.version,
+        prerelease: release.prerelease
       });
 
       return release;
     } catch (error) {
-      githubLogger.error('Failed to fetch latest release', error);
+      githubLogger.error('Failed to fetch latest release', {
+        error: error instanceof Error ? error.message : String(error),
+        owner: this.GITHUB_OWNER,
+        repo: this.GITHUB_REPO
+      });
       throw error;
     }
   }
@@ -242,6 +271,11 @@ export class GitHubReleaseService {
           headers
         };
 
+        githubLogger.debug('Making GitHub API request', {
+          path,
+          hasToken: !!this.GITHUB_TOKEN
+        });
+
         const request = https.request(options, (response) => {
           let data = '';
 
@@ -250,13 +284,25 @@ export class GitHubReleaseService {
           });
 
           response.on('end', () => {
+            githubLogger.debug('GitHub API response received', {
+              statusCode: response.statusCode,
+              path
+            });
+
             if (response.statusCode === 404) {
+              githubLogger.warn('GitHub API returned 404', { path });
               resolve(null);
               return;
             }
 
             if (response.statusCode && response.statusCode >= 400) {
-              reject(new Error(`GitHub API error: ${response.statusCode}`));
+              const errorMsg = `GitHub API error: ${response.statusCode}`;
+              githubLogger.error('GitHub API error response', {
+                statusCode: response.statusCode,
+                path,
+                body: data.substring(0, 200)
+              });
+              reject(new Error(errorMsg));
               return;
             }
 
@@ -264,14 +310,27 @@ export class GitHubReleaseService {
               const parsed = JSON.parse(data);
               resolve(parsed);
             } catch (error) {
+              githubLogger.error('Failed to parse GitHub API response', {
+                error: error instanceof Error ? error.message : String(error),
+                path
+              });
               reject(new Error('Failed to parse GitHub API response'));
             }
           });
         });
 
-        request.on('error', reject);
+        request.on('error', (error) => {
+          githubLogger.error('GitHub API request error', {
+            error: error instanceof Error ? error.message : String(error),
+            path
+          });
+          reject(error);
+        });
         request.end();
       } catch (error) {
+        githubLogger.error('GitHub API request exception', {
+          error: error instanceof Error ? error.message : String(error)
+        });
         reject(error);
       }
     });
