@@ -1,5 +1,11 @@
 # Multi-stage Docker build for Historian Reports Application
 # Supports both ARM64 and AMD64 architectures with optimized builds
+# Build with: docker buildx build --platform linux/amd64,linux/arm64 -t historian-reports:1.0.0 .
+
+# Build arguments for version tagging
+ARG VERSION=1.0.0
+ARG BUILD_DATE
+ARG VCS_REF
 
 # Stage 1: Base dependencies stage
 FROM node:18-alpine AS base
@@ -148,12 +154,14 @@ EXPOSE 3000
 
 # Add labels for better container management
 LABEL maintainer="Historian Reports Team" \
-      version="1.0.0" \
+      version="${VERSION}" \
       description="Professional reporting application for AVEVA Historian database" \
       org.opencontainers.image.title="Historian Reports" \
       org.opencontainers.image.description="Professional reporting application for AVEVA Historian database" \
-      org.opencontainers.image.version="1.0.0" \
-      org.opencontainers.image.vendor="Historian Reports Team"
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.vendor="Historian Reports Team" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
 
 # Health check with improved configuration
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

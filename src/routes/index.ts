@@ -18,6 +18,8 @@ import statusRoutes from './status';
 import filesystemRoutes from './filesystem';
 import usersRoutes from './users';
 import autoLoginRoutes from './autoLogin';
+import versionRoutes from './version';
+import updatesRoutes from './updates';
 
 const router = Router();
 
@@ -36,9 +38,11 @@ router.use('/status', statusRoutes);
 router.use('/filesystem', filesystemRoutes);
 router.use('/users', usersRoutes);
 router.use('/auth/auto-login', autoLoginRoutes);
+router.use('/version', versionRoutes);
+router.use('/updates', updatesRoutes);
 
 // API info endpoint
-router.get('/', (req, res) => {
+router.get('/', (_req, res) => {
   res.json({
     name: 'Historian Reports API',
     version: '1.0.1',
@@ -57,7 +61,9 @@ router.get('/', (req, res) => {
       status: '/api/status',
       filesystem: '/api/filesystem',
       users: '/api/users',
-      autoLogin: '/api/auth/auto-login'
+      autoLogin: '/api/auth/auto-login',
+      version: '/api/version',
+      updates: '/api/updates'
     }
   });
 });

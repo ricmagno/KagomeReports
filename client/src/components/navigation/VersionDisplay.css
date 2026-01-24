@@ -1,0 +1,43 @@
+/**
+ * Version Display Styles
+ */
+
+.version-display {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.version-display:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  color: #374151;
+}
+
+.version-display:active {
+  background: #e5e7eb;
+}
+
+.version-display.loading {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.version-display.error {
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
+.version-display.error:hover {
+  background: #fee2e2;
+}
