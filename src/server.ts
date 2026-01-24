@@ -12,6 +12,7 @@ import { getHistorianConnection } from '@/services/historianConnection';
 import { schedulerService } from '@/services/schedulerService';
 import { emailService } from '@/services/emailService';
 import { setupDatabaseConfigIntegration } from '@/services/databaseConfigService';
+import { updateChecker } from '@/services/updateChecker';
 
 // Create Express application
 const app = express();
@@ -274,6 +275,28 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
     logger.warn('⚠ Scheduler service initialization failed:', error);
   }
 
+  // 7. Update Checker Initialization
+  try {
+    const updateCheckerStart = Date.now();
+    updateChecker.startPeriodicChecking(); // Default to 24-hour checks
+
+    components.push({
+      name: 'Update Checker',
+      status: 'healthy',
+      required: false,
+      duration: Date.now() - updateCheckerStart
+    });
+    logger.info('✓ Update checker initialized and periodic checking started');
+  } catch (error) {
+    components.push({
+      name: 'Update Checker',
+      status: 'degraded',
+      required: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+    logger.warn('⚠ Update checker initialization failed:', error);
+  }
+
   // Determine overall system health
   const requiredComponents = components.filter(c => c.required);
   const requiredHealthy = requiredComponents.every(c => c.status === 'healthy');
@@ -402,6 +425,26 @@ async function performGracefulShutdown(signal: string): Promise<void> {
       error: error instanceof Error ? error.message : 'Unknown error'
     });
     logger.error('✗ Application database shutdown failed:', error);
+  }
+
+  // 6. Stop update checker
+  let updateCheckerStart = Date.now();
+  try {
+    updateChecker.stopPeriodicChecking();
+    shutdownSteps.push({
+      name: 'Update Checker',
+      success: true,
+      duration: Date.now() - updateCheckerStart
+    });
+    logger.info('✓ Update checker stopped');
+  } catch (error) {
+    shutdownSteps.push({
+      name: 'Update Checker',
+      success: false,
+      duration: Date.now() - updateCheckerStart,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+    logger.error('✗ Update checker shutdown failed:', error);
   }
 
   // Log shutdown summary

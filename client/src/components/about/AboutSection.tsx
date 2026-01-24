@@ -249,7 +249,14 @@ export const AboutSection: React.FC<AboutSectionProps> = ({
             </div>
             <div className="info-row">
               <span className="label">Build Date:</span>
-              <span className="value">{new Date(versionInfo.buildDate).toLocaleString()}</span>
+              <span className="value">{(() => {
+                try {
+                  return new Date(versionInfo.buildDate).toLocaleString();
+                } catch (error) {
+                  console.error('Error formatting build date:', error);
+                  return versionInfo.buildDate; // Fallback to raw date string
+                }
+              })()}</span>
             </div>
             <div className="info-row">
               <span className="label">Commit Hash:</span>
@@ -279,44 +286,67 @@ export const AboutSection: React.FC<AboutSectionProps> = ({
           </div>
         )}
 
-        {updateStatus && (
-          <div className="update-status">
-            {updateStatus.isUpdateAvailable ? (
-              <div className="update-available">
-                <div className="status-indicator available">
-                  <Download size={20} />
-                  <span>Update Available</span>
-                </div>
-                <div className="update-details">
-                  <p>New version <strong>v{updateStatus.latestVersion}</strong> is available</p>
-                  {updateStatus.changelog && (
-                    <div className="changelog">
-                      <h4>What's New:</h4>
-                      <p>{updateStatus.changelog.substring(0, 200)}...</p>
+        {updateStatus ? (
+          (() => {
+            try {
+              return (
+                <div className="update-status">
+                  {updateStatus.isUpdateAvailable ? (
+                    <div className="update-available">
+                      <div className="status-indicator available">
+                        <Download size={20} />
+                        <span>Update Available</span>
+                      </div>
+                      <div className="update-details">
+                        <p>New version <strong>v{updateStatus.latestVersion}</strong> is available</p>
+                        {updateStatus.changelog && (
+                          <div className="changelog">
+                            <h4>What's New:</h4>
+                            <p>{updateStatus.changelog.substring(0, 200)}...</p>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        className="btn btn-primary"
+                        onClick={handleInstallUpdate}
+                        disabled={isInstallingUpdate}
+                      >
+                        {isInstallingUpdate ? 'Installing...' : 'Install Update'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="status-indicator up-to-date">
+                      <CheckCircle size={20} />
+                      <span>Up to Date</span>
+                    </div>
+                  )}
+
+                  {updateStatus.lastCheckTime && (
+                    <div className="last-check">
+                      <Clock size={14} />
+                      <span>
+                        Last checked: {(() => {
+                          try {
+                            return new Date(updateStatus.lastCheckTime).toLocaleString();
+                          } catch (error) {
+                            console.error('Error formatting date:', error);
+                            return updateStatus.lastCheckTime; // Fallback to raw date string
+                          }
+                        })()}
+                      </span>
                     </div>
                   )}
                 </div>
-                <button
-                  className="btn btn-primary"
-                  onClick={handleInstallUpdate}
-                  disabled={isInstallingUpdate}
-                >
-                  {isInstallingUpdate ? 'Installing...' : 'Install Update'}
-                </button>
-              </div>
-            ) : (
-              <div className="status-indicator up-to-date">
-                <CheckCircle size={20} />
-                <span>Up to Date</span>
-              </div>
-            )}
-
-            {updateStatus.lastCheckTime && (
-              <div className="last-check">
-                <Clock size={14} />
-                <span>Last checked: {new Date(updateStatus.lastCheckTime).toLocaleString()}</span>
-              </div>
-            )}
+              );
+            } catch (error) {
+              console.error('Error rendering update status:', error);
+              return <div className="error-message">Error displaying update status</div>;
+            }
+          })()
+        ) : (
+          <div className="status-indicator checking">
+            <RefreshCw size={20} className="spinning" />
+            <span>Checking for updates...</span>
           </div>
         )}
 
@@ -358,7 +388,14 @@ export const AboutSection: React.FC<AboutSectionProps> = ({
                 </div>
                 <div className="history-details">
                   <span className="timestamp">
-                    {new Date(record.timestamp).toLocaleString()}
+                    {(() => {
+                      try {
+                        return new Date(record.timestamp).toLocaleString();
+                      } catch (error) {
+                        console.error('Error formatting history date:', error);
+                        return record.timestamp; // Fallback to raw date string
+                      }
+                    })()}
                   </span>
                   {record.errorMessage && (
                     <span className="error-detail">{record.errorMessage}</span>
