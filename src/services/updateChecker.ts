@@ -73,7 +73,7 @@ export class UpdateChecker extends EventEmitter {
   /**
    * Check for updates manually
    */
-  async checkForUpdates(): Promise<UpdateCheckResult> {
+  async checkForUpdates(force: boolean = false): Promise<UpdateCheckResult> {
     if (this.isChecking) {
       updateLogger.debug('Update check already in progress');
       return this.currentStatus || this.getDefaultStatus();
@@ -87,7 +87,7 @@ export class UpdateChecker extends EventEmitter {
       this.emit('checkingStarted', { manual: true });
 
       const currentVersion = versionManager.getCurrentVersion();
-      const latestRelease = await githubReleaseService.fetchLatestRelease();
+      const latestRelease = await githubReleaseService.fetchLatestRelease(force);
 
       if (!latestRelease) {
         const result: UpdateCheckResult = {

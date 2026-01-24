@@ -28,15 +28,18 @@ export class GitHubReleaseService {
   /**
    * Fetch latest release from GitHub
    */
-  async fetchLatestRelease(): Promise<GitHubRelease | null> {
+  async fetchLatestRelease(skipCache: boolean = false): Promise<GitHubRelease | null> {
     try {
       const cacheKey = 'latest';
-      
+
       // Check cache first
-      const cached = this.getFromCache(cacheKey);
-      if (cached) {
-        githubLogger.debug('Returning cached latest release');
-        return this.cacheToRelease(cached);
+      // Check cache first (if not skipping)
+      if (!skipCache) {
+        const cached = this.getFromCache(cacheKey);
+        if (cached) {
+          githubLogger.debug('Returning cached latest release');
+          return this.cacheToRelease(cached);
+        }
       }
 
       githubLogger.debug('Fetching latest release from GitHub', {
@@ -57,12 +60,12 @@ export class GitHubReleaseService {
         const allReleases = await this.makeGitHubRequest(
           `/repos/${this.GITHUB_OWNER}/${this.GITHUB_REPO}/releases?per_page=1`
         );
-        
+
         if (!allReleases || !Array.isArray(allReleases) || allReleases.length === 0) {
           githubLogger.warn('No releases found in GitHub repository');
           return null;
         }
-        
+
         response = allReleases[0];
       }
 
@@ -72,7 +75,7 @@ export class GitHubReleaseService {
       }
 
       const release = this.parseGitHubResponse(response);
-      
+
       // Cache the result
       this.cacheRelease(cacheKey, release);
 
@@ -102,7 +105,7 @@ export class GitHubReleaseService {
       }
 
       const cacheKey = `version-${version}`;
-      
+
       // Check cache first
       const cached = this.getFromCache(cacheKey);
       if (cached) {
@@ -119,7 +122,7 @@ export class GitHubReleaseService {
       }
 
       const release = this.parseGitHubResponse(response);
-      
+
       // Cache the result
       this.cacheRelease(cacheKey, release);
 
@@ -207,26 +210,26 @@ export class GitHubReleaseService {
   parseReleaseNotes(releaseBody: string): string {
     // Remove markdown formatting for plain text
     let notes = releaseBody;
-    
+
     // Remove markdown headers
     notes = notes.replace(/^#+\s+/gm, '');
-    
+
     // Remove markdown bold/italic
     notes = notes.replace(/\*\*(.+?)\*\*/g, '$1');
     notes = notes.replace(/\*(.+?)\*/g, '$1');
     notes = notes.replace(/__(.+?)__/g, '$1');
     notes = notes.replace(/_(.+?)_/g, '$1');
-    
+
     // Remove markdown links but keep text
     notes = notes.replace(/\[(.+?)\]\(.+?\)/g, '$1');
-    
+
     // Remove markdown code blocks
     notes = notes.replace(/```[\s\S]*?```/g, '');
     notes = notes.replace(/`(.+?)`/g, '$1');
-    
+
     // Clean up extra whitespace
     notes = notes.replace(/\n\n+/g, '\n\n').trim();
-    
+
     return notes;
   }
 
@@ -364,7 +367,7 @@ export class GitHubReleaseService {
    */
   private getFromCache(key: string): ReleaseCache | null {
     const cached = this.releaseCache.get(key);
-    
+
     if (!cached) {
       return null;
     }

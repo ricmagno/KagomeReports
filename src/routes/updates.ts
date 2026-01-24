@@ -19,9 +19,10 @@ const updateLogger = dbLogger.child({ route: 'updates' });
  * GET /api/updates/check
  * Checks for available updates
  */
-router.get('/check', async (_req: Request, res: Response) => {
+router.get('/check', async (req: Request, res: Response) => {
   try {
-    const result = await updateChecker.checkForUpdates();
+    const force = req.query.force === 'true';
+    const result = await updateChecker.checkForUpdates(force);
 
     updateLogger.info('Update check requested', {
       isUpdateAvailable: result.isUpdateAvailable,

@@ -129,7 +129,7 @@ export const AboutSection: React.FC<AboutSectionProps> = ({
     }));
 
     try {
-      const response = await fetch('/api/updates/check');
+      const response = await fetch('/api/updates/check?force=true');
       if (!response.ok) {
         throw new Error(`Failed to check for updates: ${response.status} ${response.statusText}`);
       }
