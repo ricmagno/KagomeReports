@@ -105,7 +105,7 @@ export class UpdateInstaller {
         checksumVerified: true
       });
 
-      this.notifyProgress('complete', 100, 'Update installed successfully');
+      this.notifyProgress('complete', 100, 'Update downloaded and staged. Please restart the application to complete the update.');
 
       installerLogger.info('Update installation completed', {
         fromVersion: currentVersion,
@@ -234,14 +234,18 @@ export class UpdateInstaller {
     });
   }
 
-  /**
-   * Apply update to application
-   */
   async applyUpdate(updateData: Buffer, version: string): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
         // Extract update data (assuming it's a tar/zip file)
-        // For now, we'll just write it to a temporary location
+        // NOTE: This is a staging implementation. The update is downloaded and saved,
+        // but automatic extraction and application requires additional implementation.
+        // For production use, consider:
+        // 1. Extracting the archive to a staging directory
+        // 2. Validating the extracted files
+        // 3. Replacing application files (requires process restart)
+        // 4. Using a process manager (PM2, systemd) for automatic restart
+
         const updatePath = path.join(this.UPDATE_TEMP_DIR, `update-${version}`);
 
         if (!fs.existsSync(updatePath)) {
@@ -249,13 +253,26 @@ export class UpdateInstaller {
         }
 
         // Write update data to temporary file
-        const tempFile = path.join(updatePath, 'update.tar.gz');
+        const tempFile = path.join(updatePath, 'update.zip');
         fs.writeFileSync(tempFile, updateData);
 
-        installerLogger.info('Update applied', {
+        installerLogger.info('Update staged successfully', {
           version,
           path: updatePath,
-          size: updateData.length
+          file: tempFile,
+          size: updateData.length,
+          note: 'Manual restart required to apply update'
+        });
+
+        installerLogger.warn('Update requires manual application', {
+          message: 'The update has been downloaded and staged. To complete the update:',
+          steps: [
+            '1. Stop the application',
+            '2. Extract the update file from: ' + tempFile,
+            '3. Replace application files',
+            '4. Restart the application',
+            'OR: Pull the latest Docker image and restart the container'
+          ]
         });
 
         resolve();

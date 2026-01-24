@@ -211,13 +211,15 @@ export const AboutSection: React.FC<AboutSectionProps> = ({
         onUpdateInstalled();
       }
 
-      // Show success message
+      // Show success message with restart instructions
+      alert('Update downloaded successfully!\n\nThe update has been staged but requires a manual restart to take effect.\n\nFor Docker deployments: Pull the latest image and restart the container.\nFor manual deployments: Restart the application server.');
+
       setTimeout(() => {
         setState(prev => ({
           ...prev,
           updateStatus: null
         }));
-      }, 3000);
+      }, 10000); // Extended to 10 seconds for users to read the message
     } catch (error) {
       setState(prev => ({
         ...prev,
