@@ -36,7 +36,7 @@ export const AboutSection: React.FC<AboutSectionProps> = ({
     versionInfo: null,
     updateStatus: null,
     updateHistory: [],
-    isCheckingForUpdates: false,
+    isCheckingForUpdates: true,
     isInstallingUpdate: false,
     updateProgress: 0,
     error: null,
@@ -57,15 +57,16 @@ export const AboutSection: React.FC<AboutSectionProps> = ({
     try {
       const response = await fetch('/api/version');
       if (!response.ok) {
-        throw new Error('Failed to fetch version information');
+        throw new Error(`Failed to fetch version information: ${response.status} ${response.statusText}`);
       }
       const data = await response.json();
       setState(prev => ({
         ...prev,
-        versionInfo: data,
+        versionInfo: data.data || data, // Handle wrapper object if present
         loading: false
       }));
     } catch (error) {
+      console.error('Error loading version info:', error);
       setState(prev => ({
         ...prev,
         error: error instanceof Error ? error.message : 'Failed to load version',
@@ -81,15 +82,20 @@ export const AboutSection: React.FC<AboutSectionProps> = ({
     try {
       const response = await fetch('/api/updates/status');
       if (!response.ok) {
-        throw new Error('Failed to fetch update status');
+        throw new Error(`Failed to fetch update status: ${response.status} ${response.statusText}`);
       }
       const data = await response.json();
       setState(prev => ({
         ...prev,
-        updateStatus: data.data
+        updateStatus: data.data || data, // Handle wrapper object if present
+        isCheckingForUpdates: false // Ensure checking spinner stops
       }));
     } catch (error) {
       console.error('Failed to load update status:', error);
+      setState(prev => ({
+        ...prev,
+        isCheckingForUpdates: false // Ensure checking spinner stops even on error
+      }));
     }
   };
 
@@ -112,7 +118,7 @@ export const AboutSection: React.FC<AboutSectionProps> = ({
     }
   };
 
-  /**
+  /*
    * Check for updates
    */
   const handleCheckForUpdates = async () => {
@@ -125,15 +131,16 @@ export const AboutSection: React.FC<AboutSectionProps> = ({
     try {
       const response = await fetch('/api/updates/check');
       if (!response.ok) {
-        throw new Error('Failed to check for updates');
+        throw new Error(`Failed to check for updates: ${response.status} ${response.statusText}`);
       }
       const data = await response.json();
       setState(prev => ({
         ...prev,
-        updateStatus: data.data,
+        updateStatus: data.data || data,
         isCheckingForUpdates: false
       }));
     } catch (error) {
+      console.error('Error checking for updates:', error);
       setState(prev => ({
         ...prev,
         error: error instanceof Error ? error.message : 'Failed to check for updates',
@@ -286,69 +293,71 @@ export const AboutSection: React.FC<AboutSectionProps> = ({
           </div>
         )}
 
-        {updateStatus ? (
-          (() => {
-            try {
+        {(() => {
+          try {
+            if (!updateStatus) {
               return (
-                <div className="update-status">
-                  {updateStatus.isUpdateAvailable ? (
-                    <div className="update-available">
-                      <div className="status-indicator available">
-                        <Download size={20} />
-                        <span>Update Available</span>
-                      </div>
-                      <div className="update-details">
-                        <p>New version <strong>v{updateStatus.latestVersion}</strong> is available</p>
-                        {updateStatus.changelog && (
-                          <div className="changelog">
-                            <h4>What's New:</h4>
-                            <p>{updateStatus.changelog.substring(0, 200)}...</p>
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        className="btn btn-primary"
-                        onClick={handleInstallUpdate}
-                        disabled={isInstallingUpdate}
-                      >
-                        {isInstallingUpdate ? 'Installing...' : 'Install Update'}
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="status-indicator up-to-date">
-                      <CheckCircle size={20} />
-                      <span>Up to Date</span>
-                    </div>
-                  )}
-
-                  {updateStatus.lastCheckTime && (
-                    <div className="last-check">
-                      <Clock size={14} />
-                      <span>
-                        Last checked: {(() => {
-                          try {
-                            return new Date(updateStatus.lastCheckTime).toLocaleString();
-                          } catch (error) {
-                            console.error('Error formatting date:', error);
-                            return updateStatus.lastCheckTime; // Fallback to raw date string
-                          }
-                        })()}
-                      </span>
-                    </div>
-                  )}
+                <div className="status-indicator checking">
+                  <RefreshCw size={20} className="spinning" />
+                  <span>Checking for updates...</span>
                 </div>
               );
-            } catch (error) {
-              console.error('Error rendering update status:', error);
-              return <div className="error-message">Error displaying update status</div>;
             }
-          })()
-        ) : (
-          <div className="status-indicator checking">
-            <RefreshCw size={20} className="spinning" />
-            <span>Checking for updates...</span>
-          </div>
-        )}
+
+            return (
+              <div className="update-status">
+                {updateStatus.isUpdateAvailable ? (
+                  <div className="update-available">
+                    <div className="status-indicator available">
+                      <Download size={20} />
+                      <span>Update Available</span>
+                    </div>
+                    <div className="update-details">
+                      <p>New version <strong>v{updateStatus.latestVersion || 'unknown'}</strong> is available</p>
+                      {updateStatus.changelog && (
+                        <div className="changelog">
+                          <h4>What's New:</h4>
+                          <p>{typeof updateStatus.changelog === 'string' ? updateStatus.changelog.substring(0, 200) + '...' : 'Changelog not available'}</p>
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      className="btn btn-primary"
+                      onClick={handleInstallUpdate}
+                      disabled={isInstallingUpdate}
+                    >
+                      {isInstallingUpdate ? 'Installing...' : 'Install Update'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="status-indicator up-to-date">
+                    <CheckCircle size={20} />
+                    <span>Up to Date</span>
+                  </div>
+                )}
+
+                {updateStatus.lastCheckTime && (
+                  <div className="last-check">
+                    <Clock size={14} />
+                    <span>
+                      Last checked: {(() => {
+                        try {
+                          return new Date(updateStatus.lastCheckTime).toLocaleString();
+                        } catch (error) {
+                          console.error('Error formatting date:', error);
+                          return updateStatus.lastCheckTime; // Fallback to raw date string
+                        }
+                      })()}
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          } catch (error) {
+            console.error('Error rendering update status:', error);
+            return <div className="error-message">Error displaying update status</div>;
+          }
+        })()}
 
         {isInstallingUpdate && (
           <div className="progress-container">
