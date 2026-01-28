@@ -8,7 +8,7 @@
  * Requirements: 4.5 - Format preference persistence
  */
 
-import { ExportFormat } from '../../../src/types/reportExportImport';
+import { ExportFormat } from '../types/reportExportImport';
 
 /**
  * localStorage key for storing format preference

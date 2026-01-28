@@ -1,3 +1,5 @@
+import path from 'path';
+import fs from 'fs';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -49,10 +51,26 @@ app.get('/health', async (req, res) => {
 import apiRoutes from '@/routes';
 app.use('/api', apiRoutes);
 
+// Serve static files from the React app if in production
+const clientBuildPath = path.join(__dirname, '../client/build');
+if (fs.existsSync(clientBuildPath)) {
+  app.use(express.static(clientBuildPath));
+
+  // The catch-all handler for any request that doesn't match an API route
+  // This is essential for React Router to work properly
+  app.get('*', (req, res, next) => {
+    // If it's an API request that wasn't caught by apiRoutes, let it fall through to the 404 handler
+    if (req.path.startsWith('/api/')) {
+      return next();
+    }
+    res.sendFile(path.join(clientBuildPath, 'index.html'));
+  });
+}
+
 // Error handling middleware
 app.use(errorHandler);
 
-// 404 handler
+// 404 handler (fallback for API routes or if client build is missing)
 app.use('*', (req, res) => {
   res.status(404).json({
     error: 'Not Found',

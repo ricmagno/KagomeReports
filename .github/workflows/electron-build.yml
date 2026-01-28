@@ -1,0 +1,73 @@
+name: Build Electron App
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+        include:
+          - os: windows-latest
+            artifact_name: Historian Reports Setup
+            asset_name: historian-reports-setup-windows
+          - os: macos-latest
+            artifact_name: Historian Reports
+            asset_name: historian-reports-macos
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm install
+          cd client && npm install && cd ..
+
+      - name: Build backend
+        run: npm run build
+
+      - name: Build frontend
+        run: npm run build:client
+
+      - name: Build Electron (Windows)
+        if: runner.os == 'Windows'
+        run: npm run electron:build:win
+
+      - name: Build Electron (macOS)
+        if: runner.os == 'macOS'
+        run: npm run electron:build:mac
+
+      - name: Upload artifacts (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: dist/electron/*.exe
+
+      - name: Upload artifacts (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: |
+            dist/electron/*.dmg
+            dist/electron/*.zip
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/electron/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

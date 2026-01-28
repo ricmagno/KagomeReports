@@ -8,10 +8,22 @@ yarn-error.log*
 .env
 .env.local
 .env.production
+.env.electron
+.env.test
+.env.test.local
+.env.development.local
+
+# Secrets and sensitive info
+DatabaseInfo
+.database-info
+*.key
+*.pem
+secrets/
 
 # Build outputs
 dist/
 build/
+client/build/
 
 # Logs
 logs/
@@ -31,6 +43,8 @@ coverage/
 .nyc_output
 
 # Dependency directories
+node_modules/
+bower_components/
 jspm_packages/
 
 # Optional npm cache directory
@@ -45,14 +59,18 @@ jspm_packages/
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variables file
-.env.test
-
 # Reports and temp directories
 /reports/
 temp/
 @temp/**
 @test-reports/**
+*.pdf
+
+# Backups and updates
+.backups/
+.updates/
+.env.backups/
+package-lock 2.json
 
 # IDE files
 .vscode/
