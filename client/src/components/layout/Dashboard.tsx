@@ -14,7 +14,8 @@ import {
   Activity,
   Users,
   Trash2,
-  Info
+  Info,
+  Settings
 } from 'lucide-react';
 import { ReportConfig, TagInfo, ReportVersion } from '../../types/api';
 import { Button } from '../ui/Button';
@@ -29,6 +30,7 @@ import { ExportImportControls } from '../reports/ExportImportControls';
 import { StatusDashboard } from '../status/StatusDashboard';
 import { SchedulesList, SchedulesErrorBoundary } from '../schedules';
 import { UserManagement } from '../users';
+import { ConfigurationManagement } from '../configuration/ConfigurationManagement';
 import { AboutSection } from '../about/AboutSection';
 import { apiService, getAuthToken, setAuthToken } from '../../services/api';
 import { useToast } from '../../hooks/useToast';
@@ -40,7 +42,7 @@ interface DashboardProps {
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
-  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'categories' | 'database' | 'status' | 'users' | 'about'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'categories' | 'database' | 'status' | 'users' | 'configuration' | 'about'>('create');
   const [healthStatus, setHealthStatus] = useState<string>('checking...');
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -666,6 +668,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 { id: 'categories', label: 'Categories', icon: Tag },
                 { id: 'status', label: 'Status', icon: Activity },
                 { id: 'database', label: 'Database', icon: Database },
+                ...(currentUser?.role === 'admin' ? [{ id: 'configuration', label: 'Configuration', icon: Settings }] : []),
                 ...(currentUser?.role === 'admin' ? [{ id: 'users', label: 'Users', icon: Users }] : []),
                 { id: 'about', label: 'About', icon: Info },
               ].map(tab => (
@@ -1266,6 +1269,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             {
               activeTab === 'users' && currentUser?.role === 'admin' && (
                 <UserManagement />
+              )
+            }
+
+            {
+              activeTab === 'configuration' && currentUser?.role === 'admin' && (
+                <ConfigurationManagement />
               )
             }
 

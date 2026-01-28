@@ -20,6 +20,7 @@ import usersRoutes from './users';
 import autoLoginRoutes from './autoLogin';
 import versionRoutes from './version';
 import updatesRoutes from './updates';
+import configurationRoutes from './configuration';
 
 const router = Router();
 
@@ -40,6 +41,7 @@ router.use('/users', usersRoutes);
 router.use('/auth/auto-login', autoLoginRoutes);
 router.use('/version', versionRoutes);
 router.use('/updates', updatesRoutes);
+router.use('/configuration', configurationRoutes);
 
 // API info endpoint
 router.get('/', (_req, res) => {
@@ -63,7 +65,8 @@ router.get('/', (_req, res) => {
       users: '/api/users',
       autoLogin: '/api/auth/auto-login',
       version: '/api/version',
-      updates: '/api/updates'
+      updates: '/api/updates',
+      configuration: '/api/configuration'
     }
   });
 });

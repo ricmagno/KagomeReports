@@ -150,6 +150,80 @@ export const AboutSection: React.FC<AboutSectionProps> = ({
   };
 
   /**
+   * Reload/restart the application
+   */
+  const handleReloadApp = async () => {
+    try {
+      setState(prev => ({
+        ...prev,
+        error: null
+      }));
+
+      // Call the restart endpoint
+      const response = await fetch('/api/system/restart', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to restart application: ${response.status} ${response.statusText}`);
+      }
+
+      // Show reloading message
+      alert('Application is restarting...\n\nThe page will automatically reload in a few seconds.');
+
+      // Wait a bit for the server to start shutting down
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Poll for server to come back online
+      let attempts = 0;
+      const maxAttempts = 30; // 30 seconds max
+      const pollInterval = 1000; // 1 second
+
+      const checkServerStatus = async (): Promise<boolean> => {
+        try {
+          const healthResponse = await fetch('/api/health', {
+            method: 'GET',
+            cache: 'no-cache'
+          });
+          return healthResponse.ok;
+        } catch {
+          return false;
+        }
+      };
+
+      // Poll until server is back or timeout
+      while (attempts < maxAttempts) {
+        const isOnline = await checkServerStatus();
+        if (isOnline) {
+          // Server is back, reload the page
+          window.location.reload();
+          return;
+        }
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        attempts++;
+      }
+
+      // Timeout - reload anyway
+      window.location.reload();
+
+    } catch (error) {
+      console.error('Error restarting application:', error);
+      setState(prev => ({
+        ...prev,
+        error: error instanceof Error ? error.message : 'Failed to restart application'
+      }));
+
+      // Offer manual reload
+      if (window.confirm('Automatic restart failed. Would you like to reload the page manually?')) {
+        window.location.reload();
+      }
+    }
+  }
+
+  /**
    * Install update
    */
   const handleInstallUpdate = async () => {
@@ -211,15 +285,24 @@ export const AboutSection: React.FC<AboutSectionProps> = ({
         onUpdateInstalled();
       }
 
-      // Show success message with restart instructions
-      alert('Update downloaded successfully!\n\nThe update has been staged but requires a manual restart to take effect.\n\nFor Docker deployments: Pull the latest image and restart the container.\nFor manual deployments: Restart the application server.');
+      // Show success message with option to reload
+      const shouldReload = window.confirm(
+        'Update downloaded successfully!\n\n' +
+        'The update has been staged and is ready to apply.\n\n' +
+        'Click OK to restart the application now, or Cancel to restart manually later.\n\n' +
+        'Note: The application will be unavailable for 5-10 seconds during restart.'
+      );
 
-      setTimeout(() => {
-        setState(prev => ({
-          ...prev,
-          updateStatus: null
-        }));
-      }, 10000); // Extended to 10 seconds for users to read the message
+      if (shouldReload) {
+        await handleReloadApp();
+      } else {
+        setTimeout(() => {
+          setState(prev => ({
+            ...prev,
+            updateStatus: null
+          }));
+        }, 10000);
+      }
     } catch (error) {
       setState(prev => ({
         ...prev,
