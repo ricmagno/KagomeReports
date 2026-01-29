@@ -90,6 +90,27 @@ npm run electron:dev
 2. Run: `npm run electron:dev`
 3. Build: `npm run electron:build:all`
 
+## Runtime Module Not Found Errors
+
+If the app starts but shows a JavaScript error like:
+`Error: Cannot find module 'call-bind-apply-helpers'`
+
+This is caused by `electron-builder` missing nested dependencies during packaging.
+
+### Solution
+
+1. **Update package.json**: I have already added the missing dependencies (`call-bind-apply-helpers`, `dunder-proto`, etc.) to your `package.json`.
+2. **Reinstall Dependencies**:
+   ```bash
+   rm -rf node_modules package-lock.json
+   npm install --legacy-peer-deps
+   ```
+3. **Rebuild Application**:
+   ```bash
+   npm run build:all
+   npm run electron:build:win
+   ```
+
 ---
 
 **Still stuck?** See `ELECTRON_INSTALL_GUIDE.md` for detailed troubleshooting.

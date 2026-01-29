@@ -20,9 +20,23 @@ import { updateChecker } from '@/services/updateChecker';
 const app = express();
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      "font-src": ["'self'", "https://fonts.gstatic.com", "data:"],
+      "img-src": ["'self'", "data:", "blob:"],
+      "connect-src": ["'self'", env.CORS_ORIGIN, "https://*.github.com"],
+      "upgrade-insecure-requests": null,
+    },
+  },
+  hsts: false, // Disable HSTS to prevent Safari localhost issues
+}));
+
 app.use(cors({
-  origin: env.CORS_ORIGIN,
+  origin: [env.CORS_ORIGIN, 'http://localhost:3000', 'http://localhost:3001'],
   credentials: true,
 }));
 
@@ -41,7 +55,7 @@ app.get('/health', async (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version || '1.0.0',
+    version: '0.65.2',
     environment: env.NODE_ENV,
     cache: cacheHealth,
   });
@@ -111,7 +125,12 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
 
   // Seed initial users
   try {
+    const { authService } = await import('@/services/authService');
     const { userManagementService } = await import('@/services/userManagementService');
+
+    // Ensure database is initialized before seeding
+    await authService.waitForInitialization();
+
     await userManagementService.seedInitialUsers();
     logger.info('✓ Initial users seeded/verified');
   } catch (error) {
@@ -604,8 +623,15 @@ async function startServer(): Promise<void> {
 }
 
 // Start server if this file is run directly
-if (require.main === module) {
-  startServer();
+// Start server if this file is run directly
+if (require.main === module || process.env.TS_NODE_DEV === 'true' || process.argv[1]?.endsWith('server.ts')) {
+  logger.info('Executing startServer check passed');
+  startServer().catch(err => {
+    logger.error('Failed to execute startServer:', err);
+    process.exit(1);
+  });
+} else {
+  logger.info('Server imported as module, not starting automatically');
 }
 
 export { app, startServer };

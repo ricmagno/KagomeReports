@@ -94,13 +94,119 @@ This application is designed to generate printable reports and trends from the A
    - Modular architecture
    - Version control integration
 
-## Technologies to be Used
+## Technologies Used
 
-- Backend: Go or Node.js (depending on project requirements)
-- Frontend: React.js or Vue.js
-- Database: AVEVA Historian (via direct SQL connections)
-- Reporting: PDF generation libraries
-- Authentication: OAuth or JWT
+- **Backend**: Node.js with Express and TypeScript
+- **Frontend**: React.js with Tailwind CSS
+- **Database**: AVEVA Historian (via MS SQL Server)
+- **Desktop**: Electron
+- **Containerization**: Docker
+
+## Getting Started
+
+### Prerequisites
+
+- **Node.js**: v18.0.0 or higher
+- **Database**: A running Microsoft SQL Server instance (AVEVA Historian)
+- **OS (for building desktop)**: 
+  - Windows 10+ (for Windows builds)
+  - macOS (for Mac builds)
+
+### Installation
+
+1. **Clone the repository**:
+   ```bash
+   git clone <repository-url>
+   cd KagomeReports
+   ```
+
+2. **Install dependencies**:
+   ```bash
+   npm install
+   cd client && npm install && cd ..
+   ```
+
+3. **Configure environment**:
+   Create a `.env` file in the root directory (use `.env.example` as a template):
+   ```bash
+   cp .env.example .env
+   ```
+   Update the database credentials and JWT secrets in the `.env` file.
+
+## Development
+
+### Web Version
+To run the backend and frontend concurrently in development mode:
+```bash
+npm run start:dev
+```
+- Backend runs on: `http://localhost:3000`
+- Frontend runs on: `http://localhost:3001` (proxies to 3000)
+
+### Desktop Version (Electron)
+To run the application as a desktop app in development:
+```bash
+npm run electron:dev
+```
+
+## Building for Production
+
+### 1. Web Deployment (Server)
+To build the application for standard web hosting:
+```bash
+# Build backend and frontend
+npm run build
+npm run build:client
+
+# Start production server
+npm start
+```
+
+### 2. Desktop Application (Electron)
+To package the application as a standalone desktop executable for the appropriate platform.
+
+#### Prerequisites for Cross-Compilation (from Mac to Windows)
+If you are building the Windows version on a macOS system, ensure you have the following installed via [Homebrew](https://brew.sh/):
+```bash
+brew install --cask wine-stable
+brew install mono
+```
+
+#### Build Instructions
+
+The Electron build follows a 3-step sequence:
+1. **Application Build**: Compiles the Node.js backend and React frontend.
+2. **Electron Source Build**: Compiles the Electron main and preload scripts.
+3. **Packaging**: Bundles everything into an installer (`.exe` for Windows, `.dmg` for Mac).
+
+| Action | Command | Output Directory |
+| :--- | :--- | :--- |
+| **Windows Build** | `npm run electron:build:win` | `dist/electron/*.exe` |
+| **macOS Build** | `npm run electron:build:mac` | `dist/electron/*.dmg` |
+| **Dev Mode** | `npm run electron:dev` | Interactive Window |
+
+> **Note**: For a deep dive into Electron configuration, code signing, and troubleshooting, refer to the [ELECTRON_SETUP_GUIDE.md](./ELECTRON_SETUP_GUIDE.md).
+
+### 3. Docker Deployment
+To build and run the application using Docker:
+
+#### Build the Image
+To build the multi-architecture Docker image (AMD64 & ARM64):
+```bash
+npm run docker:build
+```
+
+#### Run with Docker Compose (Recommended)
+This starts the application along with a Redis cache and persistent volumes for logs and data:
+```bash
+docker-compose up -d
+```
+The application will be available at `http://localhost:3000`.
+
+#### Stop and Remove Containers
+```bash
+docker-compose down
+```
 
 ## Project Scope
 

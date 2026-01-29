@@ -8,6 +8,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { Database } from 'sqlite3';
 import path from 'path';
+import fs from 'fs';
 import { apiLogger } from '@/utils/logger';
 import { env } from '@/config/environment';
 import { encryptionService } from '@/services/encryptionService';
@@ -60,93 +61,128 @@ export class AuthService {
   private jwtSecret: string;
   private tokenExpiry: string = '24h';
   private refreshTokenExpiry: string = '30d';
+  private initPromise: Promise<void> | null = null;
 
   constructor() {
     this.jwtSecret = env.JWT_SECRET;
-    this.initializeDatabase();
+    this.initPromise = this.initializeDatabase();
+  }
+
+  /**
+   * Wait for database initialization to complete
+   */
+  async waitForInitialization(): Promise<void> {
+    if (this.initPromise) {
+      await this.initPromise;
+    }
   }
 
   /**
    * Initialize SQLite database for user and session storage
    */
-  private initializeDatabase(): void {
-    const dbPath = path.join(process.cwd(), 'data', 'auth.db');
-    this.db = new Database(dbPath, (err) => {
-      if (err) {
-        apiLogger.error('Failed to open database', { error: err });
-        throw err;
-      }
+  private async initializeDatabase(): Promise<void> {
+    const dbPath = path.isAbsolute(env.DATA_DIR)
+      ? path.join(env.DATA_DIR, 'auth.db')
+      : path.join(process.cwd(), env.DATA_DIR, 'auth.db');
+
+    // Ensure the data directory exists
+    const dataDir = path.dirname(dbPath);
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    return new Promise((resolve, reject) => {
+      this.db = new Database(dbPath, (err) => {
+        if (err) {
+          apiLogger.error('Failed to open database', { error: err });
+          reject(err);
+          return;
+        }
+
+        // Configure busy retry
+        this.db.configure('busyTimeout', 3000);
+
+        // Create tables
+        this.db.serialize(() => {
+          // Users table with all required columns for UserManagementService
+          this.db.run(`
+            CREATE TABLE IF NOT EXISTS users (
+              id TEXT PRIMARY KEY,
+              username TEXT UNIQUE NOT NULL,
+              email TEXT UNIQUE NOT NULL,
+              first_name TEXT NOT NULL,
+              last_name TEXT NOT NULL,
+              role TEXT NOT NULL DEFAULT 'user',
+              password_hash TEXT NOT NULL,
+              is_active BOOLEAN DEFAULT 1,
+              is_view_only BOOLEAN DEFAULT 0,
+              parent_user_id TEXT,
+              auto_login_enabled BOOLEAN DEFAULT 0,
+              require_password_change BOOLEAN DEFAULT 0,
+              last_login DATETIME,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+          `);
+
+          // User sessions table
+          this.db.run(`
+            CREATE TABLE IF NOT EXISTS user_sessions (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              token TEXT UNIQUE NOT NULL,
+              expires_at DATETIME NOT NULL,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              is_active BOOLEAN DEFAULT 1,
+              user_agent TEXT,
+              ip_address TEXT,
+              FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+          `);
+
+          // Role permissions table
+          this.db.run(`
+            CREATE TABLE IF NOT EXISTS role_permissions (
+              id TEXT PRIMARY KEY,
+              role TEXT NOT NULL,
+              resource TEXT NOT NULL,
+              action TEXT NOT NULL,
+              granted BOOLEAN DEFAULT 1,
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+          `);
+
+          // Audit log table
+          this.db.run(`
+            CREATE TABLE IF NOT EXISTS audit_logs (
+              id TEXT PRIMARY KEY,
+              user_id TEXT,
+              action TEXT NOT NULL,
+              resource TEXT,
+              details TEXT,
+              ip_address TEXT,
+              user_agent TEXT,
+              timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+          `, (err) => {
+            if (err) {
+              apiLogger.error('Failed to create tables', { error: err });
+              reject(err);
+            } else {
+              // Insert default admin user if not exists
+              this.createDefaultAdmin();
+
+              // Insert default permissions
+              this.createDefaultPermissions();
+
+              apiLogger.info('Authentication database initialized and tables created');
+              resolve();
+            }
+          });
+        });
+      });
     });
-
-    // Create tables
-    this.db.serialize(() => {
-      // Users table
-      this.db.run(`
-        CREATE TABLE IF NOT EXISTS users (
-          id TEXT PRIMARY KEY,
-          username TEXT UNIQUE NOT NULL,
-          email TEXT UNIQUE NOT NULL,
-          first_name TEXT NOT NULL,
-          last_name TEXT NOT NULL,
-          role TEXT NOT NULL DEFAULT 'user',
-          password_hash TEXT NOT NULL,
-          is_active BOOLEAN DEFAULT 1,
-          last_login DATETIME,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      // User sessions table
-      this.db.run(`
-        CREATE TABLE IF NOT EXISTS user_sessions (
-          id TEXT PRIMARY KEY,
-          user_id TEXT NOT NULL,
-          token TEXT UNIQUE NOT NULL,
-          expires_at DATETIME NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          is_active BOOLEAN DEFAULT 1,
-          user_agent TEXT,
-          ip_address TEXT,
-          FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-      `);
-
-      // Role permissions table
-      this.db.run(`
-        CREATE TABLE IF NOT EXISTS role_permissions (
-          id TEXT PRIMARY KEY,
-          role TEXT NOT NULL,
-          resource TEXT NOT NULL,
-          action TEXT NOT NULL,
-          granted BOOLEAN DEFAULT 1,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-      `);
-
-      // Audit log table
-      this.db.run(`
-        CREATE TABLE IF NOT EXISTS audit_logs (
-          id TEXT PRIMARY KEY,
-          user_id TEXT,
-          action TEXT NOT NULL,
-          resource TEXT,
-          details TEXT,
-          ip_address TEXT,
-          user_agent TEXT,
-          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-      `);
-
-      // Insert default admin user if not exists
-      this.createDefaultAdmin();
-      
-      // Insert default permissions
-      this.createDefaultPermissions();
-    });
-
-    apiLogger.info('Authentication database initialized');
   }
 
   /**
@@ -200,14 +236,14 @@ export class AuthService {
       { role: 'admin', resource: 'system', action: 'read' },
       { role: 'admin', resource: 'system', action: 'write' },
       { role: 'admin', resource: 'system', action: 'delete' },
-      
+
       // User permissions
       { role: 'user', resource: 'reports', action: 'read' },
       { role: 'user', resource: 'reports', action: 'write' },
       { role: 'user', resource: 'schedules', action: 'read' },
       { role: 'user', resource: 'schedules', action: 'write' },
       { role: 'user', resource: 'system', action: 'read' },
-      
+
       // View-Only permissions
       { role: 'view-only', resource: 'reports', action: 'read' },
       { role: 'view-only', resource: 'system', action: 'read' }
@@ -234,7 +270,7 @@ export class AuthService {
           reject(new Error('Database not initialized'));
           return;
         }
-        
+
         this.db.get(
           'SELECT * FROM users WHERE (username = ? OR email = ?) AND is_active = 1',
           [usernameOrEmail, usernameOrEmail],
@@ -297,7 +333,7 @@ export class AuthService {
       await this.logAuditEvent(user.id, 'login_success', 'auth', 'User logged in successfully');
 
       const { passwordHash, ...userWithoutPassword } = user;
-      
+
       return {
         success: true,
         user: userWithoutPassword,
@@ -335,7 +371,7 @@ export class AuthService {
   async verifyToken(token: string): Promise<{ valid: boolean; user?: Omit<User, 'passwordHash'>; error?: string }> {
     try {
       const decoded = jwt.verify(token, this.jwtSecret) as any;
-      
+
       // Check if session is still active
       const sessionActive = await new Promise<boolean>((resolve) => {
         this.db.get(
@@ -364,7 +400,7 @@ export class AuthService {
       }
 
       const { passwordHash, ...userWithoutPassword } = user;
-      
+
       return {
         valid: true,
         user: userWithoutPassword
@@ -383,13 +419,13 @@ export class AuthService {
   private async createSession(userId: string, token: string, expiresIn: string): Promise<void> {
     const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const expiresAt = new Date();
-    
+
     // Parse expiresIn (e.g., "24h", "30d")
     const match = expiresIn.match(/^(\d+)([hdm])$/);
     if (match && match[1]) {
       const value = parseInt(match[1]);
       const unit = match[2];
-      
+
       switch (unit) {
         case 'h':
           expiresAt.setHours(expiresAt.getHours() + value);
@@ -429,7 +465,7 @@ export class AuthService {
     try {
       // Get user info before logout for audit log
       const decoded = jwt.decode(token) as any;
-      
+
       // Deactivate session
       await new Promise<void>((resolve, reject) => {
         this.db.run(
@@ -582,22 +618,22 @@ export class AuthService {
     userAgent?: string
   ): Promise<void> {
     const auditId = `audit_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
+
     // Encrypt sensitive details
     const encryptedDetails = encryptionService.encrypt(details);
     const encryptedUserAgent = userAgent ? encryptionService.encrypt(userAgent) : null;
-    
+
     return new Promise((resolve, reject) => {
       this.db.run(
         `INSERT INTO audit_logs (id, user_id, action, resource, details, ip_address, user_agent)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
-          auditId, 
-          userId, 
-          action, 
-          resource, 
-          JSON.stringify(encryptedDetails), 
-          ipAddress || null, 
+          auditId,
+          userId,
+          action,
+          resource,
+          JSON.stringify(encryptedDetails),
+          ipAddress || null,
           encryptedUserAgent ? JSON.stringify(encryptedUserAgent) : null
         ],
         (err) => {
@@ -664,7 +700,7 @@ export class AuthService {
               // Decrypt sensitive fields
               let decryptedDetails = row.details;
               let decryptedUserAgent = row.user_agent;
-              
+
               if (row.details && row.details.startsWith('{')) {
                 try {
                   const encryptedDetails = JSON.parse(row.details);
@@ -674,7 +710,7 @@ export class AuthService {
                   decryptedDetails = row.details;
                 }
               }
-              
+
               if (row.user_agent && row.user_agent.startsWith('{')) {
                 try {
                   const encryptedUserAgent = JSON.parse(row.user_agent);
@@ -684,7 +720,7 @@ export class AuthService {
                   decryptedUserAgent = row.user_agent;
                 }
               }
-              
+
               return {
                 id: row.id,
                 userId: row.user_id,
@@ -714,7 +750,7 @@ export class AuthService {
               };
             }
           });
-          
+
           resolve(decryptedLogs);
         }
       });

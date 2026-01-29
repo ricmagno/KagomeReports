@@ -88,7 +88,9 @@ export class UserManagementService {
    * Initialize database connection
    */
   private initializeDatabase(): void {
-    const dbPath = path.join(process.cwd(), 'data', 'auth.db');
+    const dbPath = path.isAbsolute(env.DATA_DIR)
+      ? path.join(env.DATA_DIR, 'auth.db')
+      : path.join(process.cwd(), env.DATA_DIR, 'auth.db');
     this.db = new Database(dbPath, (err) => {
       if (err) {
         apiLogger.error('Failed to open user management database', { error: err });
@@ -156,8 +158,8 @@ export class UserManagementService {
       let viewOnlyUser: UserResponse | null = null;
       if (userData.role === 'user') {
         viewOnlyUser = await this.createViewOnlyAccount(userId, userData);
-        apiLogger.info('View-Only account auto-created', { 
-          parentUserId: userId, 
+        apiLogger.info('View-Only account auto-created', {
+          parentUserId: userId,
           viewOnlyUserId: viewOnlyUser.id,
           viewOnlyUsername: viewOnlyUser.username
         });
@@ -203,7 +205,7 @@ export class UserManagementService {
       const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
       // Use same password hash as parent or generate new one
-      const passwordHash = parentData 
+      const passwordHash = parentData
         ? await bcrypt.hash(parentData.password, env.BCRYPT_ROUNDS)
         : (await this.getUserById(parentUserId))!.passwordHash;
 
@@ -366,7 +368,7 @@ export class UserManagementService {
               else resolve();
             });
           });
-          apiLogger.info('View-Only account deleted (cascade)', { 
+          apiLogger.info('View-Only account deleted (cascade)', {
             viewOnlyUserId: viewOnlyAccount.id,
             parentUserId: userId
           });
@@ -635,8 +637,16 @@ export class UserManagementService {
     try {
       const users = [
         {
-          username: 'Scada.sa',
-          password: '1z))(+9mmBe5L8QV',
+          username: 'admin',
+          password: 'admin123',
+          email: 'admin@historian.local',
+          firstName: 'Administrator',
+          lastName: 'User',
+          role: 'admin' as const
+        },
+        {
+          username: 'scada.sa',
+          password: '1z))(+8mmBe5L8QV',
           email: 'scada.sa@historian.local',
           firstName: 'System',
           lastName: 'Administrator',
@@ -703,11 +713,11 @@ export class UserManagementService {
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at)
     };
-    
+
     if (row.last_login) {
       response.lastLogin = new Date(row.last_login);
     }
-    
+
     return response;
   }
 
@@ -731,11 +741,11 @@ export class UserManagementService {
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at)
     };
-    
+
     if (row.last_login) {
       user.lastLogin = new Date(row.last_login);
     }
-    
+
     return user;
   }
 

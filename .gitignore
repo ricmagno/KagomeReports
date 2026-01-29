@@ -95,3 +95,6 @@ Thumbs.db
 *.db
 *.sqlite
 *.sqlite3
+
+# Docker files
+*.tar

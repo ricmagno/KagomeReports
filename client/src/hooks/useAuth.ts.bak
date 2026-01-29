@@ -50,10 +50,10 @@ export const useAuthState = () => {
   // Check if user has specific permission based on role
   const hasPermission = (resource: string, action: string): boolean => {
     if (!user || !user.isActive) return false;
-
+    
     // Admin has all permissions
     if (user.role === 'admin') return true;
-
+    
     // Define user permissions
     const userPermissions = [
       'reports:read',
@@ -62,7 +62,7 @@ export const useAuthState = () => {
       'schedules:write',
       'system:read'
     ];
-
+    
     const permission = `${resource}:${action}`;
     return userPermissions.includes(permission);
   };
@@ -71,7 +71,7 @@ export const useAuthState = () => {
     try {
       setIsLoading(true);
       const response = await apiService.login({ username, password });
-
+      
       if (response.success && response.data?.user) {
         setUser(response.data.user);
         // Store token in localStorage or sessionStorage
@@ -104,7 +104,7 @@ export const useAuthState = () => {
     try {
       setIsLoading(true);
       const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
-
+      
       if (!token) {
         setUser(null);
         setIsLoading(false);
@@ -146,7 +146,9 @@ export const useAuthState = () => {
 
   // Initialize auth state on mount
   useEffect(() => {
-    refreshUser();
+    // Authentication disabled for now - using mock state
+    // refreshUser();
+    setIsLoading(false); // Set loading to false immediately
   }, []);
 
   return {

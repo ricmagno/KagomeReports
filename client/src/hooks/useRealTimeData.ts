@@ -41,8 +41,8 @@ export function useRealTimeData(config: RealTimeDataConfig) {
   configRef.current = config;
 
   // Server-Sent Events connection
-  const sseUrl = state.sessionId 
-    ? `${process.env.REACT_APP_API_URL || 'http://localhost:3000/api'}/auto-update/stream/${state.sessionId}`
+  const sseUrl = state.sessionId
+    ? `${process.env.REACT_APP_API_URL || '/api'}/auto-update/stream/${state.sessionId}`
     : '';
 
   const {
@@ -213,7 +213,7 @@ export function useDataRefresh(
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
-  
+
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const { enabled = true, immediate = true } = options;
 
@@ -239,7 +239,7 @@ export function useDataRefresh(
   useEffect(() => {
     if (enabled && interval > 0) {
       intervalRef.current = setInterval(refresh, interval);
-      
+
       // Immediate refresh if requested
       if (immediate) {
         refresh();

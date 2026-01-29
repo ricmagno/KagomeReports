@@ -1,6 +1,7 @@
 {
   "name": "client",
-  "version": "0.1.0",
+  "version": "0.1.4",
+  "homepage": ".",
   "private": true,
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

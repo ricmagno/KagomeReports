@@ -62,6 +62,9 @@ const envSchema = z.object({
   LOG_FILE: z.string().default('./logs/app.log'),
   LOG_MAX_SIZE: z.string().default('10m'),
   LOG_MAX_FILES: z.coerce.number().int().min(1).max(20).default(5),
+
+  // Data Configuration
+  DATA_DIR: z.string().default('./data'),
 });
 
 // Validate and export environment configuration

@@ -3,26 +3,21 @@
 # Optimized for performance, security, and multi-arch
 # ==========================================
 
-# Use Node.js 20 Alpine as the base for all stages
-FROM node:20-alpine AS base
+# Use Node.js 20 slim as the base for better compatibility with native modules
+FROM node:20-bookworm-slim AS base
 
 # Install system dependencies for 'canvas' and other native modules
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     python3 \
-    py3-setuptools \
-    make \
-    g++ \
-    cairo-dev \
-    jpeg-dev \
-    pango-dev \
-    musl-dev \
-    giflib-dev \
-    pixman-dev \
-    pangomm-dev \
-    libjpeg-turbo-dev \
-    freetype-dev \
-    fontconfig-dev \
-    && rm -rf /var/cache/apk/*
+    python3-pip \
+    build-essential \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libjpeg-dev \
+    libgif-dev \
+    librsvg2-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -47,27 +42,23 @@ COPY package*.json ./
 RUN npm install --omit=dev && npm cache clean --force
 
 # --- Stage 4: Final Production Image ---
-FROM node:20-alpine AS production
+FROM node:20-bookworm-slim AS production
 
 # Install runtime system dependencies
-RUN apk add --no-cache \
-    cairo \
-    jpeg \
-    pango \
-    musl \
-    giflib \
-    pixman \
-    pangomm \
-    libjpeg-turbo \
-    freetype \
-    fontconfig \
-    ttf-dejavu \
+RUN apt-get update && apt-get install -y \
+    libcairo2 \
+    libjpeg62-turbo \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgif7 \
+    librsvg2-2 \
     curl \
-    && rm -rf /var/cache/apk/*
+    fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S historian -u 1001 -G nodejs
+# Create a non-root user for security (Debian uses different flags)
+RUN groupadd -g 1001 nodejs && \
+    useradd -u 1001 -g nodejs -s /bin/sh -m historian
 
 WORKDIR /app
 
@@ -79,14 +70,15 @@ COPY --from=backend-builder --chown=historian:nodejs /app/dist ./dist
 COPY --from=backend-builder --chown=historian:nodejs /app/package.json ./package.json
 COPY --from=backend-builder --chown=historian:nodejs /app/templates ./templates
 COPY --from=backend-builder --chown=historian:nodejs /app/scripts/healthcheck.js ./scripts/healthcheck.js
+COPY --from=backend-builder --chown=historian:nodejs /app/.env ./.env
 
 # Copy client build to be served by the backend
 COPY --from=client-builder --chown=historian:nodejs /app/client/build ./client/build
 
 # Create necessary directories for runtime data
-RUN mkdir -p logs reports temp data && \
-    chown -R historian:nodejs logs reports temp data && \
-    chmod 755 logs reports temp data
+RUN mkdir -p logs reports temp data .backups .updates .env.backups && \
+    chown -R historian:nodejs /app && \
+    chmod 755 logs reports temp data .backups .updates .env.backups
 
 # Switch to non-root user
 USER historian
@@ -97,9 +89,10 @@ EXPOSE 3000
 # Environment defaults
 ENV NODE_ENV=production \
     PORT=3000 \
-    REPORTS_DIR=/app/reports \
-    LOG_FILE=/app/logs/app.log \
-    TEMP_DIR=/app/temp
+    DATA_DIR=/home/historian/data \
+    REPORTS_DIR=/home/historian/reports \
+    LOG_FILE=/home/historian/logs/app.log \
+    TEMP_DIR=/home/historian/temp
 
 # Labels for metadata
 LABEL maintainer="Historian Reports Team" \
