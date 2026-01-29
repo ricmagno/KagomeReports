@@ -57,7 +57,7 @@ export interface Permission {
 }
 
 export class AuthService {
-  private db!: Database;
+  public db!: Database;
   private jwtSecret: string;
   private tokenExpiry: string = '24h';
   private refreshTokenExpiry: string = '30d';
@@ -100,7 +100,11 @@ export class AuthService {
         }
 
         // Configure busy retry
-        this.db.configure('busyTimeout', 3000);
+        this.db.configure('busyTimeout', 10000);
+
+        // Configure WAL mode for better concurrency
+        this.db.run('PRAGMA journal_mode = WAL');
+        this.db.run('PRAGMA synchronous = NORMAL');
 
         // Create tables
         this.db.serialize(() => {
@@ -170,14 +174,14 @@ export class AuthService {
               apiLogger.error('Failed to create tables', { error: err });
               reject(err);
             } else {
-              // Insert default admin user if not exists
-              this.createDefaultAdmin();
-
               // Insert default permissions
-              this.createDefaultPermissions();
-
-              apiLogger.info('Authentication database initialized and tables created');
-              resolve();
+              this.createDefaultPermissions().then(() => {
+                apiLogger.info('Authentication database initialized and tables created');
+                resolve();
+              }).catch(err => {
+                apiLogger.error('Failed to create default permissions', { error: err });
+                reject(err);
+              });
             }
           });
         });
@@ -186,77 +190,52 @@ export class AuthService {
   }
 
   /**
-   * Create default admin user
-   */
-  private async createDefaultAdmin(): Promise<void> {
-    const adminExists = await new Promise<boolean>((resolve) => {
-      this.db.get(
-        'SELECT id FROM users WHERE username = ?',
-        ['admin'],
-        (err, row) => {
-          resolve(!!row);
-        }
-      );
-    });
-
-    if (!adminExists) {
-      const adminId = `user_${Date.now()}_admin`;
-      const passwordHash = await bcrypt.hash('admin123', env.BCRYPT_ROUNDS);
-
-      this.db.run(
-        `INSERT INTO users (id, username, email, first_name, last_name, role, password_hash)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [adminId, 'admin', 'admin@historian-reports.com', 'System', 'Administrator', 'admin', passwordHash],
-        (err) => {
-          if (err) {
-            apiLogger.error('Failed to create default admin user', { error: err });
-          } else {
-            apiLogger.info('Default admin user created', { username: 'admin' });
-          }
-        }
-      );
-    }
-  }
-
-  /**
    * Create default role permissions
    */
-  private createDefaultPermissions(): void {
+  private async createDefaultPermissions(): Promise<void> {
     const permissions = [
       // Admin permissions
-      { role: 'admin', resource: 'reports', action: 'read' },
-      { role: 'admin', resource: 'reports', action: 'write' },
-      { role: 'admin', resource: 'reports', action: 'delete' },
-      { role: 'admin', resource: 'schedules', action: 'read' },
-      { role: 'admin', resource: 'schedules', action: 'write' },
-      { role: 'admin', resource: 'schedules', action: 'delete' },
-      { role: 'admin', resource: 'users', action: 'read' },
-      { role: 'admin', resource: 'users', action: 'write' },
-      { role: 'admin', resource: 'users', action: 'delete' },
-      { role: 'admin', resource: 'system', action: 'read' },
-      { role: 'admin', resource: 'system', action: 'write' },
-      { role: 'admin', resource: 'system', action: 'delete' },
+      { role: 'admin' as const, resource: 'reports', action: 'read' },
+      { role: 'admin' as const, resource: 'reports', action: 'write' },
+      { role: 'admin' as const, resource: 'reports', action: 'delete' },
+      { role: 'admin' as const, resource: 'schedules', action: 'read' },
+      { role: 'admin' as const, resource: 'schedules', action: 'write' },
+      { role: 'admin' as const, resource: 'schedules', action: 'delete' },
+      { role: 'admin' as const, resource: 'users', action: 'read' },
+      { role: 'admin' as const, resource: 'users', action: 'write' },
+      { role: 'admin' as const, resource: 'users', action: 'delete' },
+      { role: 'admin' as const, resource: 'system', action: 'read' },
+      { role: 'admin' as const, resource: 'system', action: 'write' },
+      { role: 'admin' as const, resource: 'system', action: 'delete' },
 
       // User permissions
-      { role: 'user', resource: 'reports', action: 'read' },
-      { role: 'user', resource: 'reports', action: 'write' },
-      { role: 'user', resource: 'schedules', action: 'read' },
-      { role: 'user', resource: 'schedules', action: 'write' },
-      { role: 'user', resource: 'system', action: 'read' },
+      { role: 'user' as const, resource: 'reports', action: 'read' },
+      { role: 'user' as const, resource: 'reports', action: 'write' },
+      { role: 'user' as const, resource: 'schedules', action: 'read' },
+      { role: 'user' as const, resource: 'schedules', action: 'write' },
+      { role: 'user' as const, resource: 'system', action: 'read' },
 
       // View-Only permissions
-      { role: 'view-only', resource: 'reports', action: 'read' },
-      { role: 'view-only', resource: 'system', action: 'read' }
+      { role: 'view-only' as const, resource: 'reports', action: 'read' },
+      { role: 'view-only' as const, resource: 'system', action: 'read' }
     ];
 
-    permissions.forEach(perm => {
+    const promises = permissions.map(perm => {
       const permId = `perm_${perm.role}_${perm.resource}_${perm.action}`;
-      this.db.run(
-        `INSERT OR IGNORE INTO role_permissions (id, role, resource, action, granted)
-         VALUES (?, ?, ?, ?, ?)`,
-        [permId, perm.role, perm.resource, perm.action, true]
-      );
+      return new Promise<void>((resolve, reject) => {
+        this.db.run(
+          `INSERT OR IGNORE INTO role_permissions (id, role, resource, action, granted)
+           VALUES (?, ?, ?, ?, ?)`,
+          [permId, perm.role, perm.resource, perm.action, true],
+          (err) => {
+            if (err) reject(err);
+            else resolve();
+          }
+        );
+      });
     });
+
+    await Promise.all(promises);
   }
 
   /**
@@ -779,9 +758,17 @@ export class AuthService {
   /**
    * Shutdown the auth service
    */
-  shutdown(): void {
-    this.db.close();
-    apiLogger.info('Auth service shutdown');
+  async shutdown(): Promise<void> {
+    return new Promise((resolve) => {
+      this.db.close((err) => {
+        if (err) {
+          apiLogger.error('Error closing auth database', { error: err });
+        } else {
+          apiLogger.info('Auth service shutdown');
+        }
+        resolve();
+      });
+    });
   }
 }
 

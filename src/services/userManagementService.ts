@@ -78,27 +78,11 @@ export interface UserListResponse {
 }
 
 export class UserManagementService {
-  private db!: Database;
-
-  constructor() {
-    this.initializeDatabase();
+  private get db(): Database {
+    return authService.db;
   }
 
-  /**
-   * Initialize database connection
-   */
-  private initializeDatabase(): void {
-    const dbPath = path.isAbsolute(env.DATA_DIR)
-      ? path.join(env.DATA_DIR, 'auth.db')
-      : path.join(process.cwd(), env.DATA_DIR, 'auth.db');
-    this.db = new Database(dbPath, (err) => {
-      if (err) {
-        apiLogger.error('Failed to open user management database', { error: err });
-        throw err;
-      }
-    });
-    apiLogger.info('User management service initialized');
-  }
+  constructor() { }
 
   /**
    * Create a new user
@@ -753,7 +737,7 @@ export class UserManagementService {
    * Shutdown the service
    */
   shutdown(): void {
-    this.db.close();
+    // Shared database is closed by AuthService
     apiLogger.info('User management service shutdown');
   }
 }

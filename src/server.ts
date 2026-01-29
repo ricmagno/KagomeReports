@@ -464,7 +464,49 @@ async function performGracefulShutdown(signal: string): Promise<void> {
     logger.error('✗ Application database shutdown failed:', error);
   }
 
-  // 6. Stop update checker
+  // 6. Stop User Management Service
+  try {
+    const userMgmtStart = Date.now();
+    const { userManagementService } = await import('@/services/userManagementService');
+    userManagementService.shutdown();
+    shutdownSteps.push({
+      name: 'User Management Service',
+      success: true,
+      duration: Date.now() - userMgmtStart
+    });
+    logger.info('✓ User management service shut down');
+  } catch (error) {
+    shutdownSteps.push({
+      name: 'User Management Service',
+      success: false,
+      duration: Date.now() - shutdownStart,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+    logger.error('✗ User management service shutdown failed:', error);
+  }
+
+  // 7. Stop Auth Service
+  try {
+    const authServiceStart = Date.now();
+    const { authService } = await import('@/services/authService');
+    await authService.shutdown();
+    shutdownSteps.push({
+      name: 'Auth Service',
+      success: true,
+      duration: Date.now() - authServiceStart
+    });
+    logger.info('✓ Auth service shut down');
+  } catch (error) {
+    shutdownSteps.push({
+      name: 'Auth Service',
+      success: false,
+      duration: Date.now() - shutdownStart,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+    logger.error('✗ Auth service shutdown failed:', error);
+  }
+
+  // 8. Stop update checker
   let updateCheckerStart = Date.now();
   try {
     updateChecker.stopPeriodicChecking();

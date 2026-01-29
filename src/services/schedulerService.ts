@@ -14,6 +14,7 @@ import { dataRetrievalService } from './dataRetrieval';
 import { statisticalAnalysisService } from './statisticalAnalysis';
 import { emailService } from './emailService';
 import { dataFlowService } from './dataFlowService';
+import { getNextRunTime } from '@/utils/cronUtils';
 
 export interface ScheduleConfig {
   id: string;
@@ -63,112 +64,112 @@ export class SchedulerService {
 
   constructor() {
     this.maxConcurrentJobs = env.MAX_CONCURRENT_REPORTS || 5;
-    this.initializeDatabase();
-    this.startQueueProcessor();
   }
 
   /**
    * Initialize SQLite database for schedule storage
    */
-  private initializeDatabase(): void {
+  private async initializeDatabase(): Promise<void> {
     const dbPath = path.join(process.cwd(), 'data', 'scheduler.db');
     this.db = new Database(dbPath);
+    this.db.configure('busyTimeout', 10000); // 10 seconds timeout
 
-    // Create tables
-    this.db.serialize(() => {
-      // Schedules table
-      this.db.run(`
-        CREATE TABLE IF NOT EXISTS schedules (
-          id TEXT PRIMARY KEY,
-          name TEXT NOT NULL,
-          description TEXT,
-          report_config TEXT NOT NULL,
-          cron_expression TEXT NOT NULL,
-          enabled BOOLEAN DEFAULT 1,
-          next_run DATETIME,
-          last_run DATETIME,
-          last_status TEXT,
-          last_error TEXT,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          recipients TEXT,
-          save_to_file BOOLEAN DEFAULT 1,
-          send_email BOOLEAN DEFAULT 0,
-          destination_path TEXT
-        )
-      `);
+    return new Promise((resolve, reject) => {
+      this.db.serialize(() => {
+        // Enable WAL mode for better concurrency
+        this.db.run('PRAGMA journal_mode = WAL');
+        this.db.run('PRAGMA synchronous = NORMAL');
 
-      // Schedule executions table
-      this.db.run(`
-        CREATE TABLE IF NOT EXISTS schedule_executions (
-          id TEXT PRIMARY KEY,
-          schedule_id TEXT NOT NULL,
-          start_time DATETIME NOT NULL,
-          end_time DATETIME,
-          status TEXT NOT NULL,
-          report_path TEXT,
-          error TEXT,
-          duration INTEGER,
-          FOREIGN KEY (schedule_id) REFERENCES schedules (id)
-        )
-      `);
-
-      // Execution queue table
-      this.db.run(`
-        CREATE TABLE IF NOT EXISTS execution_queue (
-          schedule_id TEXT NOT NULL,
-          scheduled_time DATETIME NOT NULL,
-          priority INTEGER DEFAULT 0,
-          retry_count INTEGER DEFAULT 0,
-          PRIMARY KEY (schedule_id, scheduled_time)
-        )
-      `);
-
-      // Migration: Add new columns if they don't exist
-      this.db.all("PRAGMA table_info(schedules)", (err, columns: any[]) => {
-        if (err) {
-          reportLogger.error('Failed to check table schema', { error: err });
-          return;
-        }
-
-        const columnNames = columns.map(col => col.name);
-
-        if (!columnNames.includes('save_to_file')) {
-          this.db.run('ALTER TABLE schedules ADD COLUMN save_to_file BOOLEAN DEFAULT 1', (err) => {
-            if (err) reportLogger.error('Failed to add save_to_file column', { error: err });
-            else reportLogger.info('Added save_to_file column to schedules table');
-          });
-        }
-
-        if (!columnNames.includes('send_email')) {
-          this.db.run('ALTER TABLE schedules ADD COLUMN send_email BOOLEAN DEFAULT 0', (err) => {
-            if (err) reportLogger.error('Failed to add send_email column', { error: err });
-            else reportLogger.info('Added send_email column to schedules table');
-          });
-        }
-
-        if (!columnNames.includes('destination_path')) {
-          this.db.run('ALTER TABLE schedules ADD COLUMN destination_path TEXT', (err) => {
-            if (err) reportLogger.error('Failed to add destination_path column', { error: err });
-            else reportLogger.info('Added destination_path column to schedules table');
-          });
-        }
-
-        // Migrate existing schedules: set send_email=1 if recipients exist
+        // Create tables
         this.db.run(`
-          UPDATE schedules 
-          SET send_email = 1 
-          WHERE recipients IS NOT NULL 
-            AND recipients != '[]' 
-            AND send_email IS NULL
-        `, (err) => {
-          if (err) reportLogger.error('Failed to migrate existing schedules', { error: err });
-          else reportLogger.info('Migrated existing schedules with recipients');
+          CREATE TABLE IF NOT EXISTS schedules (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            report_config TEXT NOT NULL,
+            cron_expression TEXT NOT NULL,
+            enabled BOOLEAN DEFAULT 1,
+            next_run DATETIME,
+            last_run DATETIME,
+            last_status TEXT,
+            last_error TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            recipients TEXT,
+            save_to_file BOOLEAN DEFAULT 1,
+            send_email BOOLEAN DEFAULT 0,
+            destination_path TEXT
+          )
+        `);
+
+        // Schedule executions table
+        this.db.run(`
+          CREATE TABLE IF NOT EXISTS schedule_executions (
+            id TEXT PRIMARY KEY,
+            schedule_id TEXT NOT NULL,
+            start_time DATETIME NOT NULL,
+            end_time DATETIME,
+            status TEXT NOT NULL,
+            report_path TEXT,
+            error TEXT,
+            duration INTEGER,
+            FOREIGN KEY (schedule_id) REFERENCES schedules (id)
+          )
+        `);
+
+        // Execution queue table
+        this.db.run(`
+          CREATE TABLE IF NOT EXISTS execution_queue (
+            schedule_id TEXT NOT NULL,
+            scheduled_time DATETIME NOT NULL,
+            priority INTEGER DEFAULT 0,
+            retry_count INTEGER DEFAULT 0,
+            PRIMARY KEY (schedule_id, scheduled_time)
+          )
+        `);
+
+        // Migration: Add new columns if they don't exist
+        this.db.all("PRAGMA table_info(schedules)", (err, columns: any[]) => {
+          if (err) {
+            reportLogger.error('Failed to check table schema', { error: err });
+            reject(err);
+            return;
+          }
+
+          const columnNames = columns.map(col => col.name);
+
+          if (!columnNames.includes('save_to_file')) {
+            this.db.run('ALTER TABLE schedules ADD COLUMN save_to_file BOOLEAN DEFAULT 1');
+          }
+
+          if (!columnNames.includes('send_email')) {
+            this.db.run('ALTER TABLE schedules ADD COLUMN send_email BOOLEAN DEFAULT 0');
+          }
+
+          if (!columnNames.includes('destination_path')) {
+            this.db.run('ALTER TABLE schedules ADD COLUMN destination_path TEXT');
+          }
+
+          // Migrate existing schedules: set send_email=1 if recipients exist
+          this.db.run(`
+            UPDATE schedules 
+            SET send_email = 1 
+            WHERE recipients IS NOT NULL 
+              AND recipients != '[]' 
+              AND send_email IS NULL
+          `, (err) => {
+            if (err) {
+              reportLogger.error('Failed to migrate existing schedules', { error: err });
+              reject(err);
+            } else {
+              reportLogger.info('Migrated existing schedules with recipients');
+              reportLogger.info('Scheduler database initialized');
+              resolve();
+            }
+          });
         });
       });
     });
-
-    reportLogger.info('Scheduler database initialized');
   }
 
   /**
@@ -176,8 +177,12 @@ export class SchedulerService {
    */
   async initialize(): Promise<void> {
     try {
-      // Database is already initialized in constructor
-      // This method is for startup validation
+      // Ensure database is initialized before proceeding
+      await this.initializeDatabase();
+
+      // Start queue processor
+      this.startQueueProcessor();
+
       reportLogger.info('Scheduler service initialization validated');
 
       // Start all enabled schedules
@@ -485,8 +490,34 @@ export class SchedulerService {
   async startAllSchedules(): Promise<void> {
     const schedules = await this.getSchedules();
     const enabledSchedules = schedules.filter(s => s.enabled);
+    const now = new Date();
 
     for (const schedule of enabledSchedules) {
+      // Refresh next run time on startup to ensure it's not in the past
+      const nextRun = this.getNextRunTime(schedule.cronExpression);
+
+      // If nextRun is missing or in the past, update it
+      if (!schedule.nextRun || schedule.nextRun < now) {
+        reportLogger.info('Refreshing stale next run time on startup', {
+          scheduleId: schedule.id,
+          oldNextRun: schedule.nextRun,
+          newNextRun: nextRun
+        });
+
+        await new Promise<void>((resolve, reject) => {
+          this.db.run(
+            'UPDATE schedules SET next_run = ?, updated_at = ? WHERE id = ?',
+            [nextRun.toISOString(), now.toISOString(), schedule.id],
+            (err) => {
+              if (err) reject(err);
+              else resolve();
+            }
+          );
+        });
+
+        schedule.nextRun = nextRun;
+      }
+
       this.startCronJob(schedule);
     }
 
@@ -964,10 +995,16 @@ export class SchedulerService {
    * Get next run time for cron expression
    */
   private getNextRunTime(cronExpression: string): Date {
-    // Simple implementation - in production, use a proper cron parser
-    const now = new Date();
-    const nextRun = new Date(now.getTime() + 60000); // Default to 1 minute from now
-    return nextRun;
+    try {
+      return getNextRunTime(cronExpression);
+    } catch (error) {
+      reportLogger.warn('Failed to calculate next run time using utility, falling back to basic calculation', {
+        cronExpression,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      // Fallback: 1 minute from now
+      return new Date(Date.now() + 60000);
+    }
   }
 
   /**
@@ -1304,10 +1341,18 @@ export class SchedulerService {
   /**
    * Shutdown the scheduler
    */
-  shutdown(): void {
+  async shutdown(): Promise<void> {
     this.stopAllSchedules();
-    this.db.close();
-    reportLogger.info('Scheduler service shutdown');
+    return new Promise((resolve) => {
+      this.db.close((err) => {
+        if (err) {
+          reportLogger.error('Error closing scheduler database', { error: err });
+        } else {
+          reportLogger.info('Scheduler database closed');
+        }
+        resolve();
+      });
+    });
   }
 }
 
