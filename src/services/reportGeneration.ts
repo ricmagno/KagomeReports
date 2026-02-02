@@ -438,9 +438,9 @@ export class ReportGenerationService {
           try {
             const buffer = Buffer.concat(chunks);
 
-            // Generate standardized filename using reportId, report name and current date
+            // Generate standardized filename using report name and current date
             const reportName = getReportNameFromConfig(reportData.config);
-            const fileName = `${reportData.config.id}_${generateReportFilename(reportName, 'pdf')}`;
+            const fileName = generateReportFilename(reportName, 'pdf');
 
             const filePath = path.join(this.outputDir, fileName);
 

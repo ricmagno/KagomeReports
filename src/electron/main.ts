@@ -1,6 +1,6 @@
-import { app, BrowserWindow, Menu, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, Menu, ipcMain, dialog, IpcMainInvokeEvent } from 'electron'
 import * as path from 'path'
-import * as isDev from 'electron-is-dev'
+import isDev from 'electron-is-dev'
 import { spawn, ChildProcess } from 'child_process'
 import * as fs from 'fs'
 
@@ -163,18 +163,18 @@ ipcMain.handle('get-app-path', () => {
   return app.getAppPath()
 })
 
-ipcMain.handle('show-error-dialog', (event, title: string, message: string) => {
+ipcMain.handle('show-error-dialog', (_event: IpcMainInvokeEvent, title: string, message: string) => {
   return dialog.showErrorBox(title, message)
 })
 
-ipcMain.handle('show-message-dialog', (event, options: Electron.MessageBoxOptions) => {
+ipcMain.handle('show-message-dialog', (_event: IpcMainInvokeEvent, options: Electron.MessageBoxOptions) => {
   return dialog.showMessageBox(mainWindow!, options)
 })
 
-ipcMain.handle('show-open-dialog', (event, options: Electron.OpenDialogOptions) => {
+ipcMain.handle('show-open-dialog', (_event: IpcMainInvokeEvent, options: Electron.OpenDialogOptions) => {
   return dialog.showOpenDialog(mainWindow!, options)
 })
 
-ipcMain.handle('show-save-dialog', (event, options: Electron.SaveDialogOptions) => {
+ipcMain.handle('show-save-dialog', (_event: IpcMainInvokeEvent, options: Electron.SaveDialogOptions) => {
   return dialog.showSaveDialog(mainWindow!, options)
 })
