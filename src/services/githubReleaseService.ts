@@ -409,11 +409,31 @@ export class GitHubReleaseService {
       throw new Error(`Invalid version in GitHub release: ${version}`);
     }
 
+    // Look for a built asset first (e.g., build.zip, distribution.zip)
+    let downloadUrl = response.zipball_url || '';
+    if (response.assets && Array.isArray(response.assets) && response.assets.length > 0) {
+      // Prefer assets that look like built distributions
+      const bestAsset = response.assets.find((asset: any) =>
+        asset.name.toLowerCase().endsWith('.zip') &&
+        (asset.name.toLowerCase().includes('build') ||
+          asset.name.toLowerCase().includes('dist') ||
+          asset.name.toLowerCase().includes('release'))
+      ) || response.assets.find((asset: any) => asset.name.toLowerCase().endsWith('.zip'));
+
+      if (bestAsset) {
+        downloadUrl = bestAsset.browser_download_url;
+        githubLogger.info('Using release asset for update', {
+          assetName: bestAsset.name,
+          url: downloadUrl
+        });
+      }
+    }
+
     return {
       version,
       releaseDate: response.published_at || new Date().toISOString(),
       changelog: this.parseReleaseNotes(response.body || ''),
-      downloadUrl: response.zipball_url || '',
+      downloadUrl,
       checksum: response.checksum || '',
       checksumAlgorithm: response.checksum_algorithm || 'sha256',
       prerelease: response.prerelease || false,

@@ -7,6 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import AdmZip from 'adm-zip';
 import { GitHubRelease, UpdateProgress } from '@/types/versionManagement';
 import { githubReleaseService } from './githubReleaseService';
 import { updateHistoryService } from './updateHistoryService';
@@ -105,7 +106,10 @@ export class UpdateInstaller {
         checksumVerified: true
       });
 
-      this.notifyProgress('complete', 100, 'Update downloaded and staged. Please restart the application to complete the update.');
+      this.notifyProgress('complete', 100, 'Update successfully applied. The application will restart in 5 seconds to complete the process.');
+
+      // Step 6: Schedule restart
+      this.scheduleRestart();
 
       installerLogger.info('Update installation completed', {
         fromVersion: currentVersion,
@@ -237,50 +241,110 @@ export class UpdateInstaller {
   async applyUpdate(updateData: Buffer, version: string): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        // Extract update data (assuming it's a tar/zip file)
-        // NOTE: This is a staging implementation. The update is downloaded and saved,
-        // but automatic extraction and application requires additional implementation.
-        // For production use, consider:
-        // 1. Extracting the archive to a staging directory
-        // 2. Validating the extracted files
-        // 3. Replacing application files (requires process restart)
-        // 4. Using a process manager (PM2, systemd) for automatic restart
-
         const updatePath = path.join(this.UPDATE_TEMP_DIR, `update-${version}`);
+        const extractionPath = path.join(updatePath, 'extracted');
 
         if (!fs.existsSync(updatePath)) {
           fs.mkdirSync(updatePath, { recursive: true });
         }
+        if (!fs.existsSync(extractionPath)) {
+          fs.mkdirSync(extractionPath, { recursive: true });
+        }
 
-        // Write update data to temporary file
+        // Write update data to temporary file for reference
         const tempFile = path.join(updatePath, 'update.zip');
         fs.writeFileSync(tempFile, updateData);
 
-        installerLogger.info('Update staged successfully', {
-          version,
-          path: updatePath,
-          file: tempFile,
-          size: updateData.length,
-          note: 'Manual restart required to apply update'
-        });
+        installerLogger.info('Extracting update package...', { version });
 
-        installerLogger.warn('Update requires manual application', {
-          message: 'The update has been downloaded and staged. To complete the update:',
-          steps: [
-            '1. Stop the application',
-            '2. Extract the update file from: ' + tempFile,
-            '3. Replace application files',
-            '4. Restart the application',
-            'OR: Pull the latest Docker image and restart the container'
-          ]
-        });
+        // Use AdmZip to extract the buffer
+        const zip = new AdmZip(updateData);
+        zip.extractAllTo(extractionPath, true);
 
+        // Find the actual content path inside the extracted folder
+        // (GitHub zipballs usually have a wrapper folder)
+        let contentPath = extractionPath;
+        const entries = fs.readdirSync(extractionPath);
+        if (entries.length === 1) {
+          const singleEntry = entries[0];
+          if (singleEntry && fs.statSync(path.join(extractionPath, singleEntry)).isDirectory()) {
+            contentPath = path.join(extractionPath, singleEntry);
+          }
+        }
+
+        installerLogger.info('Applying update files...', { from: contentPath });
+
+        // Files/folders to exclude from overwritting
+        const excludeList = [
+          '.env',
+          'logs',
+          'reports',
+          'data',
+          'temp',
+          '.backups',
+          '.updates',
+          '.env.backups',
+          'node_modules',
+          '.git'
+        ];
+
+        // Copy files from extracted content to application root
+        this.copyRecursiveWithExclude(contentPath, process.cwd(), excludeList);
+
+        installerLogger.info('Update applied successfully to filesystem', { version });
         resolve();
       } catch (error) {
         installerLogger.error('Failed to apply update', error);
         reject(new Error(`Failed to apply update: ${error instanceof Error ? error.message : 'Unknown error'}`));
       }
     });
+  }
+
+  /**
+   * Schedule an application restart
+   */
+  private scheduleRestart(): void {
+    installerLogger.info('Scheduling application restart in 5 seconds...');
+
+    setTimeout(() => {
+      installerLogger.info('Restarting application NOW to complete update.');
+      // Exit with success code - process manager (Docker/PM2) should restart it
+      process.exit(0);
+    }, 5000);
+  }
+
+  /**
+   * Copy directory recursively with exclusions
+   */
+  private copyRecursiveWithExclude(src: string, dest: string, exclude: string[]): void {
+    const srcName = path.basename(src);
+    if (exclude.includes(srcName)) {
+      return;
+    }
+
+    const stats = fs.statSync(src);
+
+    if (stats.isDirectory()) {
+      if (!fs.existsSync(dest)) {
+        fs.mkdirSync(dest, { recursive: true });
+      }
+
+      const files = fs.readdirSync(src);
+      for (const file of files) {
+        if (exclude.includes(file)) continue;
+
+        const srcPath = path.join(src, file);
+        const destPath = path.join(dest, file);
+        this.copyRecursiveWithExclude(srcPath, destPath, exclude);
+      }
+    } else {
+      const parentDir = path.dirname(dest);
+      if (!fs.existsSync(parentDir)) {
+        fs.mkdirSync(parentDir, { recursive: true });
+      }
+      // Overwrite file
+      fs.copyFileSync(src, dest);
+    }
   }
 
   /**

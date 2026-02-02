@@ -53,6 +53,7 @@ RUN apt-get update && apt-get install -y \
     libgif7 \
     librsvg2-2 \
     curl \
+    unzip \
     fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
