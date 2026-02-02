@@ -8,11 +8,11 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Card } from '../ui/Card';
 import { Select } from '../ui/Select';
-import { 
-  DatabaseConfig, 
-  DatabaseConfigFormData, 
+import {
+  DatabaseConfig,
+  DatabaseConfigFormData,
   DatabaseConfigFormErrors,
-  ConnectionTestResult 
+  ConnectionTestResult
 } from '../../types/databaseConfig';
 import { apiService } from '../../services/api';
 
@@ -114,7 +114,7 @@ export const DatabaseConfigForm: React.FC<DatabaseConfigFormProps> = ({
 
   const handleInputChange = (field: keyof DatabaseConfigFormData, value: string | number | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    
+
     // Clear error for this field when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: undefined }));
@@ -163,7 +163,7 @@ export const DatabaseConfigForm: React.FC<DatabaseConfigFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
@@ -208,7 +208,7 @@ export const DatabaseConfigForm: React.FC<DatabaseConfigFormProps> = ({
           {/* Basic Configuration */}
           <div className="space-y-4">
             <h3 className="text-lg font-medium text-gray-900">Basic Configuration</h3>
-            
+
             <Input
               label="Configuration Name"
               value={formData.name}
@@ -262,6 +262,7 @@ export const DatabaseConfigForm: React.FC<DatabaseConfigFormProps> = ({
                 placeholder="Database username"
                 required
                 disabled={!canModify}
+                autoComplete="off"
               />
 
               <Input
@@ -273,6 +274,7 @@ export const DatabaseConfigForm: React.FC<DatabaseConfigFormProps> = ({
                 placeholder={canModify ? "Database password" : "••••••••"}
                 required
                 disabled={!canModify}
+                autoComplete="new-password"
               />
             </div>
 
@@ -293,7 +295,7 @@ export const DatabaseConfigForm: React.FC<DatabaseConfigFormProps> = ({
           {/* Security Settings */}
           <div className="space-y-4">
             <h3 className="text-lg font-medium text-gray-900">Security Settings</h3>
-            
+
             <div className="space-y-3">
               <label className="flex items-center space-x-3">
                 <input
@@ -387,15 +389,13 @@ export const DatabaseConfigForm: React.FC<DatabaseConfigFormProps> = ({
             </div>
 
             {testResult && (
-              <div className={`p-4 rounded-md ${
-                testResult.success 
-                  ? 'bg-green-50 border border-green-200' 
+              <div className={`p-4 rounded-md ${testResult.success
+                  ? 'bg-green-50 border border-green-200'
                   : 'bg-red-50 border border-red-200'
-              }`}>
+                }`}>
                 <div className="flex items-start space-x-3">
-                  <div className={`flex-shrink-0 h-5 w-5 ${
-                    testResult.success ? 'text-green-400' : 'text-red-400'
-                  }`}>
+                  <div className={`flex-shrink-0 h-5 w-5 ${testResult.success ? 'text-green-400' : 'text-red-400'
+                    }`}>
                     {testResult.success ? (
                       <svg fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
@@ -407,9 +407,8 @@ export const DatabaseConfigForm: React.FC<DatabaseConfigFormProps> = ({
                     )}
                   </div>
                   <div className="flex-1">
-                    <p className={`text-sm font-medium ${
-                      testResult.success ? 'text-green-800' : 'text-red-800'
-                    }`}>
+                    <p className={`text-sm font-medium ${testResult.success ? 'text-green-800' : 'text-red-800'
+                      }`}>
                       {testResult.message}
                     </p>
                     {testResult.responseTime && (

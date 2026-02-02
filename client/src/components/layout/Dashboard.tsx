@@ -46,7 +46,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const { user, isAuthenticated, login: authLogin, logout: authLogout, isLoading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'categories' | 'database' | 'status' | 'users' | 'configuration' | 'about'>('create');
   const [healthStatus, setHealthStatus] = useState<string>('checking...');
-  const [loginForm, setLoginForm] = useState({ username: 'admin', password: 'admin123' });
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginLoading, setLoginLoading] = useState(false);
   const { toasts, removeToast, success, error: toastError, warning, info } = useToast();
   const [reportConfig, setReportConfig] = useState<Partial<ReportConfig>>({
@@ -612,6 +612,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   <Input
                     value={loginForm.username}
                     onChange={e => setLoginForm(prev => ({ ...prev, username: e.target.value }))}
+                    autoComplete="off"
                   />
                 </div>
                 <div>
@@ -621,6 +622,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                     value={loginForm.password}
                     onChange={e => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
                     onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                    autoComplete="new-password"
                   />
                 </div>
                 <Button className="w-full" onClick={handleLogin} loading={loginLoading}>
