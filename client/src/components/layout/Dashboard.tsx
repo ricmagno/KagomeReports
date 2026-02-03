@@ -44,7 +44,8 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const { user, isAuthenticated, login: authLogin, logout: authLogout, isLoading: authLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'categories' | 'database' | 'status' | 'users' | 'configuration' | 'about'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'database' | 'users' | 'configuration' | 'about'>('create');
+  const [dbActiveTab, setDbActiveTab] = useState<'config' | 'status'>('config');
   const [healthStatus, setHealthStatus] = useState<string>('checking...');
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginLoading, setLoginLoading] = useState(false);
@@ -670,7 +671,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 { id: 'create', label: 'Create Report', icon: Plus },
                 { id: 'reports', label: 'My Reports', icon: FileText },
                 { id: 'schedules', label: 'Schedules', icon: Calendar },
-                { id: 'status', label: 'Status', icon: Activity },
                 { id: 'database', label: 'Database', icon: Database },
                 ...(currentUser?.role === 'admin' ? [{ id: 'configuration', label: 'Configuration', icon: Settings }] : []),
                 ...(currentUser?.role === 'admin' ? [{ id: 'users', label: 'Users', icon: Users }] : []),
@@ -1201,36 +1201,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               )
             }
 
-            {
-              activeTab === 'categories' && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-3xl font-bold text-gray-900">Categories & Tags</h2>
-                      <p className="text-gray-600">
-                        Organize your reports with categories and tags for better management.
-                      </p>
-                    </div>
-                    {/* Temporarily disabled loading indicator
-              {tagsLoading && (
-                <div className="flex items-center space-x-2 text-blue-600">
-                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-sm">Loading tags...</span>
-                </div>
-              )}
-              */}
-                  </div>
-
-                  <div className="bg-white rounded-lg border border-gray-200">
-                    <div className="p-6 text-center text-gray-500">
-                      <Tag className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                      <p className="text-lg font-medium">Categories coming soon</p>
-                      <p>Organize your tags and reports with custom categories</p>
-                    </div>
-                  </div>
-                </div>
-              )
-            }
+            {/* Categories section temporarily removed */}
 
             {
               activeTab === 'schedules' && (
@@ -1241,29 +1212,55 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             }
 
             {
-              activeTab === 'status' && (
-                <StatusDashboard />
-              )
-            }
-
-            {
               activeTab === 'database' && (
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h2 className="text-3xl font-bold text-gray-900">Database Configuration</h2>
+                      <h2 className="text-3xl font-bold text-gray-900">Database</h2>
                       <p className="text-gray-600">
-                        Manage your AVEVA Historian database connections.
+                        Manage connection settings and monitor database health.
                       </p>
                     </div>
                   </div>
 
-                  <div className="bg-white rounded-lg border border-gray-200">
-                    <div className="p-6 text-center text-gray-500">
-                      <Database className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                      <p className="text-lg font-medium">Database configuration</p>
-                      <p>Current connection: {healthStatus}</p>
-                    </div>
+                  {/* Sub-navigation for Database */}
+                  <div className="flex space-x-4 border-b border-gray-100">
+                    <button
+                      onClick={() => setDbActiveTab('config')}
+                      className={cn(
+                        "pb-2 px-1 text-sm font-medium transition-colors border-b-2",
+                        dbActiveTab === 'config'
+                          ? "border-primary-600 text-primary-600"
+                          : "border-transparent text-gray-400 hover:text-gray-600"
+                      )}
+                    >
+                      Configuration
+                    </button>
+                    <button
+                      onClick={() => setDbActiveTab('status')}
+                      className={cn(
+                        "pb-2 px-1 text-sm font-medium transition-colors border-b-2",
+                        dbActiveTab === 'status'
+                          ? "border-primary-600 text-primary-600"
+                          : "border-transparent text-gray-400 hover:text-gray-600"
+                      )}
+                    >
+                      Status
+                    </button>
+                  </div>
+
+                  <div className="mt-6">
+                    {dbActiveTab === 'config' ? (
+                      <div className="bg-white rounded-lg border border-gray-200">
+                        <div className="p-6 text-center text-gray-500">
+                          <Database className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                          <p className="text-lg font-medium">Database Configuration</p>
+                          <p>Current connection: {healthStatus}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <StatusDashboard />
+                    )}
                   </div>
                 </div>
               )
