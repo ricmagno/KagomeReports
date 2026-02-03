@@ -28,15 +28,15 @@ const logFormat = winston.format.combine(
   winston.format.json(),
   winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
     let log = `${timestamp} [${level.toUpperCase()}]: ${message}`;
-    
+
     if (Object.keys(meta).length > 0) {
       log += ` ${JSON.stringify(meta)}`;
     }
-    
+
     if (stack) {
       log += `\n${stack}`;
     }
-    
+
     return log;
   })
 );
@@ -54,7 +54,7 @@ export const logger = winston.createLogger({
       maxFiles: env.LOG_MAX_FILES,
       tailable: true,
     }),
-    
+
     // Error file transport
     new winston.transports.File({
       filename: path.join(logsDir, 'error.log'),
@@ -66,15 +66,13 @@ export const logger = winston.createLogger({
   ],
 });
 
-// Add console transport in development
-if (env.NODE_ENV === 'development') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.simple()
-    )
-  }));
-}
+// Add console transport
+logger.add(new winston.transports.Console({
+  format: winston.format.combine(
+    winston.format.colorize(),
+    winston.format.simple()
+  )
+}));
 
 /**
  * Parse size string (e.g., "10m", "1g") to bytes
@@ -86,20 +84,20 @@ function parseSize(sizeStr: string): number {
     'm': 1024 * 1024,
     'g': 1024 * 1024 * 1024,
   };
-  
+
   const match = sizeStr.toLowerCase().match(/^(\d+)([bkmg]?)$/);
   if (!match) {
     return 10 * 1024 * 1024; // Default 10MB
   }
-  
+
   const [, sizeValue, unit] = match;
   if (!sizeValue) {
     return 10 * 1024 * 1024; // Default 10MB
   }
-  
+
   const parsedSize = parseInt(sizeValue);
   const multiplier = unit ? units[unit] : 1;
-  
+
   return parsedSize * (multiplier || 1);
 }
 
@@ -110,7 +108,7 @@ function sanitizeLogData(data: any): any {
   if (encryptionService && typeof encryptionService.sanitizeForLogging === 'function') {
     return encryptionService.sanitizeForLogging(data);
   }
-  
+
   // Fallback sanitization if encryption service is not available
   if (typeof data !== 'object' || data === null) {
     return data;
