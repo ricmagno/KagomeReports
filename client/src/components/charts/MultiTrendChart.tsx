@@ -203,7 +203,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
                 show: false
             }
         },
-        yaxis: {
+        yaxis: [{
             labels: {
                 formatter: (val) => typeof val === 'number' ? val.toFixed(1) : (val as any),
                 style: {
@@ -211,14 +211,14 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
                     fontSize: '10px'
                 }
             },
-            title: units ? {
-                text: units,
+            title: {
+                text: units || '',
                 style: {
                     color: '#64748b',
                     fontWeight: 500
                 }
-            } : undefined
-        },
+            }
+        }],
         grid: {
             borderColor: '#f1f5f9',
             strokeDashArray: 4,
@@ -236,16 +236,19 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
             shared: true,
             intersect: false,
             y: {
-                formatter: (val, { seriesIndex, dataPointIndex, w }) => {
+                formatter: (val, { seriesIndex, w }) => {
+                    if (seriesIndex === undefined || !w.config.series[seriesIndex]) {
+                        return typeof val === 'number' ? val.toFixed(2) : '';
+                    }
                     const seriesName = w.config.series[seriesIndex].name;
-                    if (seriesName.endsWith('(Trend)')) {
+                    if (seriesName && typeof seriesName === 'string' && seriesName.endsWith('(Trend)')) {
                         const originalTag = seriesName.replace(' (Trend)', '');
                         const meta = trendMetadata[originalTag];
                         if (meta) {
                             return `${val.toFixed(2)} [${meta.equation}]`;
                         }
                     }
-                    return `${val.toFixed(2)}${units ? ` ${units}` : ''}`;
+                    return `${typeof val === 'number' ? val.toFixed(2) : val}${units ? ` ${units}` : ''}`;
                 }
             }
         },

@@ -195,7 +195,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
         show: false
       }
     },
-    yaxis: {
+    yaxis: [{
       labels: {
         show: showAxis,
         formatter: (val) => typeof val === 'number' ? val.toFixed(1) : (val as any),
@@ -203,8 +203,15 @@ export const MiniChart: React.FC<MiniChartProps> = ({
           fontSize: '9px',
           colors: '#94a3b8'
         }
+      },
+      title: {
+        text: units || '',
+        style: {
+          fontSize: '10px',
+          color: '#94a3b8'
+        }
       }
-    },
+    }],
     tooltip: {
       x: {
         format: 'HH:mm:ss'
@@ -212,9 +219,9 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       y: {
         formatter: (val, { seriesIndex }) => {
           if (seriesIndex === 1 && trendResult) {
-            return `${val.toFixed(2)} [${trendResult.equation}]`;
+            return `${typeof val === 'number' ? val.toFixed(2) : val} [${trendResult.equation}]`;
           }
-          return `${val}${units ? ` ${units}` : ''}`;
+          return `${typeof val === 'number' ? val.toFixed(2) : val}${units ? ` ${units}` : ''}`;
         }
       },
       theme: 'light'
