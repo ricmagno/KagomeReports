@@ -11,7 +11,7 @@ import { asyncHandler, createError } from '@/middleware/errorHandler';
 import { authenticateToken, requirePermission } from '@/middleware/auth';
 import { dataFlowService } from '@/services/dataFlowService';
 import { ReportConfig } from '@/types/reports';
-import { SpecificationLimits } from '@/types/historian';
+import { SpecificationLimits, RetrievalMode } from '@/types/historian';
 import { ReportManagementService } from '@/services/reportManagementService';
 import { ReportVersionService } from '@/services/reportVersionService';
 import { validateSpecificationLimitsMap } from '@/utils/specificationLimitsValidator';
@@ -50,6 +50,15 @@ const reportConfigBaseSchema = z.object({
   }),
   chartTypes: z.array(z.enum(['line', 'bar', 'trend', 'scatter'])).default(['line']),
   template: z.string().default('default'),
+  retrievalMode: z.string().optional().transform(val => {
+    if (!val) return undefined;
+    // Map frontend values to backend RetrievalMode enum values
+    if (val === 'Delta') return RetrievalMode.Delta;
+    if (val === 'Cyclic') return RetrievalMode.Cyclic;
+    if (val === 'AVG' || val === 'Average') return RetrievalMode.Average;
+    if (val === 'RoundTrip' || val === 'Full') return RetrievalMode.Full;
+    return val as RetrievalMode; // Pass through if it's already a valid enum value
+  }),
   filters: z.object({
     qualityFilter: z.array(z.number()).optional(),
     valueRange: z.object({
@@ -155,7 +164,8 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
     format: config.format,
     branding: config.branding,
     metadata: config.metadata,
-    version: config.version
+    version: config.version,
+    retrievalMode: config.retrievalMode
   };
 
   apiLogger.info('Starting end-to-end report generation', {

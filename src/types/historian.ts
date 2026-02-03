@@ -42,6 +42,7 @@ export interface TimeRange {
   startTime: Date;
   endTime: Date;
   relativeRange?: 'last1h' | 'last2h' | 'last6h' | 'last12h' | 'last24h' | 'last7d' | 'last30d' | undefined;
+  timezone?: string | undefined; // Timezone name (e.g., 'Australia/Sydney') or offset string (e.g., '+11:00')
 }
 
 // Data filter options

@@ -67,15 +67,15 @@ export class ConfigImportService {
       if (sizeBytes > MAX_IMPORT_SIZE_BYTES) {
         const sizeMB = (sizeBytes / (1024 * 1024)).toFixed(2);
         const maxMB = (MAX_IMPORT_SIZE_BYTES / (1024 * 1024)).toFixed(0);
-        
+
         const error: ValidationError = {
           code: ValidationErrorCode.FILE_TOO_LARGE,
           message: `File size exceeds maximum allowed size of ${maxMB} MB (actual: ${sizeMB} MB)`,
           severity: 'error',
         };
-        
+
         importLogger.error('Import failed: file too large', { sizeBytes, maxBytes: MAX_IMPORT_SIZE_BYTES });
-        
+
         return {
           success: false,
           errors: [error],
@@ -93,11 +93,11 @@ export class ConfigImportService {
           severity: 'error',
           details: parseError instanceof Error ? parseError.message : String(parseError),
         };
-        
-        importLogger.error('Import failed: invalid JSON', { 
-          error: parseError instanceof Error ? parseError.message : String(parseError) 
+
+        importLogger.error('Import failed: invalid JSON', {
+          error: parseError instanceof Error ? parseError.message : String(parseError)
         });
-        
+
         return {
           success: false,
           errors: [error],
@@ -107,10 +107,10 @@ export class ConfigImportService {
       // Step 3: Validate schema structure
       const schemaErrors = this.validateSchema(parsedData);
       if (schemaErrors.length > 0) {
-        importLogger.error('Import failed: schema validation errors', { 
-          errorCount: schemaErrors.length 
+        importLogger.error('Import failed: schema validation errors', {
+          errorCount: schemaErrors.length
         });
-        
+
         return {
           success: false,
           errors: schemaErrors,
@@ -125,12 +125,12 @@ export class ConfigImportService {
             fromVersion: parsedData.schemaVersion,
             toVersion: CURRENT_SCHEMA_VERSION,
           });
-          
+
           migratedData = schemaVersionMigrator.migrate(
             parsedData,
             parsedData.schemaVersion
           );
-          
+
           importLogger.info('Schema migration completed', {
             fromVersion: parsedData.schemaVersion,
             toVersion: CURRENT_SCHEMA_VERSION,
@@ -143,13 +143,13 @@ export class ConfigImportService {
             severity: 'error',
             details: migrationError instanceof Error ? migrationError.message : String(migrationError),
           };
-          
+
           importLogger.error('Schema migration failed', {
             fromVersion: parsedData.schemaVersion,
             toVersion: CURRENT_SCHEMA_VERSION,
             error: migrationError instanceof Error ? migrationError.message : String(migrationError),
           });
-          
+
           return {
             success: false,
             errors: [error],
@@ -160,10 +160,10 @@ export class ConfigImportService {
       // Step 4: Validate field values (use migrated data)
       const fieldErrors = this.validateFields(migratedData.reportConfig);
       if (fieldErrors.length > 0) {
-        importLogger.error('Import failed: field validation errors', { 
-          errorCount: fieldErrors.length 
+        importLogger.error('Import failed: field validation errors', {
+          errorCount: fieldErrors.length
         });
-        
+
         return {
           success: false,
           errors: fieldErrors,
@@ -172,13 +172,13 @@ export class ConfigImportService {
 
       // Step 5: Validate tags (warnings only, doesn't prevent import)
       const tagWarnings = await this.validateTags(migratedData.reportConfig.tags);
-      
+
       // Step 6: Map to ReportConfig (use migrated data)
       const config = this.mapToConfiguration(migratedData);
-      
+
       // Step 6.5: Convert paths to platform-specific format
       const configWithPlatformPaths = this.convertPathsToPlatform(config);
-      
+
       // Step 7: Apply defaults for missing optional fields
       const configWithDefaults = this.applyDefaults(configWithPlatformPaths);
 
@@ -276,8 +276,8 @@ export class ConfigImportService {
         field: 'schemaVersion',
         message: `Schema version "${data.schemaVersion}" may not be fully compatible. Current version: "${CURRENT_SCHEMA_VERSION}". Import will proceed but some features may not work correctly.`,
         severity: 'warning',
-        details: { 
-          actual: data.schemaVersion, 
+        details: {
+          actual: data.schemaVersion,
           expected: CURRENT_SCHEMA_VERSION,
           supported: SUPPORTED_SCHEMA_VERSIONS,
         },
@@ -531,9 +531,9 @@ export class ConfigImportService {
     // TODO: Implement actual database query to check tag existence
     // For now, we'll skip this validation to avoid database dependency
     // This will be implemented in a future task when database integration is added
-    
-    importLogger.debug('Tag validation skipped (not yet implemented)', { 
-      tagCount: tagNames.length 
+
+    importLogger.debug('Tag validation skipped (not yet implemented)', {
+      tagCount: tagNames.length
     });
 
     return warnings;
@@ -565,12 +565,13 @@ export class ConfigImportService {
         startTime,
         endTime,
       },
-      
+      retrievalMode: exported.sampling.mode,
+
       // Map analytics options to ReportConfig fields
       includeSPCCharts: exported.analytics?.showSPCMetrics ?? false,
       includeTrendLines: exported.analytics?.showTrendLine ?? false,
       includeStatsSummary: exported.analytics?.showStatistics ?? true,
-      
+
       // Add import metadata
       importMetadata: {
         importedFrom: 'imported-config.json', // Will be updated by caller if filename is known
@@ -588,7 +589,7 @@ export class ConfigImportService {
       // In a more sophisticated implementation, we might support per-tag limits
       const limits = exported.specificationLimits;
       config.specificationLimits = {};
-      
+
       exported.tags.forEach(tag => {
         const tagLimits: any = {};
         if (limits.upperLimit !== undefined) {
@@ -636,10 +637,10 @@ export class ConfigImportService {
     // Convert any path fields in custom settings
     if (converted.customSettings) {
       const customSettings = converted.customSettings;
-      
+
       // Check for common path fields in custom settings
       const pathFields = ['outputPath', 'templatePath', 'dataPath', 'reportPath'];
-      
+
       for (const field of pathFields) {
         if (customSettings[field] && typeof customSettings[field] === 'string') {
           customSettings[field] = convertPathsInObject(
@@ -684,43 +685,46 @@ export class ConfigImportService {
         startTime: oneHourAgo,
         endTime: now,
       },
-      
+
       // Chart types default
       chartTypes: config.chartTypes || ['line'],
-      
+
       // Template default
       template: config.template || 'default',
-      
+
+      // Retrieval mode default
+      retrievalMode: config.retrievalMode || 'Cyclic',
+
       // Optional fields with defaults
       ...(config.description && { description: config.description }),
       format: config.format || 'pdf',
       filters: config.filters || [],
-      
+
       // Branding defaults
       ...(config.branding && { branding: config.branding }),
-      
+
       // Metadata defaults
       ...(config.metadata && { metadata: config.metadata }),
-      
+
       // Analytics defaults
       includeSPCCharts: config.includeSPCCharts ?? false,
       includeTrendLines: config.includeTrendLines ?? false,
       includeStatsSummary: config.includeStatsSummary ?? true,
-      
+
       // Specification limits
       ...(config.specificationLimits && { specificationLimits: config.specificationLimits }),
-      
+
       // Import metadata
       ...(config.importMetadata && { importMetadata: config.importMetadata }),
-      
+
       // Timestamps
       createdAt: config.createdAt || now,
       updatedAt: config.updatedAt || now,
-      
+
       // Version tracking
       ...(config.version !== undefined && { version: config.version }),
       ...(config.parentId && { parentId: config.parentId }),
-      
+
       // User tracking
       ...(config.createdBy && { createdBy: config.createdBy }),
     };

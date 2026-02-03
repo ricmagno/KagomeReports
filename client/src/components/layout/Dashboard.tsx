@@ -57,9 +57,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       startTime: new Date(Date.now() - 60 * 60 * 1000), // Default: 1 hour ago
       endTime: new Date(),   // Default: Current time
       relativeRange: 'last1h',
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     },
     chartTypes: ['line'],
     template: 'default',
+    retrievalMode: 'Cyclic',
     version: undefined, // Track version number
     // Advanced analytics options (default to true)
     includeTrendLines: true,
@@ -297,7 +299,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         includeSPCCharts: reportConfig.includeSPCCharts ?? true,
         includeStatsSummary: reportConfig.includeStatsSummary ?? true,
         specificationLimits: reportConfig.specificationLimits || {},
-        version: reportConfig.version
+        version: reportConfig.version,
+        retrievalMode: reportConfig.retrievalMode || 'Cyclic'
       };
 
       console.log('Generating report with config:', generateRequest);
@@ -363,7 +366,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           includeTrendLines: reportConfig.includeTrendLines ?? true,
           includeSPCCharts: reportConfig.includeSPCCharts ?? true,
           includeStatsSummary: reportConfig.includeStatsSummary ?? true,
-          specificationLimits: reportConfig.specificationLimits || {}
+          specificationLimits: reportConfig.specificationLimits || {},
+          retrievalMode: reportConfig.retrievalMode || 'Cyclic'
         }
       };
 
@@ -727,16 +731,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           </label>
                           <select
                             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                            value={reportConfig.retrievalMode || 'Delta'}
-                            onChange={(e) => setReportConfig(prev => ({ ...prev, retrievalMode: e.target.value as 'Delta' | 'Cyclic' | 'AVG' | 'RoundTrip' }))}
+                            value={reportConfig.retrievalMode || 'Cyclic'}
+                            onChange={(e) => setReportConfig(prev => ({ ...prev, retrievalMode: e.target.value as any }))}
                           >
+                            <option value="Cyclic">Cyclic - Interpolated at intervals (Recommended)</option>
                             <option value="Delta">Delta - Actual stored values</option>
-                            <option value="Cyclic">Cyclic - Interpolated at intervals</option>
-                            <option value="AVG">AVG - Average values</option>
-                            <option value="RoundTrip">RoundTrip - Round trip values</option>
+                            <option value="Average">Average - Average values</option>
+                            <option value="Full">Full - All values (Full)</option>
                           </select>
                           <p className="text-xs text-gray-500">
-                            Delta mode returns actual stored values (recommended for most cases)
+                            Cyclic mode ensures data points at consistent intervals for accurate reports.
                           </p>
                         </div>
 

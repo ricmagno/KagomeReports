@@ -19,7 +19,8 @@ const router = Router();
 const timeRangeSchema = z.object({
   startTime: z.string().datetime().transform(str => new Date(str)),
   endTime: z.string().datetime().transform(str => new Date(str)),
-  relativeRange: z.enum(['last1h', 'last2h', 'last6h', 'last12h', 'last24h', 'last7d', 'last30d']).optional()
+  relativeRange: z.enum(['last1h', 'last2h', 'last6h', 'last12h', 'last24h', 'last7d', 'last30d']).optional(),
+  timezone: z.string().optional()
 });
 
 const dataFilterSchema = z.object({
@@ -34,13 +35,14 @@ const dataFilterSchema = z.object({
 
 const queryOptionsSchema = z.object({
   mode: z.nativeEnum(RetrievalMode).default(RetrievalMode.Cyclic),
-  retrievalMode: z.enum(['Delta', 'Cyclic', 'AVG', 'RoundTrip']).optional().transform(val => {
-    // Map frontend retrievalMode to backend RetrievalMode enum
+  retrievalMode: z.string().optional().transform(val => {
+    if (!val) return undefined;
+    // Map frontend values to backend RetrievalMode enum values
     if (val === 'Delta') return RetrievalMode.Delta;
     if (val === 'Cyclic') return RetrievalMode.Cyclic;
-    if (val === 'AVG') return RetrievalMode.Average;
-    if (val === 'RoundTrip') return RetrievalMode.Full;
-    return undefined;
+    if (val === 'AVG' || val === 'Average') return RetrievalMode.Average;
+    if (val === 'RoundTrip' || val === 'Full') return RetrievalMode.Full;
+    return val as RetrievalMode; // Pass through if it's already a valid enum value
   }),
   interval: z.number().positive().optional(),
   tolerance: z.number().positive().optional(),
@@ -114,7 +116,8 @@ router.get('/:tagName',
       const timeRange: TimeRange = {
         startTime: timeRangeResult.data.startTime,
         endTime: timeRangeResult.data.endTime,
-        relativeRange: timeRangeResult.data.relativeRange
+        relativeRange: timeRangeResult.data.relativeRange,
+        timezone: timeRangeResult.data.timezone
       };
       const options = {
         ...optionsResult.data,

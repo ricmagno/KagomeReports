@@ -6,7 +6,7 @@
 
 import { createClient, RedisClientType } from 'redis';
 import { logger } from '../utils/logger';
-import { TimeSeriesData, TagInfo, StatisticsResult, TrendResult } from '../types/historian';
+import { TimeSeriesData, TagInfo, StatisticsResult, TrendResult, HistorianQueryOptions } from '../types/historian';
 
 export interface CacheConfig {
   host: string;
@@ -89,7 +89,7 @@ export class CacheService {
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => reject(new Error('Redis connection timeout')), 5000);
         });
-        
+
         await Promise.race([connectPromise, timeoutPromise]);
         this.cacheLogger.info('Cache service connected to Redis');
       }
@@ -110,8 +110,13 @@ export class CacheService {
     }
   }
 
-  private generateKey(type: string, identifier: string): string {
-    return `${this.config.keyPrefix}:${type}:${identifier}`;
+  private generateKey(type: string, identifier: string, options?: any): string {
+    let key = `${this.config.keyPrefix}:${type}:${identifier}`;
+    if (options) {
+      const optionsHash = typeof options === 'string' ? options : JSON.stringify(options);
+      key += `:opt:${Buffer.from(optionsHash).toString('hex').slice(0, 16)}`;
+    }
+    return key;
   }
 
   private async setWithTTL<T>(key: string, data: T, ttl: number): Promise<void> {
@@ -147,7 +152,7 @@ export class CacheService {
       }
 
       const cacheEntry: CacheEntry<T> = JSON.parse(cached);
-      
+
       // Check if cache entry is still valid
       const age = Date.now() - cacheEntry.timestamp;
       if (age > cacheEntry.ttl * 1000) {
@@ -190,20 +195,22 @@ export class CacheService {
     tagName: string,
     startTime: Date,
     endTime: Date,
-    data: TimeSeriesData[]
+    data: TimeSeriesData[],
+    options?: HistorianQueryOptions
   ): Promise<void> {
     const timeKey = `${startTime.getTime()}-${endTime.getTime()}`;
-    const key = this.generateKey('timeseries', `${tagName}:${timeKey}`);
+    const key = this.generateKey('timeseries', `${tagName}:${timeKey}`, options);
     await this.setWithTTL(key, data, this.TTL_CONFIG.timeSeriesData);
   }
 
   async getCachedTimeSeriesData(
     tagName: string,
     startTime: Date,
-    endTime: Date
+    endTime: Date,
+    options?: HistorianQueryOptions
   ): Promise<TimeSeriesData[] | null> {
     const timeKey = `${startTime.getTime()}-${endTime.getTime()}`;
-    const key = this.generateKey('timeseries', `${tagName}:${timeKey}`);
+    const key = this.generateKey('timeseries', `${tagName}:${timeKey}`, options);
     return this.get<TimeSeriesData[]>(key);
   }
 
@@ -293,10 +300,10 @@ export class CacheService {
     if (!this.isConnected) return;
 
     try {
-      const pattern = tagName 
+      const pattern = tagName
         ? this.generateKey('timeseries', `${tagName}:*`)
         : this.generateKey('timeseries', '*');
-      
+
       const keys = await this.client.keys(pattern);
       if (keys.length > 0) {
         await this.client.del(keys);
@@ -311,10 +318,10 @@ export class CacheService {
     if (!this.isConnected) return;
 
     try {
-      const pattern = tagName 
+      const pattern = tagName
         ? this.generateKey('statistics', `${tagName}:*`)
         : this.generateKey('statistics', '*');
-      
+
       const keys = await this.client.keys(pattern);
       if (keys.length > 0) {
         await this.client.del(keys);
@@ -358,7 +365,7 @@ export class CacheService {
     try {
       const info = await this.client.info('memory');
       const keyCount = await this.client.dbSize();
-      
+
       // Extract memory usage from Redis info
       const memoryMatch = info.match(/used_memory_human:([^\r\n]+)/);
       const memoryUsage = memoryMatch?.[1]?.trim() || '0B';

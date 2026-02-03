@@ -51,11 +51,11 @@ export class DataFlowService {
 
       // Step 1: Retrieve data from AVEVA Historian
       const data = await this.retrieveHistorianData(config.reportConfig);
-      
+
       // Count data points and calculate quality metrics
       for (const [tagName, tagData] of Object.entries(data)) {
         totalDataPoints += tagData.length;
-        
+
         // Calculate data quality percentage
         const goodQualityCount = tagData.filter(point => point.quality === QualityCode.Good).length;
         if (tagData.length > 0) {
@@ -86,7 +86,7 @@ export class DataFlowService {
       const finalData = this.mergeRealTimeData(data, config.realTimeData);
 
       // Step 6: Generate charts
-      const charts = await this.generateCharts(finalData, statistics, trends, config.reportConfig.chartTypes);
+      const charts = await this.generateCharts(finalData, statistics, trends, config.reportConfig.chartTypes, config.reportConfig.timeRange.timezone);
 
       // Step 7: Prepare report data
       const reportData: ReportData = {
@@ -165,7 +165,10 @@ export class DataFlowService {
       try {
         const tagData = await dataRetrievalService.getTimeSeriesData(
           tagName,
-          reportConfig.timeRange
+          reportConfig.timeRange,
+          {
+            mode: (reportConfig.retrievalMode as any) || undefined
+          }
         );
 
         reportLogger.debug('Retrieved data for tag', {
@@ -185,7 +188,7 @@ export class DataFlowService {
     });
 
     const results = await Promise.all(dataPromises);
-    
+
     // Organize results by tag name
     results.forEach(({ tagName, data: tagData }) => {
       data[tagName] = tagData;
@@ -208,7 +211,7 @@ export class DataFlowService {
       if (tagData.length > 0) {
         try {
           statistics[tagName] = statisticalAnalysisService.calculateStatisticsSync(tagData);
-          
+
           reportLogger.debug('Calculated statistics for tag', {
             tagName,
             statistics: statistics[tagName]
@@ -239,7 +242,7 @@ export class DataFlowService {
       if (tagData.length >= 3) { // Need at least 3 points for trend analysis
         try {
           trends[tagName] = statisticalAnalysisService.calculateTrendLine(tagData);
-          
+
           reportLogger.debug('Calculated trends for tag', {
             tagName,
             trend: trends[tagName]
@@ -270,7 +273,7 @@ export class DataFlowService {
       if (tagData.length > 10) { // Need sufficient data for anomaly detection
         try {
           anomalies[tagName] = statisticalAnalysisService.detectAnomalies(tagData, 2.0);
-          
+
           reportLogger.debug('Detected anomalies for tag', {
             tagName,
             anomalyCount: anomalies[tagName].length
@@ -313,14 +316,14 @@ export class DataFlowService {
         // Merge and sort by timestamp
         const combined = [...mergedData[tagName], ...realTimePoints];
         combined.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-        
+
         // Remove duplicates based on timestamp
         const unique = combined.filter((point, index, array) => {
           return index === 0 || point.timestamp.getTime() !== array[index - 1]?.timestamp.getTime();
         });
-        
+
         mergedData[tagName] = unique;
-        
+
         reportLogger.debug('Merged real-time data for tag', {
           tagName,
           historicalPoints: historicalData[tagName]?.length || 0,
@@ -330,7 +333,7 @@ export class DataFlowService {
       } else {
         // New tag from real-time data
         mergedData[tagName] = realTimePoints;
-        
+
         reportLogger.debug('Added new real-time tag', {
           tagName,
           points: realTimePoints.length
@@ -348,7 +351,8 @@ export class DataFlowService {
     data: Record<string, TimeSeriesData[]>,
     statistics?: Record<string, StatisticsResult>,
     trends?: Record<string, TrendResult>,
-    chartTypes: string[] = ['line']
+    chartTypes: string[] = ['line'],
+    timezone?: string
   ): Promise<Record<string, Buffer>> {
     reportLogger.info('Generating charts', {
       chartTypes,
@@ -360,7 +364,8 @@ export class DataFlowService {
         data,
         statistics,
         trends,
-        chartTypes as any[]
+        chartTypes as any[],
+        { timezone }
       );
     } catch (error) {
       reportLogger.error('Failed to generate charts', {

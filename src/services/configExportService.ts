@@ -473,15 +473,23 @@ in
    * @private
    */
   private determineSamplingMode(config: ReportConfig): 'Cyclic' | 'Delta' | 'BestFit' {
-    // Check if filters contain sampling mode information
+    // Check if retrievalMode is explicitly set in config
+    if (config.retrievalMode === 'Cyclic' || config.retrievalMode === 'Delta') {
+      return config.retrievalMode as 'Cyclic' | 'Delta';
+    }
+
+    // Check if filters contain sampling mode information (legacy support)
     if (config.filters && config.filters.length > 0) {
       const samplingFilter = config.filters.find(f => 'samplingMode' in f);
       if (samplingFilter && 'samplingMode' in samplingFilter) {
-        return samplingFilter.samplingMode as 'Cyclic' | 'Delta' | 'BestFit';
+        const mode = (samplingFilter as any).samplingMode;
+        if (mode === 'Cyclic' || mode === 'Delta' || mode === 'BestFit') {
+          return mode;
+        }
       }
     }
-    // Default to BestFit
-    return 'BestFit';
+    // Default to Cyclic if not specified
+    return 'Cyclic';
   }
 
   /**

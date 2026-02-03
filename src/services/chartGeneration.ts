@@ -33,6 +33,7 @@ export interface ChartOptions {
   title?: string;
   backgroundColor?: string;
   colors?: string[];
+  timezone?: string | undefined;
 }
 
 export interface LineChartData {
@@ -277,7 +278,8 @@ export class ChartGenerationService {
                   return date.toLocaleTimeString('en-US', {
                     hour: '2-digit',
                     minute: '2-digit',
-                    hour12: false
+                    hour12: false,
+                    timeZone: options.timezone || 'UTC'
                   });
                 }
               },
@@ -539,7 +541,8 @@ export class ChartGenerationService {
                   return date.toLocaleTimeString('en-US', {
                     hour: '2-digit',
                     minute: '2-digit',
-                    hour12: false
+                    hour12: false,
+                    timeZone: options.timezone || 'UTC'
                   });
                 }
               }
@@ -1048,7 +1051,8 @@ export class ChartGenerationService {
     data: Record<string, TimeSeriesData[]>,
     statistics?: Record<string, StatisticsResult>,
     trends?: Record<string, TrendResult>,
-    chartTypes: ('line' | 'bar' | 'trend' | 'scatter')[] = ['line']
+    chartTypes: ('line' | 'bar' | 'trend' | 'scatter')[] = ['line'],
+    options: ChartOptions = {}
   ): Promise<Record<string, Buffer>> {
     const charts: Record<string, Buffer> = {};
 

@@ -242,6 +242,7 @@ export const apiService = {
       offset?: number;
       quality?: string;
       retrievalMode?: string;
+      timezone?: string;
     }
   ): Promise<ApiResponse<TimeSeriesData[]>> {
     const params = new URLSearchParams({
@@ -251,6 +252,7 @@ export const apiService = {
       ...(options?.offset && { offset: options.offset.toString() }),
       ...(options?.quality && { quality: options.quality }),
       ...(options?.retrievalMode && { retrievalMode: options.retrievalMode }),
+      ...(options?.timezone && { timezone: options.timezone }),
     });
 
     return fetchWithRetry(`/data/${encodeURIComponent(tagName)}?${params}`);
@@ -288,6 +290,7 @@ export const apiService = {
     const params = new URLSearchParams({
       startTime: startTime.toISOString(),
       endTime: endTime.toISOString(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
     });
 
     return fetchWithRetry(`/data/${encodeURIComponent(tagName)}/statistics?${params}`);
@@ -306,6 +309,7 @@ export const apiService = {
     const params = new URLSearchParams({
       startTime: startTime.toISOString(),
       endTime: endTime.toISOString(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       ...(options?.windowSize && { windowSize: options.windowSize.toString() }),
       ...(options?.sensitivityThreshold && { sensitivityThreshold: options.sensitivityThreshold.toString() }),
     });
@@ -326,6 +330,7 @@ export const apiService = {
     const params = new URLSearchParams({
       startTime: startTime.toISOString(),
       endTime: endTime.toISOString(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       ...(options?.method && { method: options.method }),
       ...(options?.threshold && { threshold: options.threshold.toString() }),
     });

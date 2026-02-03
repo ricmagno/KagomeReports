@@ -67,7 +67,8 @@ export class DataRetrievalService {
         const cachedData = await this.cacheService.getCachedTimeSeriesData(
           tagName,
           timeRange.startTime,
-          timeRange.endTime
+          timeRange.endTime,
+          options
         );
 
         if (cachedData) {
@@ -107,7 +108,7 @@ export class DataRetrievalService {
           maxPoints: params.maxPoints
         }
       });
-      
+
       // Log what the rendered query would look like
       const renderedQuery = query
         .replace('@tagName', `'${params.tagName}'`)
@@ -130,7 +131,7 @@ export class DataRetrievalService {
 
       // Transform raw data to TimeSeriesData format
       const timeSeriesData = result.recordset.map(row => this.transformToTimeSeriesData(row, tagName));
-      
+
       // Log transformed data for debugging
       dbLogger.info('Transformed data:', {
         count: timeSeriesData.length,
@@ -147,7 +148,8 @@ export class DataRetrievalService {
           tagName,
           timeRange.startTime,
           timeRange.endTime,
-          timeSeriesData
+          timeSeriesData,
+          options
         );
       }
 
@@ -240,7 +242,7 @@ export class DataRetrievalService {
         endTime: this.formatDateForHistorian(timeRange.endTime)
       };
 
-      const result = await this.getConnection().executeQuery<{ estimatedCount: number }>(query, params);
+      const result = await this.getConnection().executeQuery<{ estimatedCount: number }>(query + " AND wwTimeZone = 'UTC'", params);
       return result.recordset[0]?.estimatedCount || 0;
     } catch (error) {
       dbLogger.warn('Failed to estimate data size, using default', { error });
@@ -276,6 +278,7 @@ export class DataRetrievalService {
         WHERE TagName = @tagName
           AND DateTime >= @startTime
           AND DateTime <= @endTime
+          AND wwTimeZone = 'UTC'
       `;
 
       const params = {
@@ -334,8 +337,9 @@ export class DataRetrievalService {
   ): string {
     const includeQuality = options?.includeQuality !== false;
 
-    // Use the native AVEVA Historian History view with wwRetrievalMode parameters
-    // Use Delta mode to get actual stored values (not interpolated)
+    const mode = options?.mode || RetrievalMode.Cyclic;
+    const isCyclic = mode === RetrievalMode.Cyclic || mode === RetrievalMode.Average;
+
     let query = `
       SELECT 
         DateTime as timestamp,
@@ -346,7 +350,9 @@ export class DataRetrievalService {
       WHERE TagName = @tagName
         AND DateTime >= @startTime
         AND DateTime <= @endTime
-        AND wwRetrievalMode = 'Delta'
+        AND wwRetrievalMode = @mode
+        ${isCyclic ? 'AND wwResolution = @resolution' : ''}
+        AND wwTimeZone = 'UTC'
       ORDER BY DateTime ASC
     `;
 
@@ -377,6 +383,7 @@ export class DataRetrievalService {
         AND DateTime >= @startTime
         AND DateTime <= @endTime
         AND wwRetrievalMode = @mode
+        AND wwTimeZone = 'UTC'
       ORDER BY DateTime
       OFFSET @offset ROWS
       FETCH NEXT @batchSize ROWS ONLY
@@ -634,17 +641,18 @@ export class DataRetrievalService {
   }
 
   /**
-   * Format date for AVEVA Historian (local time without timezone)
+   * Format date for AVEVA Historian in UTC
    */
   private formatDateForHistorian(date: Date): string {
-    // AVEVA Historian expects local time format: 'YYYY-MM-DD HH:mm:ss'
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
-    
+    // AVEVA Historian expects date format: 'YYYY-MM-DD HH:mm:ss'
+    // We use UTC methods to ensure consistency regardless of process timezone
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    const hours = String(date.getUTCHours()).padStart(2, '0');
+    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   }
 
@@ -702,6 +710,7 @@ export class DataRetrievalService {
       WHERE DateTime >= @startTime
         AND DateTime <= @endTime
         AND wwRetrievalMode = 'Delta'
+        AND wwTimeZone = 'UTC'
     `;
 
     if (filter.samplingInterval) {
@@ -799,6 +808,7 @@ export class DataRetrievalService {
       FROM History
       WHERE DateTime >= @startTime
         AND DateTime <= @endTime
+        AND wwTimeZone = 'UTC'
     `;
 
     // Add same filters as main query (without cursor)
@@ -830,7 +840,7 @@ export class DataRetrievalService {
   private transformToTimeSeriesData(row: any, tagName?: string): TimeSeriesData {
     // Handle null values - convert to NaN to indicate missing data
     const value = row.value !== null && row.value !== undefined ? parseFloat(row.value) : NaN;
-    
+
     return {
       timestamp: new Date(row.timestamp),
       value: value,

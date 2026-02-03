@@ -7,7 +7,7 @@ import * as fs from 'fs'
 let mainWindow: BrowserWindow | null = null
 let serverProcess: ChildProcess | null = null
 
-const isDevelopment = isDev.default || process.env.NODE_ENV === 'development'
+const isDevelopment = isDev || process.env.NODE_ENV === 'development'
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -44,7 +44,7 @@ function startServer() {
   if (serverProcess) return
 
   const serverPath = path.join(__dirname, '../server.js')
-  
+
   serverProcess = spawn('node', [serverPath], {
     cwd: app.getAppPath(),
     stdio: 'inherit',
@@ -67,7 +67,7 @@ function startServer() {
 
 app.on('ready', () => {
   startServer()
-  
+
   // Wait a moment for server to start
   setTimeout(() => {
     createWindow()

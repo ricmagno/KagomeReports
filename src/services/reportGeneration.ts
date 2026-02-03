@@ -31,6 +31,7 @@ export interface ReportConfig {
     startTime: Date;
     endTime: Date;
     relativeRange?: 'last1h' | 'last2h' | 'last6h' | 'last12h' | 'last24h' | 'last7d' | 'last30d' | undefined;
+    timezone?: string | undefined;
   };
   chartTypes: ('line' | 'bar' | 'trend' | 'scatter')[];
   template: string;
@@ -53,6 +54,7 @@ export interface ReportConfig {
   includeTrendLines?: boolean | undefined;
   includeStatsSummary?: boolean | undefined;
   version?: number | undefined;
+  retrievalMode?: string | undefined;
 }
 
 export interface ReportData {
@@ -111,7 +113,8 @@ export class ReportGenerationService {
           reportData.data,
           reportData.statistics,
           reportData.trends,
-          reportData.config.chartTypes
+          reportData.config.chartTypes,
+          { timezone: reportData.config.timeRange.timezone }
         );
       }
 
@@ -259,7 +262,8 @@ export class ReportGenerationService {
               {
                 title: `${tagName} - Time Series Data`,
                 width: 1200,
-                height: 600
+                height: 600,
+                timezone: reportData.config.timeRange.timezone
               }
             );
 
@@ -288,7 +292,8 @@ export class ReportGenerationService {
                   {
                     title: `${tagName} - SPC Chart`,
                     width: 1200,
-                    height: 600
+                    height: 600,
+                    timezone: reportData.config.timeRange.timezone
                   }
                 );
 
@@ -553,17 +558,28 @@ export class ReportGenerationService {
       doc.moveDown();
     }
 
-    // Time range - safely handle dates
+    // Time range - safely handle dates with timezone
+    const formatOptions: Intl.DateTimeFormatOptions = {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      timeZone: config.timeRange.timezone || 'UTC'
+    };
+
     const startTime = config.timeRange.startTime instanceof Date
-      ? config.timeRange.startTime.toLocaleString()
+      ? config.timeRange.startTime.toLocaleString('en-US', formatOptions)
       : 'Unknown';
     const endTime = config.timeRange.endTime instanceof Date
-      ? config.timeRange.endTime.toLocaleString()
+      ? config.timeRange.endTime.toLocaleString('en-US', formatOptions)
       : 'Unknown';
 
     doc.fontSize(12)
       .fillColor('#6b7280')
-      .text(`Report Period: ${startTime} - ${endTime}`, { align: 'center' });
+      .text(`Report Period: ${startTime} - ${endTime} (${config.timeRange.timezone || 'UTC'})`, { align: 'center' });
 
     // Reset to default black
     doc.fillColor('#111827');
@@ -577,8 +593,19 @@ export class ReportGenerationService {
     const startY = doc.y;
 
     // Left column
+    const formatOptions: Intl.DateTimeFormatOptions = {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      timeZone: reportData.config.timeRange.timezone || 'UTC'
+    };
+
     const generatedDate = reportData.generatedAt instanceof Date
-      ? reportData.generatedAt.toLocaleString()
+      ? reportData.generatedAt.toLocaleString('en-US', formatOptions)
       : 'Unknown';
 
     doc.fontSize(10)
@@ -695,8 +722,18 @@ export class ReportGenerationService {
       .text(`Data Points: ${data.length}`);
 
     if (data.length > 0) {
-      const startTime = data[0]?.timestamp?.toLocaleString() || 'Unknown';
-      const endTime = data[data.length - 1]?.timestamp?.toLocaleString() || 'Unknown';
+      const formatOptions: Intl.DateTimeFormatOptions = {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+        timeZone: reportData.config.timeRange.timezone || 'UTC'
+      };
+      const startTime = data[0]?.timestamp?.toLocaleString('en-US', formatOptions) || 'Unknown';
+      const endTime = data[data.length - 1]?.timestamp?.toLocaleString('en-US', formatOptions) || 'Unknown';
       doc.text(`Time Range: ${startTime} - ${endTime}`);
     } else {
       doc.text('Time Range: No data available');

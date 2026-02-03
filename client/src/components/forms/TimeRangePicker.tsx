@@ -188,6 +188,7 @@ export const TimeRangePicker: React.FC<TimeRangePickerProps> = ({
       startTime,
       endTime: now,
       relativeRange: preset as TimeRange['relativeRange'],
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
   };
 
@@ -196,6 +197,7 @@ export const TimeRangePicker: React.FC<TimeRangePickerProps> = ({
       ...value,
       [type === 'start' ? 'startTime' : 'endTime']: date,
       relativeRange: undefined,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     });
   };
 
