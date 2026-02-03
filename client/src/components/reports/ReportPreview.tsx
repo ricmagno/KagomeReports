@@ -87,7 +87,10 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
             config.timeRange.endTime,
             {
               limit: 500, // Limit for preview
-              retrievalMode: config.retrievalMode || 'Cyclic'
+              retrievalMode: config.retrievalMode || 'Cyclic',
+              // Use wwResolution 60000 (1 minute) as a reasonable default for previews
+              // @ts-ignore - wwResolution might not be in the type definition yet
+              wwResolution: 60000
             }
           );
           return { tagName, data: response.success ? response.data : [] };
@@ -510,7 +513,9 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                   height={320}
                   className="mb-4"
                   enableGuideLines={true}
-                  chartType="multi"
+                  displayMode="multi"
+                  type={config.chartTypes[0] as any || 'line'}
+                  includeTrendLines={config.includeTrendLines}
                 />
               )}
 
@@ -535,7 +540,9 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                       color={tagColors[tagName]}
                       className="shadow-md border-gray-300"
                       enableGuideLines={true}
-                      chartType="single"
+                      displayMode="single"
+                      type={config.chartTypes[0] as any || 'line'}
+                      includeTrendLines={config.includeTrendLines}
                     />
                   );
                 })}

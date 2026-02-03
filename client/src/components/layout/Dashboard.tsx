@@ -221,12 +221,46 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
     return () => clearTimeout(debounceTimer);
   }, [tagSearchTerm]);
-  const [realTimeData] = useState({
+  const [realTimeData, setRealTimeData] = useState({
     connected: false,
     loading: false,
     lastUpdate: null as Date | null,
     error: null as string | null
   });
+
+  // Real-time update effect
+  useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
+
+    if (realTimeEnabled && reportConfig.tags && reportConfig.tags.length > 0) {
+      setRealTimeData(prev => ({ ...prev, loading: true, connected: true }));
+
+      timer = setInterval(() => {
+        setReportConfig(prev => {
+          if (!prev.timeRange) return prev;
+
+          const now = new Date();
+          const duration = prev.timeRange.endTime.getTime() - prev.timeRange.startTime.getTime();
+
+          return {
+            ...prev,
+            timeRange: {
+              ...prev.timeRange,
+              endTime: now,
+              startTime: new Date(now.getTime() - duration)
+            }
+          };
+        });
+        setRealTimeData(prev => ({ ...prev, lastUpdate: new Date(), loading: false }));
+      }, 5000); // Update every 5 seconds
+    } else {
+      setRealTimeData(prev => ({ ...prev, connected: false, loading: false }));
+    }
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [realTimeEnabled, reportConfig.tags]);
 
   const [savedReports, setSavedReports] = useState<Array<{
     id: string;

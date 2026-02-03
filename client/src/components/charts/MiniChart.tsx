@@ -8,6 +8,7 @@ import Chart from 'react-apexcharts';
 import { ApexOptions } from 'apexcharts';
 import { TimeSeriesData, StatisticsResult } from '../../types/api';
 import { GuideLine } from '../../types/guideLines';
+import { calculateTrendLine } from './chartUtils';
 
 interface MiniChartProps {
   data: TimeSeriesData[];
@@ -45,20 +46,24 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   units,
   guideLines = [],
 }) => {
-  const chartData = useMemo(() => {
-    if (!data || data.length === 0) return null;
+  const { chartData, trendData } = useMemo(() => {
+    if (!data || data.length === 0) return { chartData: null, trendData: null };
 
     const validData = data
       .filter(point => point.value !== null && !isNaN(point.value))
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-    if (validData.length === 0) return null;
+    if (validData.length === 0) return { chartData: null, trendData: null };
 
-    return validData.map(p => ({
+    const points = validData.map(p => ({
       x: new Date(p.timestamp).getTime(),
       y: Number(p.value.toFixed(2))
     }));
-  }, [data]);
+
+    const trend = showTrend && points.length >= 2 ? calculateTrendLine(points) : null;
+
+    return { chartData: points, trendData: trend };
+  }, [data, showTrend]);
 
   const getQualityColor = () => {
     if (!data || data.length === 0) return '#94a3b8';
@@ -71,6 +76,28 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   };
 
   const baseColor = color || getQualityColor();
+
+  const series = useMemo(() => {
+    const s = [];
+
+    if (chartData) {
+      s.push({
+        name: tagName,
+        type: type === 'bar' ? 'column' : (type === 'area' ? 'area' : 'line'),
+        data: chartData
+      });
+
+      if (trendData && trendData.length === 2) {
+        s.push({
+          name: 'Trend',
+          type: 'line',
+          data: trendData
+        });
+      }
+    }
+
+    return s;
+  }, [chartData, trendData, tagName, type]);
 
   const annotations = useMemo(() => {
     const yaxis = guideLines
@@ -120,7 +147,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   const options: ApexOptions = {
     chart: {
       id: `mini-chart-${tagName}`,
-      type: type === 'area' ? 'area' : (type === 'bar' ? 'bar' : 'line'),
+      type: 'line', // overridden by series type
       sparkline: {
         enabled: !showAxis
       },
@@ -130,10 +157,11 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       },
       fontFamily: 'Inter, sans-serif'
     },
-    colors: [baseColor],
+    colors: [baseColor, '#64748b'], // trend is neutral gray
     stroke: {
       curve: 'smooth',
-      width: 2
+      width: [2, 2],
+      dashArray: [0, 5] // dash for trend line
     },
     fill: {
       type: type === 'area' ? 'gradient' : 'solid',
@@ -142,6 +170,12 @@ export const MiniChart: React.FC<MiniChartProps> = ({
         opacityFrom: 0.45,
         opacityTo: 0.05,
         stops: [20, 100, 100, 100]
+      }
+    },
+    plotOptions: {
+      bar: {
+        columnWidth: '60%',
+        borderRadius: 2
       }
     },
     xaxis: {
@@ -164,7 +198,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
     yaxis: {
       labels: {
         show: showAxis,
-        formatter: (val) => val.toFixed(1),
+        formatter: (val) => typeof val === 'number' ? val.toFixed(1) : val,
         style: {
           fontSize: '9px',
           colors: '#94a3b8'
@@ -218,8 +252,8 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       <div className="relative overflow-hidden">
         <Chart
           options={options}
-          series={[{ name: tagName, data: chartData }]}
-          type={type === 'area' ? 'area' : (type === 'bar' ? 'bar' : 'line')}
+          series={series}
+          type="line"
           width={width}
           height={height}
         />

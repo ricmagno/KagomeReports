@@ -21,6 +21,9 @@ interface InteractiveChartProps {
   /** Tag names */
   tags?: string[];
 
+  /** Chart type (line, bar, area) */
+  type?: 'line' | 'bar' | 'area';
+
   /** Chart width */
   width?: number | string;
 
@@ -39,8 +42,11 @@ interface InteractiveChartProps {
   /** Whether to enable guide lines (default: true) */
   enableGuideLines?: boolean;
 
-  /** Chart type - determines which chart component to render */
-  chartType?: 'multi' | 'single';
+  /** Whether to include trend lines (default: true) */
+  includeTrendLines?: boolean;
+
+  /** Chart display mode - determines which chart component to render */
+  displayMode?: 'multi' | 'single';
 
   /** For single chart: tag name */
   tagName?: string;
@@ -59,13 +65,15 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
   dataPoints,
   tagDescriptions,
   tags,
+  type = 'line',
   width = '100%',
   height = 320,
   title,
   description,
   className = '',
   enableGuideLines = true,
-  chartType = 'multi',
+  includeTrendLines = true,
+  displayMode = 'multi',
   tagName,
   statistics,
   units,
@@ -144,17 +152,19 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
       {/* Chart container */}
       <div className="relative">
         {/* Render appropriate chart type */}
-        {chartType === 'multi' ? (
+        {displayMode === 'multi' ? (
           <MultiTrendChart
             dataPoints={dataPoints}
             tagDescriptions={tagDescriptions}
             tags={tags}
+            type={type}
             width={width}
             height={height}
             title={title}
             description={description}
             guideLines={guideLines}
             units={units}
+            includeTrendLines={includeTrendLines}
             onGuideLinesChange={setGuideLines}
           />
         ) : (
@@ -162,10 +172,10 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
             <MiniChart
               data={dataPoints[tagName]}
               tagName={tagName}
-              type="line"
+              type={type}
               width={width}
               height={height}
-              showTrend={true}
+              showTrend={includeTrendLines}
               showAxis={true}
               title={title || tagName}
               description={tagDescriptions[tagName]}

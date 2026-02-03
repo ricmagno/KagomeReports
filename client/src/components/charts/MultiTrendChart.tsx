@@ -8,12 +8,13 @@ import Chart from 'react-apexcharts';
 import { ApexOptions } from 'apexcharts';
 import { TimeSeriesData } from '../../types/api';
 import { GuideLine, ChartBounds, ChartScale } from '../../types/guideLines';
-import { CHART_COLORS, getTagColor, getTagIndex } from './chartUtils';
+import { CHART_COLORS, getTagColor, getTagIndex, calculateTrendLine } from './chartUtils';
 
 interface MultiTrendChartProps {
     dataPoints: Record<string, TimeSeriesData[]>;
     tagDescriptions: Record<string, string>;
     tags?: string[];
+    type?: 'line' | 'bar' | 'area';
     width?: number | string;
     height?: number | string;
     className?: string;
@@ -27,6 +28,8 @@ interface MultiTrendChartProps {
     scale?: ChartScale;
     /** Optional units for Y values */
     units?: string;
+    /** Whether to include trend analysis best-fit lines */
+    includeTrendLines?: boolean;
     /** Callback to update guide line positions during drag */
     onGuideLinesChange?: (lines: GuideLine[]) => void;
 }
@@ -35,6 +38,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
     dataPoints,
     tagDescriptions,
     tags,
+    type = 'line',
     width = '100%',
     height = 320,
     className = '',
@@ -42,32 +46,59 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
     description,
     guideLines = [],
     units,
+    includeTrendLines = true,
 }) => {
     // Transform data for ApexCharts
-    const { series, colors } = useMemo(() => {
+    const { series, colors, strokeWidths, dashArrays } = useMemo(() => {
         const allTags = tags || Object.keys(dataPoints);
         const activeTags = allTags.filter(tag => dataPoints[tag] && dataPoints[tag].length > 0);
 
         const seriesColors: string[] = [];
-        const seriesData = activeTags.map((tag) => {
+        const seriesData: any[] = [];
+        const widths: number[] = [];
+        const dashes: number[] = [];
+
+        activeTags.forEach((tag) => {
             const data = [...dataPoints[tag]].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
             // Stable color based on tag index
             const originalIndex = getTagIndex(tag, allTags);
             const color = getTagColor(originalIndex) || CHART_COLORS[0];
-            seriesColors.push(color);
 
-            return {
+            // Current series data
+            const points = data.map(p => ({
+                x: new Date(p.timestamp).getTime(),
+                y: p.value !== null && !isNaN(p.value) ? Number(p.value.toFixed(2)) : null
+            }));
+
+            // Main Data Series
+            seriesData.push({
                 name: tag,
-                data: data.map(p => ({
-                    x: new Date(p.timestamp).getTime(),
-                    y: p.value !== null && !isNaN(p.value) ? Number(p.value.toFixed(2)) : null
-                }))
-            };
+                type: type === 'bar' ? 'column' : (type === 'area' ? 'area' : 'line'),
+                data: points
+            });
+            seriesColors.push(color);
+            widths.push(type === 'bar' ? 0 : 3);
+            dashes.push(0);
+
+            // Add Trend Line if enabled
+            if (includeTrendLines && points.length >= 2) {
+                const trendPoints = calculateTrendLine(points);
+                if (trendPoints.length === 2) {
+                    seriesData.push({
+                        name: `${tag} (Trend)`,
+                        type: 'line',
+                        data: trendPoints
+                    });
+                    seriesColors.push(color);
+                    widths.push(2);
+                    dashes.push(5); // Dashed line for trend
+                }
+            }
         });
 
-        return { series: seriesData, colors: seriesColors };
-    }, [dataPoints, tags]);
+        return { series: seriesData, colors: seriesColors, strokeWidths: widths, dashArrays: dashes };
+    }, [dataPoints, tags, type, includeTrendLines]);
 
     // Transform guide lines to ApexCharts annotations
     const annotations = useMemo(() => {
@@ -107,7 +138,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
     const options: ApexOptions = {
         chart: {
             id: 'multi-trend-chart',
-            type: 'line',
+            type: 'line', // Base type, overridden by series[].type
             toolbar: {
                 show: true,
                 tools: {
@@ -129,8 +160,15 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
         colors: colors,
         stroke: {
             curve: 'smooth',
-            width: 3,
+            width: strokeWidths,
+            dashArray: dashArrays,
             lineCap: 'round'
+        },
+        plotOptions: {
+            bar: {
+                columnWidth: '50%',
+                borderRadius: 2
+            }
         },
         dataLabels: {
             enabled: false
@@ -159,7 +197,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
         },
         yaxis: {
             labels: {
-                formatter: (val) => val.toFixed(1),
+                formatter: (val) => typeof val === 'number' ? val.toFixed(1) : val,
                 style: {
                     colors: '#64748b',
                     fontSize: '10px'
@@ -211,7 +249,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
             <div className="mb-4 border-b border-gray-100 pb-2">
                 <h3 className="text-lg font-bold text-gray-900">{title}</h3>
                 <p className="text-xs text-gray-500 italic">
-                    {description || `Comparison of ${series.length} tags`}
+                    {description || `Comparison of ${Object.keys(dataPoints).length} tags`}
                 </p>
             </div>
 
