@@ -203,6 +203,10 @@ export function calculateTrendLine(data: { x: number; y: number | null }[]): Tre
 
   if (n < 2) return null;
 
+  // Use relative X to prevent floating point overflow/precision issues
+  // working with milliseconds relative to the first timestamp
+  const x0 = validData[0].x;
+
   let sumX = 0;
   let sumY = 0;
   let sumXY = 0;
@@ -210,7 +214,7 @@ export function calculateTrendLine(data: { x: number; y: number | null }[]): Tre
   let sumYY = 0;
 
   for (let i = 0; i < n; i++) {
-    const x = validData[i].x;
+    const x = validData[i].x - x0;
     const y = validData[i].y!;
     sumX += x;
     sumY += y;
@@ -227,8 +231,8 @@ export function calculateTrendLine(data: { x: number; y: number | null }[]): Tre
 
   // Calculate R-squared
   const numRSq = (n * sumXY - sumX * sumY);
-  const denRSq = Math.sqrt((n * sumXX - sumX * sumX) * (n * sumYY - sumY * sumY));
-  const rSquared = denRSq === 0 ? 0 : Math.pow(numRSq / denRSq, 2);
+  const denRSq = (n * sumXX - sumX * sumX) * (n * sumYY - sumY * sumY);
+  const rSquared = denRSq <= 0 ? 0 : (numRSq * numRSq) / denRSq;
 
   // Calculate Variance and Std Dev
   const meanY = sumY / n;
@@ -242,16 +246,18 @@ export function calculateTrendLine(data: { x: number; y: number | null }[]): Tre
   const startX = validData[0].x;
   const endX = validData[n - 1].x;
 
-  const equation = `y = ${slope.toFixed(4)}x ${intercept >= 0 ? '+' : '-'} ${Math.abs(intercept).toFixed(2)}`;
+  // Rate of change per minute is more readable for time-series
+  const slopePerMin = slope * 60000;
+  const equation = `Δ: ${slopePerMin >= 0 ? '+' : ''}${slopePerMin.toFixed(4)} /min`;
 
   return {
     points: [
-      { x: startX, y: slope * startX + intercept },
-      { x: endX, y: slope * endX + intercept }
+      { x: startX, y: intercept }, // y = slope * 0 + intercept
+      { x: endX, y: slope * (endX - x0) + intercept }
     ],
     equation,
     rSquared,
-    slope,
+    slope: slopePerMin,
     intercept,
     standardDeviation,
     variance
