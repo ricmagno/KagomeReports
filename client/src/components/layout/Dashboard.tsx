@@ -863,7 +863,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                             {[
                               { value: 'line', label: 'Line Chart' },
                               { value: 'bar', label: 'Bar Chart' },
-                              { value: 'trend', label: 'Trend Analysis' },
                             ].map((option) => (
                               <label key={option.value} className="flex items-center">
                                 <input

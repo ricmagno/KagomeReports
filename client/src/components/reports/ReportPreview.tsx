@@ -244,8 +244,6 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
     switch (primaryType) {
       case 'bar':
         return <BarChart3 className="w-4 h-4" />;
-      case 'trend':
-        return <TrendingUp className="w-4 h-4" />;
       default:
         return <Activity className="w-4 h-4" />;
     }
