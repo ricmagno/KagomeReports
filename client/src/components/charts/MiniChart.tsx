@@ -265,22 +265,22 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       </div>
 
       {trendResult && showAxis && (
-        <div className="mt-3 grid grid-cols-2 gap-2 text-[9px] font-mono bg-gray-50 p-2 rounded border border-gray-100">
-          <div className="flex justify-between">
-            <span className="text-gray-400">EQ:</span>
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[9px] font-mono bg-gray-50 p-2 rounded border border-gray-100">
+          <div className="flex items-center">
+            <span className="text-gray-400 w-8">EQ:</span>
             <span className="text-blue-600 font-bold truncate ml-1">{trendResult.equation}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">R²:</span>
+          <div className="flex items-center">
+            <span className="text-gray-400 w-8">R²:</span>
             <span className="text-amber-600 font-bold ml-1">{trendResult.rSquared.toFixed(3)}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">SD:</span>
-            <span className="ml-1">{trendResult.standardDeviation.toFixed(2)}</span>
+          <div className="flex items-center">
+            <span className="text-gray-400 w-8">SD:</span>
+            <span className="text-gray-700 ml-1">{trendResult.standardDeviation.toFixed(2)}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">VAR:</span>
-            <span className="ml-1">{trendResult.variance.toFixed(2)}</span>
+          <div className="flex items-center">
+            <span className="text-gray-400 w-8">VAR:</span>
+            <span className="text-gray-700 ml-1">{trendResult.variance.toFixed(2)}</span>
           </div>
         </div>
       )}

@@ -303,21 +303,21 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
                                     <span className="text-xs font-bold text-gray-700 truncate">{tag}</span>
                                 </div>
                                 <div className="space-y-1 font-mono text-[10px]">
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-500">Equation:</span>
+                                    <div className="flex items-center">
+                                        <span className="text-gray-500 w-24">Equation:</span>
                                         <span className="text-blue-600 font-bold">{meta.equation}</span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-500">R²:</span>
+                                    <div className="flex items-center">
+                                        <span className="text-gray-500 w-24">R²:</span>
                                         <span className="text-amber-600 font-bold">{meta.rSquared.toFixed(4)}</span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-500">Std Dev:</span>
-                                        <span>{meta.standardDeviation.toFixed(3)}</span>
+                                    <div className="flex items-center">
+                                        <span className="text-gray-500 w-24">Std Dev:</span>
+                                        <span className="text-gray-700">{meta.standardDeviation.toFixed(3)}</span>
                                     </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-500">Variance:</span>
-                                        <span>{meta.variance.toFixed(3)}</span>
+                                    <div className="flex items-center">
+                                        <span className="text-gray-500 w-24">Variance:</span>
+                                        <span className="text-gray-700">{meta.variance.toFixed(3)}</span>
                                     </div>
                                 </div>
                             </div>
