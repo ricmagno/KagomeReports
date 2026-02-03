@@ -670,7 +670,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 { id: 'create', label: 'Create Report', icon: Plus },
                 { id: 'reports', label: 'My Reports', icon: FileText },
                 { id: 'schedules', label: 'Schedules', icon: Calendar },
-                { id: 'categories', label: 'Categories', icon: Tag },
                 { id: 'status', label: 'Status', icon: Activity },
                 { id: 'database', label: 'Database', icon: Database },
                 ...(currentUser?.role === 'admin' ? [{ id: 'configuration', label: 'Configuration', icon: Settings }] : []),
