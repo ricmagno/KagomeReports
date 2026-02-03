@@ -45,7 +45,7 @@ interface DashboardProps {
 export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const { user, isAuthenticated, login: authLogin, logout: authLogout, isLoading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'database' | 'users' | 'configuration' | 'about'>('create');
-  const [dbActiveTab, setDbActiveTab] = useState<'config' | 'status'>('config');
+  const [dbActiveTab, setDbActiveTab] = useState<'status' | 'config'>('status');
   const [healthStatus, setHealthStatus] = useState<string>('checking...');
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginLoading, setLoginLoading] = useState(false);
@@ -1226,17 +1226,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   {/* Sub-navigation for Database */}
                   <div className="flex space-x-4 border-b border-gray-100">
                     <button
-                      onClick={() => setDbActiveTab('config')}
-                      className={cn(
-                        "pb-2 px-1 text-sm font-medium transition-colors border-b-2",
-                        dbActiveTab === 'config'
-                          ? "border-primary-600 text-primary-600"
-                          : "border-transparent text-gray-400 hover:text-gray-600"
-                      )}
-                    >
-                      Configuration
-                    </button>
-                    <button
                       onClick={() => setDbActiveTab('status')}
                       className={cn(
                         "pb-2 px-1 text-sm font-medium transition-colors border-b-2",
@@ -1247,10 +1236,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                     >
                       Status
                     </button>
+                    <button
+                      onClick={() => setDbActiveTab('config')}
+                      className={cn(
+                        "pb-2 px-1 text-sm font-medium transition-colors border-b-2",
+                        dbActiveTab === 'config'
+                          ? "border-primary-600 text-primary-600"
+                          : "border-transparent text-gray-400 hover:text-gray-600"
+                      )}
+                    >
+                      Configuration
+                    </button>
                   </div>
 
                   <div className="mt-6">
-                    {dbActiveTab === 'config' ? (
+                    {dbActiveTab === 'status' ? (
+                      <StatusDashboard />
+                    ) : (
                       <div className="bg-white rounded-lg border border-gray-200">
                         <div className="p-6 text-center text-gray-500">
                           <Database className="h-12 w-12 mx-auto mb-4 text-gray-300" />
@@ -1258,8 +1260,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           <p>Current connection: {healthStatus}</p>
                         </div>
                       </div>
-                    ) : (
-                      <StatusDashboard />
                     )}
                   </div>
                 </div>
