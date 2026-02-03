@@ -1,57 +1,56 @@
 /**
  * InteractiveChart Component
- * Wrapper that adds interactive guide lines to existing chart components
+ * Wrapper that adds interactive guide lines to ApexCharts components
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { TimeSeriesData } from '../../types/api';
 import { GuideLine as GuideLineType } from '../../types/guideLines';
 import { MultiTrendChart } from './MultiTrendChart';
 import { MiniChart } from './MiniChart';
-import { GuideLines } from './GuideLines';
 import { GuideLineControls } from './GuideLineControls';
-import { calculateChartBounds, calculateChartScale } from '../../utils/chartBounds';
+import { calculateChartScale } from '../../utils/chartBounds';
 
 interface InteractiveChartProps {
   /** Chart data points */
   dataPoints: Record<string, TimeSeriesData[]>;
-  
+
   /** Tag descriptions */
   tagDescriptions: Record<string, string>;
-  
+
   /** Tag names */
   tags?: string[];
-  
+
   /** Chart width */
-  width?: number;
-  
+  width?: number | string;
+
   /** Chart height */
-  height?: number;
-  
+  height?: number | string;
+
   /** Chart title */
   title?: string;
-  
+
   /** Chart description */
   description?: string;
-  
+
   /** Optional class name */
   className?: string;
-  
+
   /** Whether to enable guide lines (default: true) */
   enableGuideLines?: boolean;
-  
+
   /** Chart type - determines which chart component to render */
   chartType?: 'multi' | 'single';
-  
+
   /** For single chart: tag name */
   tagName?: string;
-  
+
   /** For single chart: statistics */
   statistics?: any;
-  
+
   /** For single chart: units */
   units?: string;
-  
+
   /** For single chart: color */
   color?: string;
 }
@@ -60,7 +59,7 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
   dataPoints,
   tagDescriptions,
   tags,
-  width = 800,
+  width = '100%',
   height = 320,
   title,
   description,
@@ -74,83 +73,57 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
 }) => {
   // Guide lines state
   const [guideLines, setGuideLines] = useState<GuideLineType[]>([]);
-  
+
   // Maximum lines configuration
   const maxLines = {
     horizontal: 5,
     vertical: 5,
   };
-  
-  // Calculate chart bounds and scale
-  const bounds = useMemo(() => {
-    // Account for MultiTrendChart's SVG being width-40
-    const actualSvgWidth = chartType === 'multi' ? width - 40 : width;
-    return calculateChartBounds(actualSvgWidth, height, 60, 20, 20, 40);
-  }, [width, height, chartType]);
-  
+
+  // Calculate scale for initial placement of guide lines
   const scale = useMemo(() => {
-    const calculatedScale = calculateChartScale(dataPoints);
-    console.log('Guide Lines Scale:', calculatedScale);
-    console.log('Guide Lines Bounds:', bounds);
-    return calculatedScale;
-  }, [dataPoints, bounds]);
-  
-  // Reset guide lines when data changes significantly
-  useEffect(() => {
-    // Optional: Clear guide lines when switching between different reports
-    // For now, we keep them to allow comparison
+    return calculateChartScale(dataPoints);
   }, [dataPoints]);
-  
-  // Handle window resize
-  useEffect(() => {
-    function handleResize() {
-      // Bounds and scale will automatically recalculate via useMemo
-      // Guide line positions are in data space, so they adjust automatically
-    }
-    
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-  
+
   // Add horizontal guide line
   const addHorizontalLine = () => {
     const horizontalCount = guideLines.filter(l => l.type === 'horizontal').length;
     if (horizontalCount >= maxLines.horizontal) return;
-    
+
     const newLine: GuideLineType = {
       id: `h-${Date.now()}-${Math.random()}`,
       type: 'horizontal',
       position: (scale.yMin + scale.yMax) / 2, // Center Y
       color: '#3b82f6', // Blue
     };
-    
+
     setGuideLines([...guideLines, newLine]);
   };
-  
+
   // Add vertical guide line
   const addVerticalLine = () => {
     const verticalCount = guideLines.filter(l => l.type === 'vertical').length;
     if (verticalCount >= maxLines.vertical) return;
-    
+
     const newLine: GuideLineType = {
       id: `v-${Date.now()}-${Math.random()}`,
       type: 'vertical',
       position: Date.now(), // Current timestamp
       color: '#10b981', // Green
     };
-    
+
     setGuideLines([...guideLines, newLine]);
   };
-  
+
   // Clear all guide lines
   const clearAllLines = () => {
     setGuideLines([]);
   };
-  
+
   // Count lines by type
   const horizontalCount = guideLines.filter(l => l.type === 'horizontal').length;
   const verticalCount = guideLines.filter(l => l.type === 'vertical').length;
-  
+
   return (
     <div className={`relative ${className}`}>
       {/* Guide line controls */}
@@ -168,7 +141,7 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
         </div>
       )}
 
-      {/* Chart container with guide lines rendered inside the chart */}
+      {/* Chart container */}
       <div className="relative">
         {/* Render appropriate chart type */}
         {chartType === 'multi' ? (
@@ -181,8 +154,6 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
             title={title}
             description={description}
             guideLines={guideLines}
-            bounds={bounds}
-            scale={scale}
             units={units}
             onGuideLinesChange={setGuideLines}
           />
@@ -202,8 +173,6 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
               statistics={statistics}
               color={color}
               guideLines={guideLines}
-              bounds={bounds}
-              scale={scale}
               onGuideLinesChange={setGuideLines}
             />
           )
