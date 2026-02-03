@@ -8,7 +8,7 @@ import Chart from 'react-apexcharts';
 import { ApexOptions } from 'apexcharts';
 import { TimeSeriesData, StatisticsResult } from '../../types/api';
 import { GuideLine } from '../../types/guideLines';
-import { calculateTrendLine } from './chartUtils';
+import { calculateTrendLine, TrendAnalysisResult } from './chartUtils';
 
 interface MiniChartProps {
   data: TimeSeriesData[];
@@ -46,14 +46,14 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   units,
   guideLines = [],
 }) => {
-  const { chartData, trendData } = useMemo(() => {
-    if (!data || data.length === 0) return { chartData: null, trendData: null };
+  const { chartData, trendResult } = useMemo(() => {
+    if (!data || data.length === 0) return { chartData: null, trendResult: null };
 
     const validData = data
       .filter(point => point.value !== null && !isNaN(point.value))
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
-    if (validData.length === 0) return { chartData: null, trendData: null };
+    if (validData.length === 0) return { chartData: null, trendResult: null };
 
     const points = validData.map(p => ({
       x: new Date(p.timestamp).getTime(),
@@ -62,7 +62,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
 
     const trend = showTrend && points.length >= 2 ? calculateTrendLine(points) : null;
 
-    return { chartData: points, trendData: trend };
+    return { chartData: points, trendResult: trend };
   }, [data, showTrend]);
 
   const getQualityColor = () => {
@@ -87,17 +87,17 @@ export const MiniChart: React.FC<MiniChartProps> = ({
         data: chartData
       });
 
-      if (trendData && trendData.length === 2) {
+      if (trendResult) {
         s.push({
           name: 'Trend',
           type: 'line',
-          data: trendData
+          data: trendResult.points
         });
       }
     }
 
     return s;
-  }, [chartData, trendData, tagName, type]);
+  }, [chartData, trendResult, tagName, type]);
 
   const annotations = useMemo(() => {
     const yaxis = guideLines
@@ -147,7 +147,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   const options: ApexOptions = {
     chart: {
       id: `mini-chart-${tagName}`,
-      type: 'line', // overridden by series type
+      type: 'line',
       sparkline: {
         enabled: !showAxis
       },
@@ -157,11 +157,11 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       },
       fontFamily: 'Inter, sans-serif'
     },
-    colors: [baseColor, '#64748b'], // trend is neutral gray
+    colors: [baseColor, '#64748b'],
     stroke: {
       curve: 'smooth',
       width: [2, 2],
-      dashArray: [0, 5] // dash for trend line
+      dashArray: [0, 5]
     },
     fill: {
       type: type === 'area' ? 'gradient' : 'solid',
@@ -198,7 +198,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
     yaxis: {
       labels: {
         show: showAxis,
-        formatter: (val) => typeof val === 'number' ? val.toFixed(1) : val,
+        formatter: (val) => typeof val === 'number' ? val.toFixed(1) : (val as any),
         style: {
           fontSize: '9px',
           colors: '#94a3b8'
@@ -210,7 +210,12 @@ export const MiniChart: React.FC<MiniChartProps> = ({
         format: 'HH:mm:ss'
       },
       y: {
-        formatter: (val) => `${val}${units ? ` ${units}` : ''}`
+        formatter: (val, { seriesIndex }) => {
+          if (seriesIndex === 1 && trendResult) {
+            return `${val.toFixed(2)} [${trendResult.equation}]`;
+          }
+          return `${val}${units ? ` ${units}` : ''}`;
+        }
       },
       theme: 'light'
     },
@@ -258,6 +263,27 @@ export const MiniChart: React.FC<MiniChartProps> = ({
           height={height}
         />
       </div>
+
+      {trendResult && showAxis && (
+        <div className="mt-3 grid grid-cols-2 gap-2 text-[9px] font-mono bg-gray-50 p-2 rounded border border-gray-100">
+          <div className="flex justify-between">
+            <span className="text-gray-400">EQ:</span>
+            <span className="text-blue-600 font-bold truncate ml-1">{trendResult.equation}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-400">R²:</span>
+            <span className="text-amber-600 font-bold ml-1">{trendResult.rSquared.toFixed(3)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-400">SD:</span>
+            <span className="ml-1">{trendResult.standardDeviation.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-400">VAR:</span>
+            <span className="ml-1">{trendResult.variance.toFixed(2)}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

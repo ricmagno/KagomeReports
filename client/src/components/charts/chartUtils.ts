@@ -182,21 +182,32 @@ export function formatTimestamp(timestamp: number | Date, includeDate: boolean =
   });
 }
 
+export interface TrendAnalysisResult {
+  points: { x: number; y: number }[];
+  equation: string;
+  rSquared: number;
+  slope: number;
+  intercept: number;
+  standardDeviation: number;
+  variance: number;
+}
+
 /**
- * Calculates a linear regression trend line for a set of data points
+ * Calculates a linear regression trend line and statistical metadata for a set of data points
  * @param data - Array of data points with x (timestamp) and y (value)
- * @returns An array of two points representing the start and end of the trend line
+ * @returns TrendAnalysisResult containing points and statistical indicators
  */
-export function calculateTrendLine(data: { x: number; y: number | null }[]): { x: number; y: number }[] {
+export function calculateTrendLine(data: { x: number; y: number | null }[]): TrendAnalysisResult | null {
   const validData = data.filter(d => d.y !== null && !isNaN(d.y));
   const n = validData.length;
 
-  if (n < 2) return [];
+  if (n < 2) return null;
 
   let sumX = 0;
   let sumY = 0;
   let sumXY = 0;
   let sumXX = 0;
+  let sumYY = 0;
 
   for (let i = 0; i < n; i++) {
     const x = validData[i].x;
@@ -205,16 +216,44 @@ export function calculateTrendLine(data: { x: number; y: number | null }[]): { x
     sumY += y;
     sumXY += x * y;
     sumXX += x * x;
+    sumYY += y * y;
   }
 
-  const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+  const denominator = (n * sumXX - sumX * sumX);
+  if (denominator === 0) return null;
+
+  const slope = (n * sumXY - sumX * sumY) / denominator;
   const intercept = (sumY - slope * sumX) / n;
+
+  // Calculate R-squared
+  const numRSq = (n * sumXY - sumX * sumY);
+  const denRSq = Math.sqrt((n * sumXX - sumX * sumX) * (n * sumYY - sumY * sumY));
+  const rSquared = denRSq === 0 ? 0 : Math.pow(numRSq / denRSq, 2);
+
+  // Calculate Variance and Std Dev
+  const meanY = sumY / n;
+  let squaredDiffSum = 0;
+  for (let i = 0; i < n; i++) {
+    squaredDiffSum += Math.pow(validData[i].y! - meanY, 2);
+  }
+  const variance = squaredDiffSum / n;
+  const standardDeviation = Math.sqrt(variance);
 
   const startX = validData[0].x;
   const endX = validData[n - 1].x;
 
-  return [
-    { x: startX, y: slope * startX + intercept },
-    { x: endX, y: slope * endX + intercept }
-  ];
+  const equation = `y = ${slope.toFixed(4)}x ${intercept >= 0 ? '+' : '-'} ${Math.abs(intercept).toFixed(2)}`;
+
+  return {
+    points: [
+      { x: startX, y: slope * startX + intercept },
+      { x: endX, y: slope * endX + intercept }
+    ],
+    equation,
+    rSquared,
+    slope,
+    intercept,
+    standardDeviation,
+    variance
+  };
 }

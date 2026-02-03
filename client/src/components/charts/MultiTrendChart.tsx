@@ -8,7 +8,7 @@ import Chart from 'react-apexcharts';
 import { ApexOptions } from 'apexcharts';
 import { TimeSeriesData } from '../../types/api';
 import { GuideLine, ChartBounds, ChartScale } from '../../types/guideLines';
-import { CHART_COLORS, getTagColor, getTagIndex, calculateTrendLine } from './chartUtils';
+import { CHART_COLORS, getTagColor, getTagIndex, calculateTrendLine, TrendAnalysisResult } from './chartUtils';
 
 interface MultiTrendChartProps {
     dataPoints: Record<string, TimeSeriesData[]>;
@@ -49,7 +49,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
     includeTrendLines = true,
 }) => {
     // Transform data for ApexCharts
-    const { series, colors, strokeWidths, dashArrays } = useMemo(() => {
+    const { series, colors, strokeWidths, dashArrays, trendMetadata } = useMemo(() => {
         const allTags = tags || Object.keys(dataPoints);
         const activeTags = allTags.filter(tag => dataPoints[tag] && dataPoints[tag].length > 0);
 
@@ -57,6 +57,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
         const seriesData: any[] = [];
         const widths: number[] = [];
         const dashes: number[] = [];
+        const metadata: Record<string, TrendAnalysisResult> = {};
 
         activeTags.forEach((tag) => {
             const data = [...dataPoints[tag]].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
@@ -83,21 +84,28 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
 
             // Add Trend Line if enabled
             if (includeTrendLines && points.length >= 2) {
-                const trendPoints = calculateTrendLine(points);
-                if (trendPoints.length === 2) {
+                const analysis = calculateTrendLine(points);
+                if (analysis) {
                     seriesData.push({
                         name: `${tag} (Trend)`,
                         type: 'line',
-                        data: trendPoints
+                        data: analysis.points
                     });
                     seriesColors.push(color);
                     widths.push(2);
                     dashes.push(5); // Dashed line for trend
+                    metadata[tag] = analysis;
                 }
             }
         });
 
-        return { series: seriesData, colors: seriesColors, strokeWidths: widths, dashArrays: dashes };
+        return {
+            series: seriesData,
+            colors: seriesColors,
+            strokeWidths: widths,
+            dashArrays: dashes,
+            trendMetadata: metadata
+        };
     }, [dataPoints, tags, type, includeTrendLines]);
 
     // Transform guide lines to ApexCharts annotations
@@ -138,7 +146,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
     const options: ApexOptions = {
         chart: {
             id: 'multi-trend-chart',
-            type: 'line', // Base type, overridden by series[].type
+            type: 'line',
             toolbar: {
                 show: true,
                 tools: {
@@ -197,7 +205,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
         },
         yaxis: {
             labels: {
-                formatter: (val) => typeof val === 'number' ? val.toFixed(1) : val,
+                formatter: (val) => typeof val === 'number' ? val.toFixed(1) : (val as any),
                 style: {
                     colors: '#64748b',
                     fontSize: '10px'
@@ -227,6 +235,19 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
             theme: 'light',
             shared: true,
             intersect: false,
+            y: {
+                formatter: (val, { seriesIndex, dataPointIndex, w }) => {
+                    const seriesName = w.config.series[seriesIndex].name;
+                    if (seriesName.endsWith('(Trend)')) {
+                        const originalTag = seriesName.replace(' (Trend)', '');
+                        const meta = trendMetadata[originalTag];
+                        if (meta) {
+                            return `${val.toFixed(2)} [${meta.equation}]`;
+                        }
+                    }
+                    return `${val.toFixed(2)}${units ? ` ${units}` : ''}`;
+                }
+            }
         },
         legend: {
             position: 'bottom',
@@ -247,10 +268,14 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
     return (
         <div className={`bg-white border border-gray-200 rounded-lg p-6 shadow-sm ${className}`}>
             <div className="mb-4 border-b border-gray-100 pb-2">
-                <h3 className="text-lg font-bold text-gray-900">{title}</h3>
-                <p className="text-xs text-gray-500 italic">
-                    {description || `Comparison of ${Object.keys(dataPoints).length} tags`}
-                </p>
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h3 className="text-lg font-bold text-gray-900">{title}</h3>
+                        <p className="text-xs text-gray-500 italic">
+                            {description || `Comparison of ${Object.keys(dataPoints).length} tags`}
+                        </p>
+                    </div>
+                </div>
             </div>
 
             <div className="relative min-h-[320px]">
@@ -262,6 +287,44 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
                     height={height}
                 />
             </div>
+
+            {/* Regression Analysis Table */}
+            {includeTrendLines && Object.keys(trendMetadata).length > 0 && (
+                <div className="mt-6 border-t border-gray-100 pt-4">
+                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Trend Analysis (Linear Regression)</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {Object.entries(trendMetadata).map(([tag, meta]) => (
+                            <div key={tag} className="bg-gray-50 rounded p-3 border border-gray-100">
+                                <div className="flex items-center mb-2">
+                                    <div
+                                        className="w-2 h-2 rounded-full mr-2"
+                                        style={{ backgroundColor: colors[series.findIndex(s => s.name === tag)] }}
+                                    />
+                                    <span className="text-xs font-bold text-gray-700 truncate">{tag}</span>
+                                </div>
+                                <div className="space-y-1 font-mono text-[10px]">
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Equation:</span>
+                                        <span className="text-blue-600 font-bold">{meta.equation}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">R²:</span>
+                                        <span className="text-amber-600 font-bold">{meta.rSquared.toFixed(4)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Std Dev:</span>
+                                        <span>{meta.standardDeviation.toFixed(3)}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-500">Variance:</span>
+                                        <span>{meta.variance.toFixed(3)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
