@@ -607,9 +607,25 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     <div className={cn("min-h-screen bg-gray-50", className)}>
       <nav className="bg-white shadow-sm border-b border-gray-200">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <BarChart3 className="h-6 w-6 text-primary-600" />
-            <span className="text-xl font-bold text-gray-900">Historian Reports</span>
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2">
+              <BarChart3 className="h-6 w-6 text-primary-600" />
+              <span className="text-xl font-bold text-gray-900">Historian Reports</span>
+            </div>
+            {isAuthenticated && (
+              <button
+                onClick={() => setActiveTab('about')}
+                className={cn(
+                  "flex items-center px-3 py-1 text-xs font-medium rounded-full transition-all duration-200",
+                  activeTab === 'about'
+                    ? "bg-primary-100 text-primary-700 shadow-sm"
+                    : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+                )}
+              >
+                <Info className="h-3.5 w-3.5 mr-1" />
+                About
+              </button>
+            )}
           </div>
           <div className="flex items-center space-x-4">
             <div className={`text-sm px-3 py-1 rounded-full ${healthStatus.includes('✅') ? 'bg-green-100 text-green-800' :
@@ -674,7 +690,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 { id: 'database', label: 'Database', icon: Database },
                 ...(currentUser?.role === 'admin' ? [{ id: 'configuration', label: 'Configuration', icon: Settings }] : []),
                 ...(currentUser?.role === 'admin' ? [{ id: 'users', label: 'Users', icon: Users }] : []),
-                { id: 'about', label: 'About', icon: Info },
               ].map(tab => (
                 <button
                   key={tab.id}
