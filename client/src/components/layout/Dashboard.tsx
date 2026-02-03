@@ -124,20 +124,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
         if (response.ok || response.status === 503) {
           if (data.status === 'healthy') {
-            setHealthStatus('✅ Backend connected & Ready');
+            setHealthStatus('✅ Online');
           } else if (data.connection && data.connection.state === 'retrying' && data.connection.nextRetry) {
-            const nextRetry = new Date(data.connection.nextRetry);
-            const now = new Date();
-            const diff = Math.ceil((nextRetry.getTime() - now.getTime()) / 1000);
-            const seconds = diff > 0 ? diff : 0;
-            setHealthStatus(`⚠️ Connection lost. Retrying in ${seconds}s...`);
+            setHealthStatus('⚠️ Retrying');
           } else if (data.connection && data.connection.state === 'connecting') {
-            setHealthStatus('⚠️ Connecting to database...');
-          } else if (data.status) {
-            // Fallback for other status messages
-            setHealthStatus(`❌ Backend Connected - Database: ${data.status} (${data.connection?.state || 'unknown'})`);
+            setHealthStatus('⚠️ Connecting');
           } else {
-            setHealthStatus(`❌ Backend error - Status: ${response.status}`);
+            setHealthStatus('❌ Offline');
           }
         } else {
           // If detailed check fails hard (not 503), try basic check
@@ -151,19 +144,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             clearTimeout(timeoutBasic);
 
             if (basicResponse.ok) {
-              setHealthStatus('⚠️ Backend connected - Database status unknown');
+              setHealthStatus('⚠️ Connecting');
             } else {
-              setHealthStatus(`❌ Backend error - Status: ${response.status}`);
+              setHealthStatus('❌ Offline');
             }
           } catch (e) {
-            setHealthStatus(`❌ Backend error - Status: ${response.status}`);
+            setHealthStatus('❌ Offline');
           }
         }
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {
-          setHealthStatus('❌ Backend connection timed out');
+          setHealthStatus('❌ Timeout');
         } else {
-          setHealthStatus(`❌ Backend connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          setHealthStatus('❌ Offline');
         }
       }
     };

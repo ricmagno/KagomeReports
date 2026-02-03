@@ -343,8 +343,8 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
                                     : 0;
 
                                 // Calculate line endpoints
-                                // Use the actual SVG width (width - 40) for horizontal lines
-                                const actualSvgWidth = width - 40;
+                                // Use the actual SVG width for horizontal lines
+                                const actualSvgWidth = width;
                                 const x1 = line.type === 'horizontal' ? chartData.leftPad : pixelX;
                                 const y1 = line.type === 'horizontal' ? pixelY : chartData.topPad;
                                 const x2 = line.type === 'horizontal' ? actualSvgWidth - chartData.rightPad : pixelX;
