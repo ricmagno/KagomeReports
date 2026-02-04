@@ -9,8 +9,6 @@
 set -e
 
 VERSION=$1
-REMOTE_USER="scada.sa"
-REMOTE_HOST="192.168.235.16"
 REPO_NAME="ricmagno/kagomereports"
 NAMESPACE="historian-reports"
 DEPLOYMENT="historian-reports"

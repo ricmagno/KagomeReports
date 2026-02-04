@@ -50,12 +50,15 @@ router.post('/restart', async (req: Request, res: Response): Promise<void> => {
  * GET /api/system/status
  * Returns basic system status
  */
-router.get('/status', (req: Request, res: Response) => {
+router.get('/status', async (req: Request, res: Response) => {
+  const { versionManager } = await import('@/services/versionManager');
+  const versionInfo = versionManager.getCurrentVersion();
+
   res.json({
     success: true,
     data: {
       uptime: process.uptime(),
-      version: process.env.npm_package_version || '1.0.0',
+      version: versionInfo.version,
       nodeVersion: process.version,
       platform: process.platform,
       pid: process.pid

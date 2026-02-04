@@ -51,11 +51,13 @@ app.use(requestLogger);
 // Health check endpoint
 app.get('/health', async (req, res) => {
   const cacheHealth = await cacheManager.healthCheck();
+  const { versionManager } = await import('@/services/versionManager');
+  const versionInfo = versionManager.getCurrentVersion();
 
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    version: '0.65.2',
+    version: versionInfo.version,
     environment: env.NODE_ENV,
     cache: cacheHealth,
   });
