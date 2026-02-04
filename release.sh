@@ -48,6 +48,9 @@ echo "⬆️ Pushing to GitHub (this triggers the Docker build)..."
 git push origin mobile
 git push origin "$VERSION" --force
 
+echo "📦 Creating GitHub Release..."
+gh release create "$VERSION" --title "Release $VERSION" --notes "Automated release for version $VERSION" || echo "⚠️ Release already exists or gh CLI not authenticated"
+
 echo "----------------------------------------------------------------------"
 echo "✅ Step 1/2 Complete: Code is pushed and Tag is created."
 echo "⌛ GitHub Actions is now building the Docker image for $VERSION."
@@ -67,9 +70,10 @@ NEW_IMAGE="ghcr.io/$REPO_NAME:$VERSION"
 SSH_CMD="kubectl set image deployment/$DEPLOYMENT $CONTAINER=$NEW_IMAGE -n $NAMESPACE"
 
 echo "📡 Running remote command: $SSH_CMD"
+echo "⚠️  IMPORTANT: Please enter your password for $REMOTE_USER@$REMOTE_HOST when prompted below:"
 ssh "$REMOTE_USER@$REMOTE_HOST" "$SSH_CMD"
 
 echo "----------------------------------------------------------------------"
 echo "🎉 SUCCESS! Version $VERSION has been released and deployed."
-echo "🩺 Check status: ssh $REMOTE_USER@$REMOTE_HOST 'kubectl get pods -n $NAMESPACE'"
+echo "🩺 Check status: ssh $REMOTE_USER@$REMOTE_HOST 'kubectl get pods -n $NAMESPACE -w'"
 echo "----------------------------------------------------------------------"
