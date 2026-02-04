@@ -25,20 +25,17 @@ fi
 
 echo "🚀 Starting release process for version $VERSION..."
 
-# 2. Update version in package.json
+# 2. Update Versions
 echo "📝 Updating version in package.json..."
 sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
 
-# 3. Update version in Dockerfile labels
-if [ -f "Dockerfile" ]; then
-    echo "📝 Updating version label in Dockerfile..."
-    sed -i '' "s/version=\".*\"/version=\"$VERSION\"/" Dockerfile
-fi
+echo "📝 Updating version label in Dockerfile..."
+sed -i '' "s/version=\".*\"/version=\"$VERSION\"/" Dockerfile
 
-# 4. Git commit, tag and push
+# 3. Commit and Tag
 echo "💾 Committing version changes..."
 git add package.json Dockerfile
-git commit -m "Chore: Release version $VERSION" || echo "Already up to date"
+git commit -m "Chore: Release version $VERSION"
 
 echo "🏷️ Creating git tag $VERSION..."
 git tag -d "$VERSION" 2>/dev/null || true
@@ -57,23 +54,8 @@ echo "⌛ GitHub Actions is now building the Docker image for $VERSION."
 echo "   This usually takes 2-4 minutes."
 echo "----------------------------------------------------------------------"
 
-read -p "❓ Do you want to trigger the Kubernetes update now? (y/n): " confirm
-if [[ $confirm != [yY] ]]; then
-    echo "👋 Release finished. You can run the update later manually on the server."
-    exit 0
-fi
-
-# 5. Remote Deployment via SSH
-echo "🚢 Deploying to Kubernetes cluster at $REMOTE_HOST..."
-NEW_IMAGE="ghcr.io/$REPO_NAME:$VERSION"
-
-SSH_CMD="kubectl set image deployment/$DEPLOYMENT $CONTAINER=$NEW_IMAGE -n $NAMESPACE"
-
-echo "📡 Running remote command: $SSH_CMD"
-echo "⚠️  IMPORTANT: Please enter your password for $REMOTE_USER@$REMOTE_HOST when prompted below:"
-ssh "$REMOTE_USER@$REMOTE_HOST" "$SSH_CMD"
-
 echo "----------------------------------------------------------------------"
-echo "🎉 SUCCESS! Version $VERSION has been released and deployed."
-echo "🩺 Check status: ssh $REMOTE_USER@$REMOTE_HOST 'kubectl get pods -n $NAMESPACE -w'"
+echo "🎉 SUCCESS! Version $VERSION has been released."
+echo "⌛ GitHub Actions is now building AND deploying version $VERSION."
+echo "🩺 Watch build/deploy: https://github.com/ricmagno/KagomeReports/actions"
 echo "----------------------------------------------------------------------"
