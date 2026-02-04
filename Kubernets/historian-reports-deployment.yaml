@@ -15,12 +15,14 @@ spec:
       labels:
         app: historian-reports
     spec:
+      imagePullSecrets:
+      - name: ghcr-regcred
       containers:
       - name: historian-reports
-        image: historian-reports:v0.77.0
+        image: ghcr.io/ricmagno/kagomereports:0.78.0
         ports:
         - containerPort: 3000
-        imagePullPolicy: Never # Use 'Never' since the image is already local
+        imagePullPolicy: IfNotPresent
         envFrom: # Add this section to load env vars from Secret
         - secretRef:
             name: historian-reports-env
