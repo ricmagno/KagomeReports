@@ -19,16 +19,42 @@ function sanitizeReportName(name: string): string {
 /**
  * Format date for filename in YYYY_MM_DD_HHmm format
  * @param date - Date to format (defaults to current date)
+ * @param timezone - Optional timezone (e.g. 'Australia/Sydney')
  * @returns Formatted date string
  */
-function formatDateForFilename(date: Date = new Date()): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  
-  return `${year}_${month}_${day}_${hours}${minutes}`;
+function formatDateForFilename(date: Date = new Date(), timezone?: string): string {
+  try {
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: timezone || undefined
+    });
+
+    const parts = formatter.formatToParts(date);
+    const getPart = (type: string) => parts.find(p => p.type === type)?.value || '';
+
+    // Extract parts ensuring we get the expected digits
+    const year = getPart('year');
+    const month = getPart('month');
+    const day = getPart('day');
+    const hour = getPart('hour');
+    const minute = getPart('minute');
+
+    return `${year}_${month}_${day}_${hour}${minute}`;
+  } catch (error) {
+    // Fallback if timezone is invalid or Intl fails
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+
+    return `${year}_${month}_${day}_${hours}${minutes}`;
+  }
 }
 
 /**
@@ -43,19 +69,21 @@ function formatDateForFilename(date: Date = new Date()): string {
  * @param reportName - The name of the report (not description)
  * @param extension - File extension (default: 'pdf')
  * @param date - Date of generation (defaults to current date)
+ * @param timezone - Optional timezone for the filename timestamp
  * @returns Standardized filename
  */
 export function generateReportFilename(
   reportName: string,
   extension: string = 'pdf',
-  date: Date = new Date()
+  date: Date = new Date(),
+  timezone?: string
 ): string {
   const sanitizedName = sanitizeReportName(reportName);
-  const dateStr = formatDateForFilename(date);
-  
+  const dateStr = formatDateForFilename(date, timezone);
+
   // Ensure extension doesn't have a leading dot
   const ext = extension.startsWith('.') ? extension.slice(1) : extension;
-  
+
   return `${sanitizedName}_${dateStr}.${ext}`;
 }
 

@@ -443,15 +443,23 @@ export class ReportGenerationService {
           try {
             const buffer = Buffer.concat(chunks);
 
-            // Generate standardized filename using report name and current date
+            // Generate standardized filename using report name and current date/timezone
             const reportName = getReportNameFromConfig(reportData.config);
-            const baseFileName = generateReportFilename(reportName, 'pdf');
+            const baseFileName = generateReportFilename(
+              reportName,
+              'pdf',
+              reportData.generatedAt,
+              reportData.config.timeRange?.timezone
+            );
 
-            // Prefix with report ID so the download route can find it
-            // Using __ as a separator
-            const fileName = `${reportData.config.id}__${baseFileName}`;
+            // Use a subdirectory for each report ID to keep filenames clean 
+            // while maintaining uniqueness and allowing the download route to find them.
+            const reportDir = path.join(this.outputDir, reportData.config.id);
+            if (!fs.existsSync(reportDir)) {
+              fs.mkdirSync(reportDir, { recursive: true });
+            }
 
-            const filePath = path.join(this.outputDir, fileName);
+            const filePath = path.join(reportDir, baseFileName);
 
             // Save to file
             fs.writeFileSync(filePath, buffer);

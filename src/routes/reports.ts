@@ -770,23 +770,50 @@ router.post('/import', authenticateToken, requirePermission('reports', 'write'),
 router.get('/:id/download', asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
 
+  if (!id) {
+    throw createError('Report ID is required', 400);
+  }
+
   apiLogger.info('Downloading report', { id });
 
   try {
     // Look for the report file in the reports directory
     const reportsDir = process.env.REPORTS_DIR || './reports';
-    const files = fs.readdirSync(reportsDir);
+    let reportFile: string | undefined;
+    let filePath: string | undefined;
 
-    // Find file that starts with the report ID followed by our separator
-    // This prevents matching "report_123" if the file is actually "report_1234__..."
-    const reportFile = files.find(file => id && (file === id || file.startsWith(`${id}__`)));
+    // Step 1: Check subdirectory structure (new convention: reports/id/filename)
+    const reportSubDir = path.join(reportsDir, id);
+    if (fs.existsSync(reportSubDir) && fs.statSync(reportSubDir).isDirectory()) {
+      const dirFiles = fs.readdirSync(reportSubDir);
+      // Find the first report file in the subdirectory
+      reportFile = dirFiles.find(file =>
+        file.toLowerCase().endsWith('.pdf') ||
+        file.toLowerCase().endsWith('.docx')
+      );
 
-    if (!reportFile) {
-      apiLogger.warn('Report file not found', { reportId: id });
-      throw createError('Report not found', 404);
+      if (reportFile) {
+        filePath = path.join(reportSubDir, reportFile);
+        apiLogger.debug('Report found in subdirectory', { id, reportFile, filePath });
+      }
     }
 
-    const filePath = path.join(reportsDir, reportFile);
+    // Step 2: Fallback to root directory (legacy convention: id__filename)
+    if (!filePath) {
+      const files = fs.readdirSync(reportsDir);
+      reportFile = files.find(file => id && (file === id || file.startsWith(`${id}__`)));
+
+      if (reportFile) {
+        filePath = path.join(reportsDir, reportFile);
+        apiLogger.debug('Report found in root directory (legacy)', { id, reportFile, filePath });
+      }
+    }
+
+    if (!reportFile || !filePath) {
+      apiLogger.warn('Report file not found', { reportId: id });
+      throw createError('Report not found', 404);
+      return; // Ensure TypeScript knows filePath is defined after this
+    }
 
     // Check if file exists and is readable
     if (!fs.existsSync(filePath)) {
