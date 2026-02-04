@@ -272,24 +272,26 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
         </div>
 
         {/* Footer Actions */}
-        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
-          <div className="flex items-center justify-between gap-3">
+        <div className="px-4 sm:px-6 py-4 border-t border-gray-200 bg-gray-50">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setShowNewFolderInput(true)}
               disabled={showNewFolderInput || loading}
+              className="w-full sm:w-auto flex justify-center"
             >
-              <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="w-4 h-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
               New Folder
             </Button>
 
-            <div className="flex gap-2">
+            <div className="flex flex-col-reverse sm:flex-row gap-2">
               <Button
                 variant="outline"
                 onClick={onClose}
+                className="w-full sm:w-auto"
               >
                 Cancel
               </Button>
@@ -298,6 +300,7 @@ export const DirectoryBrowser: React.FC<DirectoryBrowserProps> = ({
                 onClick={handleSelect}
                 disabled={loading || (browserData !== null && browserData.isWritable === false)}
                 title={browserData?.isWritable === false ? 'This directory is not writable' : ''}
+                className="w-full sm:w-auto"
               >
                 Select Current Folder
               </Button>

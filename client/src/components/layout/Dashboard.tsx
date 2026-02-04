@@ -15,7 +15,10 @@ import {
   Users,
   Trash2,
   Info,
-  Settings
+  Settings,
+  Menu,
+  X,
+  ChevronRight
 } from 'lucide-react';
 import { ReportConfig, TagInfo, ReportVersion } from '../../types/api';
 import { Button } from '../ui/Button';
@@ -47,6 +50,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const { user, isAuthenticated, login: authLogin, logout: authLogout, isLoading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'database' | 'users' | 'configuration' | 'about'>('create');
   const [dbActiveTab, setDbActiveTab] = useState<'status' | 'config'>('status');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [healthStatus, setHealthStatus] = useState<string>('checking...');
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginLoading, setLoginLoading] = useState(false);
@@ -126,13 +130,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
         if (response.ok || response.status === 503) {
           if (data.status === 'healthy') {
-            setHealthStatus('✅ Online');
+            setHealthStatus('✅ Backend');
           } else if (data.connection && data.connection.state === 'retrying' && data.connection.nextRetry) {
-            setHealthStatus('⚠️ Retrying');
+            const nextRetry = new Date(data.connection.nextRetry);
+            const now = new Date();
+            const diff = Math.ceil((nextRetry.getTime() - now.getTime()) / 1000);
+            const seconds = diff > 0 ? diff : 0;
+            setHealthStatus(`⚠️ Retry ${seconds}s`);
           } else if (data.connection && data.connection.state === 'connecting') {
-            setHealthStatus('⚠️ Connecting');
+            setHealthStatus('⚠️ Connecting...');
+          } else if (data.status) {
+            setHealthStatus('❌ Backend - DB Offline');
           } else {
-            setHealthStatus('❌ Offline');
+            setHealthStatus(`❌ Backend Error`);
           }
         } else {
           // If detailed check fails hard (not 503), try basic check
@@ -606,12 +616,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
   return (
     <div className={cn("min-h-screen bg-gray-50", className)}>
-      <nav className="bg-white shadow-sm border-b border-gray-200">
+      <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
               <BarChart3 className="h-6 w-6 text-primary-600" />
-              <span className="text-xl font-bold text-gray-900">Historian Reports</span>
+              <span className="text-xl font-bold text-gray-900 truncate">Historian Reports</span>
             </div>
             {isAuthenticated && (
               <button
@@ -628,7 +638,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               </button>
             )}
           </div>
-          <div className="flex items-center space-x-4">
+
+          <div className="hidden md:flex items-center space-x-4">
             <div className={`text-sm px-3 py-1 rounded-full ${healthStatus.includes('✅') ? 'bg-green-100 text-green-800' :
               healthStatus.includes('⚠️') ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
               }`}>
@@ -641,10 +652,70 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               </Button>
             )}
           </div>
+
+          <div className="md:hidden flex items-center space-x-2">
+            <div className={`text-[10px] px-2 py-0.5 rounded-full ${healthStatus.includes('✅') ? 'bg-green-100 text-green-800' :
+              healthStatus.includes('⚠️') ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
+              }`}>
+              {healthStatus.split(' ')[0]}
+            </div>
+            {isAuthenticated && (
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="p-2 rounded-md text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              >
+                {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Mobile Menu Overlay */}
+        {isMobileMenuOpen && isAuthenticated && (
+          <div className="md:hidden bg-white border-b border-gray-200 pb-4 px-4 space-y-2">
+            {[
+              { id: 'create', label: 'Create Report', icon: Plus },
+              { id: 'reports', label: 'My Reports', icon: FileText },
+              { id: 'schedules', label: 'Schedules', icon: Calendar },
+              { id: 'categories', label: 'Categories', icon: Tag },
+              { id: 'status', label: 'Status', icon: Activity },
+              { id: 'database', label: 'Database', icon: Database },
+              ...(currentUser?.role === 'admin' ? [{ id: 'configuration', label: 'Configuration', icon: Settings }] : []),
+              ...(currentUser?.role === 'admin' ? [{ id: 'users', label: 'Users', icon: Users }] : []),
+              { id: 'about', label: 'About', icon: Info },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setActiveTab(tab.id as any);
+                  setIsMobileMenuOpen(false);
+                  if (tab.id === 'reports') loadSavedReports();
+                }}
+                className={cn(
+                  "flex items-center w-full px-4 py-3 rounded-md text-base font-medium transition-colors",
+                  activeTab === tab.id
+                    ? "bg-primary-50 text-primary-600"
+                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                )}
+              >
+                <tab.icon className="h-5 w-5 mr-3" />
+                {tab.label}
+              </button>
+            ))}
+            <div className="pt-4 border-t border-gray-100">
+              <button
+                onClick={handleLogout}
+                className="flex items-center w-full px-4 py-3 text-base font-medium text-red-600 hover:bg-red-50 rounded-md"
+              >
+                <LogOut className="h-5 w-5 mr-3" />
+                Logout
+              </button>
+            </div>
+          </div>
+        )}
       </nav>
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-4 md:py-8">
         {authLoading ? (
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
@@ -683,7 +754,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           </div>
         ) : (
           <>
-            <div className="mb-6 flex space-x-2 border-b border-gray-200 overflow-x-auto">
+            <div className="hidden md:flex mb-6 space-x-2 border-b border-gray-200 overflow-x-auto">
               {[
                 { id: 'create', label: 'Create Report', icon: Plus },
                 { id: 'reports', label: 'My Reports', icon: FileText },
@@ -711,6 +782,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   {tab.label}
                 </button>
               ))}
+            </div>
+
+            <div className="md:hidden mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-gray-900 capitalize">
+                {activeTab.replace('-', ' ')}
+              </h2>
             </div>
 
             {activeTab === 'create' && (
@@ -1019,96 +1096,37 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                       </div>
 
                       {savedReports.length > 0 ? (
-                        <div className="bg-white rounded-lg border border-gray-200">
-                          <div className="overflow-x-auto">
+                        <div className="space-y-4">
+                          {/* Desktop Table View */}
+                          <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
                             <table className="min-w-full divide-y divide-gray-200">
                               <thead className="bg-gray-50">
                                 <tr>
-                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Report Name
-                                  </th>
-                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Description
-                                  </th>
-                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Version
-                                  </th>
-                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Created
-                                  </th>
-                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Actions
-                                  </th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Report Name</th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Version</th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                                 </tr>
                               </thead>
                               <tbody className="bg-white divide-y divide-gray-200">
                                 {savedReports.map((report) => (
                                   <tr key={report.id} className="hover:bg-gray-50">
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                      <div className="text-sm font-medium text-gray-900">{report.name}</div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                      <div className="text-sm text-gray-500 max-w-xs truncate">
-                                        {report.description || 'No description'}
-                                      </div>
+                                    <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">{report.name}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{report.description || 'No description'}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                      v{report.version}
+                                      {report.totalVersions > 1 && <div className="text-xs text-gray-500">{report.totalVersions} versions</div>}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
-                                      <div className="text-sm text-gray-900">v{report.version}</div>
-                                      {report.totalVersions > 1 && (
-                                        <div className="text-xs text-gray-500">
-                                          {report.totalVersions} versions
-                                        </div>
-                                      )}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                      <div className="text-sm text-gray-500">
-                                        {new Date(report.createdAt).toLocaleDateString()}
-                                      </div>
-                                      <div className="text-xs text-gray-400">
-                                        by {report.createdBy}
-                                      </div>
+                                      <div className="text-sm text-gray-500">{new Date(report.createdAt).toLocaleDateString()}</div>
+                                      <div className="text-xs text-gray-400">by {report.createdBy}</div>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                       <div className="flex space-x-2">
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => handleLoadReport(report.id)}
-                                          disabled={isLoading}
-                                        >
-                                          Load
-                                        </Button>
-                                        {report.totalVersions > 1 && (
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleShowVersionHistory(report.id, report.name)}
-                                          >
-                                            <History className="h-4 w-4 mr-1" />
-                                            History
-                                          </Button>
-                                        )}
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => handleExportReport(report)}
-                                          disabled={isLoading}
-                                          title="Export report configuration"
-                                        >
-                                          <Download className="h-4 w-4 mr-1" />
-                                          Export
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          onClick={() => handleDeleteReport(report.id, report.name)}
-                                          disabled={isLoading}
-                                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                          title="Delete report"
-                                        >
-                                          <Trash2 className="h-4 w-4 mr-1" />
-                                          Delete
-                                        </Button>
+                                        <Button variant="ghost" size="sm" onClick={() => handleLoadReport(report.id)}>Load</Button>
+                                        <Button variant="ghost" size="sm" onClick={() => handleExportReport(report)} title="Export"><Download className="h-4 w-4" /></Button>
+                                        <Button variant="ghost" size="sm" onClick={() => handleDeleteReport(report.id, report.name)} className="text-red-600 hover:text-red-700 hover:bg-red-50"><Trash2 className="h-4 w-4" /></Button>
                                       </div>
                                     </td>
                                   </tr>
@@ -1116,13 +1134,54 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                               </tbody>
                             </table>
                           </div>
+
+                          {/* Mobile Card List View */}
+                          <div className="md:hidden space-y-4">
+                            {savedReports.map((report) => (
+                              <Card key={report.id} className="overflow-hidden">
+                                <CardContent className="p-4">
+                                  <div className="flex justify-between items-start mb-2">
+                                    <div className="flex-1 min-w-0">
+                                      <h3 className="font-bold text-lg text-gray-900 truncate">{report.name}</h3>
+                                      <p className="text-sm text-gray-500 line-clamp-2 mt-1">{report.description || 'No description'}</p>
+                                    </div>
+                                    <div className="bg-primary-50 text-primary-700 px-2 py-1 rounded text-xs font-semibold ml-2">v{report.version}</div>
+                                  </div>
+                                  <div className="flex items-center text-xs text-gray-400 mb-4">
+                                    <Calendar className="h-3 w-3 mr-1" />
+                                    <span>{new Date(report.createdAt).toLocaleDateString()}</span>
+                                    <span className="mx-2 text-gray-300">•</span>
+                                    <Users className="h-3 w-3 mr-1" />
+                                    <span className="truncate">by {report.createdBy}</span>
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <Button variant="outline" size="sm" onClick={() => handleLoadReport(report.id)} className="w-full">
+                                      Load Report
+                                    </Button>
+                                    <div className="flex space-x-2">
+                                      <Button variant="ghost" size="sm" onClick={() => handleExportReport(report)} className="flex-1 border border-gray-200">
+                                        <Download className="h-4 w-4" />
+                                      </Button>
+                                      <Button variant="ghost" size="sm" onClick={() => handleDeleteReport(report.id, report.name)} className="flex-1 border border-red-100 text-red-600 hover:bg-red-50">
+                                        <Trash2 className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </div>
                         </div>
                       ) : (
                         <div className="bg-white rounded-lg border border-gray-200">
-                          <div className="p-6 text-center text-gray-500">
+                          <div className="p-8 text-center text-gray-500">
                             <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                            <p className="text-lg font-medium">No reports yet</p>
-                            <p>Create your first report to get started</p>
+                            <p className="text-lg font-medium text-gray-900">No reports yet</p>
+                            <p className="mt-1">Create your first report to get started</p>
+                            <Button className="mt-6" onClick={() => setActiveTab('create')}>
+                              <Plus className="h-4 w-4 mr-2" />
+                              New Report
+                            </Button>
                           </div>
                         </div>
                       )}

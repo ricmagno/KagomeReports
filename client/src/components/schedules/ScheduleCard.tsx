@@ -258,10 +258,10 @@ const ScheduleCardComponent: React.FC<ScheduleCardProps> = ({
             size="sm"
             onClick={() => onEdit(schedule)}
             aria-label={`Edit schedule ${schedule.name}`}
-            className="flex-shrink-0"
+            className="flex-1 sm:flex-none justify-center"
           >
             <svg
-              className="w-4 h-4 sm:mr-1"
+              className="w-4 h-4 mr-1.5"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -274,7 +274,7 @@ const ScheduleCardComponent: React.FC<ScheduleCardProps> = ({
                 d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
               />
             </svg>
-            <span className="hidden sm:inline">Edit</span>
+            <span>Edit</span>
           </Button>
 
           <Button
@@ -285,29 +285,31 @@ const ScheduleCardComponent: React.FC<ScheduleCardProps> = ({
             loading={isExecuting}
             aria-label={`Run schedule ${schedule.name} now`}
             aria-disabled={!schedule.enabled || isExecuting}
-            className="flex-shrink-0"
+            className="flex-1 sm:flex-none justify-center whitespace-nowrap"
           >
-            <svg
-              className="w-4 h-4 sm:mr-1"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              aria-hidden="true"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            <span className="hidden sm:inline">Run Now</span>
+            {!isExecuting && (
+              <svg
+                className="w-4 h-4 mr-1.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                aria-hidden="true"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            )}
+            <span>Run Now</span>
           </Button>
 
           <Button
@@ -315,10 +317,10 @@ const ScheduleCardComponent: React.FC<ScheduleCardProps> = ({
             size="sm"
             onClick={() => onViewHistory(schedule)}
             aria-label={`View execution history for ${schedule.name}`}
-            className="flex-shrink-0"
+            className="flex-1 sm:flex-none justify-center"
           >
             <svg
-              className="w-4 h-4 sm:mr-1"
+              className="w-4 h-4 mr-1.5"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -331,18 +333,18 @@ const ScheduleCardComponent: React.FC<ScheduleCardProps> = ({
                 d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
               />
             </svg>
-            <span className="hidden sm:inline">History</span>
+            <span>History</span>
           </Button>
 
           <Button
             variant="outline"
             size="sm"
             onClick={onDelete}
-            className="text-red-600 hover:bg-red-50 hover:border-red-300 flex-shrink-0"
+            className="flex-1 sm:flex-none justify-center text-red-600 hover:bg-red-50 hover:border-red-300"
             aria-label={`Delete schedule ${schedule.name}`}
           >
             <svg
-              className="w-4 h-4 sm:mr-1"
+              className="w-4 h-4 mr-1.5"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -355,7 +357,7 @@ const ScheduleCardComponent: React.FC<ScheduleCardProps> = ({
                 d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
               />
             </svg>
-            <span className="hidden sm:inline">Delete</span>
+            <span>Delete</span>
           </Button>
         </div>
       </CardContent>

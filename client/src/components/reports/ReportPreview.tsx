@@ -264,11 +264,11 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
   return (
     <div className={`bg-white rounded-lg shadow-md border border-gray-200 ${className}`}>
       {/* Header */}
-      <div className="p-6 border-b border-gray-200">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
+      <div className="p-4 sm:p-6 border-b border-gray-200">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div className="flex-1 w-full">
             <div className="flex items-center space-x-3 mb-2">
-              <h3 className="text-lg font-semibold text-gray-900">
+              <h3 className="text-lg font-semibold text-gray-900 break-words">
                 {config.name}
               </h3>
               {previewData.loading && (
@@ -277,14 +277,14 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
             </div>
 
             {config.description && (
-              <p className="text-gray-600 text-sm mb-3">
+              <p className="text-gray-600 text-sm mb-3 line-clamp-2 md:line-clamp-none">
                 {config.description}
               </p>
             )}
 
             {/* Tags */}
             {config.tags && config.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
+              <div className="flex flex-wrap gap-1.5 mb-3">
                 {config.tags.map((tag, index) => {
                   const tagData = previewData.dataPoints[tag] || [];
                   const hasData = tagData.length > 0;
@@ -292,14 +292,14 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                   return (
                     <span
                       key={index}
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${hasData
+                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-medium ${hasData
                         ? 'bg-green-100 text-green-800'
                         : 'bg-gray-100 text-gray-600'
                         }`}
                     >
                       {tag}
                       {!previewData.loading && (
-                        <span className="ml-1 text-xs">
+                        <span className="ml-1 opacity-70">
                           ({tagData.length})
                         </span>
                       )}
@@ -311,31 +311,31 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
 
             {/* Data Quality Indicator */}
             {!previewData.loading && dataQuality.totalPoints > 0 && (
-              <div className="flex items-center space-x-2 text-sm">
+              <div className="flex items-center space-x-2 text-xs sm:text-sm">
                 {getQualityIcon(dataQuality.qualityPercentage)}
                 <span className={getQualityColor(dataQuality.qualityPercentage)}>
-                  {dataQuality.qualityPercentage.toFixed(1)}% data quality
+                  {dataQuality.qualityPercentage.toFixed(1)}% quality
                 </span>
                 <span className="text-gray-500">
-                  ({dataQuality.totalPoints} points)
+                  ({dataQuality.totalPoints} pts)
                 </span>
               </div>
             )}
 
             {/* Error Display */}
             {previewData.error && (
-              <div className="flex items-center space-x-2 text-sm text-red-600 mt-2">
-                <AlertCircle className="w-4 h-4" />
-                <span>{previewData.error}</span>
+              <div className="flex items-center space-x-2 text-xs sm:text-sm text-red-600 mt-2">
+                <AlertCircle className="w-3.5 h-3.5" />
+                <span className="break-words">{previewData.error}</span>
               </div>
             )}
           </div>
 
-          <div className="flex space-x-2 ml-4">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             <button
               onClick={loadPreviewData}
               disabled={previewData.loading || !config.tags?.length}
-              className="inline-flex items-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {previewData.loading ? (
                 <>
@@ -344,48 +344,52 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                 </>
               ) : (
                 <>
-                  <RefreshCw className="w-4 h-4 mr-2" />
+                  <RefreshCw className="w-4 h-4 mr-1.5" />
                   Query Data
                 </>
               )}
             </button>
 
-            <button
-              onClick={handleRefresh}
-              disabled={previewData.loading || dataQuality.totalPoints === 0}
-              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Refresh preview data"
-            >
-              <RefreshCw className={`w-4 h-4 ${previewData.loading ? 'animate-spin' : ''}`} />
-            </button>
-
             {onEdit && (
               <button
                 onClick={() => onEdit(config)}
-                className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 Edit
               </button>
             )}
 
-
+            <button
+              onClick={handleRefresh}
+              disabled={previewData.loading || dataQuality.totalPoints === 0}
+              className="px-2.5 py-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200"
+              title="Refresh preview data"
+            >
+              <RefreshCw className={`w-4 h-4 ${previewData.loading ? 'animate-spin' : ''}`} />
+            </button>
           </div>
         </div>
       </div>
 
       {/* Configuration Details */}
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Time Range */}
           <div className="space-y-2">
             <h4 className="text-sm font-medium text-gray-900 flex items-center">
-              <Calendar className="w-4 h-4 mr-2" />
+              <Calendar className="w-4 h-4 mr-1.5" />
               Time Range
             </h4>
-            <div className="text-sm text-gray-600">
-              <div>From: {formatDate(new Date(config.timeRange.startTime))}</div>
-              <div>To: {formatDate(new Date(config.timeRange.endTime))}</div>
-              <div className="text-xs text-gray-500 mt-1">
+            <div className="text-sm text-gray-600 bg-gray-50 p-2.5 rounded-md">
+              <div className="flex justify-between sm:block">
+                <span className="text-xs text-gray-500 sm:hidden">From:</span>
+                <span>{formatDate(new Date(config.timeRange.startTime))}</span>
+              </div>
+              <div className="flex justify-between sm:block mt-1 sm:mt-0">
+                <span className="text-xs text-gray-500 sm:hidden">To:</span>
+                <span>{formatDate(new Date(config.timeRange.endTime))}</span>
+              </div>
+              <div className="text-[10px] text-gray-500 mt-2 pt-2 border-t border-gray-200 sm:border-0 sm:pt-0 sm:mt-1">
                 Duration: {Math.ceil((new Date(config.timeRange.endTime).getTime() - new Date(config.timeRange.startTime).getTime()) / (1000 * 60 * 60 * 24))} days
               </div>
             </div>
@@ -493,12 +497,12 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
 
         {/* Data Visualization Preview */}
         {!previewData.loading && dataQuality.totalPoints > 0 && (
-          <div className="mt-6">
-            <h4 className="text-sm font-medium text-gray-900 mb-4 flex items-center">
+          <div className="mt-8">
+            <h4 className="text-sm font-medium text-gray-900 mb-4 flex items-center px-1">
               <TrendingUp className="w-4 h-4 mr-2" />
               Trends
             </h4>
-            <div className="grid grid-cols-1 gap-8">
+            <div className="grid grid-cols-1 gap-6 sm:gap-8">
               {/* Combined Multi-Trend View (only if multiple tags selected) */}
               {Object.keys(previewData.dataPoints).filter(tag => previewData.dataPoints[tag].length > 0).length > 1 && (
                 <InteractiveChart

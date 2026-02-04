@@ -102,6 +102,6 @@ Thumbs.db
 build.zip
 
 # Docker files
-
 dockerimages/
 *.tar
+*.zip

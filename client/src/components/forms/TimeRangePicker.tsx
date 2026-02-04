@@ -234,12 +234,13 @@ export const TimeRangePicker: React.FC<TimeRangePickerProps> = ({
           )}
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex space-x-2">
+      <CardContent className="p-4 sm:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row gap-2">
           <Button
             variant={mode === 'preset' ? 'primary' : 'outline'}
             size="sm"
             onClick={() => setMode('preset')}
+            className="w-full sm:w-auto flex justify-center"
           >
             <Calendar className="h-4 w-4 mr-2" />
             Preset
@@ -248,6 +249,7 @@ export const TimeRangePicker: React.FC<TimeRangePickerProps> = ({
             variant={mode === 'custom' ? 'primary' : 'outline'}
             size="sm"
             onClick={() => setMode('custom')}
+            className="w-full sm:w-auto flex justify-center"
           >
             <Clock className="h-4 w-4 mr-2" />
             Custom
@@ -255,17 +257,19 @@ export const TimeRangePicker: React.FC<TimeRangePickerProps> = ({
         </div>
 
         {mode === 'preset' ? (
-          <Select
-            label="Select Time Range"
-            value={value.relativeRange || 'last24h'}
-            onChange={(e) => handlePresetChange(e.target.value)}
-            options={PRESET_RANGES.map(range => ({
-              value: range.value,
-              label: range.label,
-            }))}
-          />
+          <div className="pt-2">
+            <Select
+              label="Select Time Range"
+              value={value.relativeRange || 'last24h'}
+              onChange={(e) => handlePresetChange(e.target.value)}
+              options={PRESET_RANGES.map(range => ({
+                value: range.value,
+                label: range.label,
+              }))}
+            />
+          </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-6 pt-2">
             <DateTimeInputGroup
               label="Start Time"
               date={value.startTime}
@@ -280,22 +284,25 @@ export const TimeRangePicker: React.FC<TimeRangePickerProps> = ({
           </div>
         )}
 
-        <div className={`text-sm p-3 rounded-md ${validationError ? 'bg-red-50 text-red-700' : 'bg-gray-50 text-gray-500'}`}>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <p className="font-medium text-xs uppercase tracking-wide opacity-70">From</p>
-              <p>{format(value.startTime, 'PPpp')}</p>
+        <div className={`text-sm p-4 rounded-lg bg-gray-50 border border-gray-100 ${validationError ? 'bg-red-50 border-red-100 text-red-700' : 'text-gray-600'}`}>
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <p className="font-bold text-[10px] uppercase tracking-wider text-gray-400 mb-1">From</p>
+                <p className="text-sm font-medium">{format(value.startTime, 'PPpp')}</p>
+              </div>
+              <div>
+                <p className="font-bold text-[10px] uppercase tracking-wider text-gray-400 mb-1">To</p>
+                <p className="text-sm font-medium">{format(value.endTime, 'PPpp')}</p>
+              </div>
             </div>
-            <div>
-              <p className="font-medium text-xs uppercase tracking-wide opacity-70">To</p>
-              <p>{format(value.endTime, 'PPpp')}</p>
-            </div>
-            <div className="col-span-2 pt-2 border-t border-gray-200 mt-2">
-              <div className="flex justify-between items-center">
-                <p className="font-medium">Duration</p>
-                <p className="font-mono font-bold text-lg">
+
+            <div className="pt-4 border-t border-gray-200">
+              <div className="flex justify-between items-center bg-white p-3 rounded-md shadow-sm border border-gray-100">
+                <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Duration</span>
+                <span className="font-mono font-bold text-lg text-primary-600">
                   {calculateDuration(value.startTime, value.endTime)}
-                </p>
+                </span>
               </div>
             </div>
           </div>

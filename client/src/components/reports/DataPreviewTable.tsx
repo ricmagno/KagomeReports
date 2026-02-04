@@ -94,7 +94,7 @@ export const DataPreviewTable: React.FC<DataPreviewTableProps> = ({
   // Render sort indicator
   const renderSortIndicator = (column: SortColumn) => {
     if (sortColumn !== column) return null;
-    
+
     return sortDirection === 'asc' ? (
       <ArrowUp className="w-4 h-4" aria-label="Sorted ascending" />
     ) : (
@@ -173,8 +173,8 @@ export const DataPreviewTable: React.FC<DataPreviewTableProps> = ({
         </button>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto">
+      {/* Desktop Table View */}
+      <div className="hidden md:block overflow-x-auto">
         <table className="w-full">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
@@ -226,11 +226,10 @@ export const DataPreviewTable: React.FC<DataPreviewTableProps> = ({
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
             {paginatedData.map((row, index) => {
-              // Generate a safe key - handle both Date objects and strings
-              const timestamp = row.timestamp instanceof Date 
-                ? row.timestamp.getTime() 
+              const timestamp = row.timestamp instanceof Date
+                ? row.timestamp.getTime()
                 : new Date(row.timestamp).getTime();
-              
+
               return (
                 <tr
                   key={`${row.tagName}-${timestamp}-${index}`}
@@ -253,6 +252,37 @@ export const DataPreviewTable: React.FC<DataPreviewTableProps> = ({
             })}
           </tbody>
         </table>
+      </div>
+
+      {/* Mobile Card List View */}
+      <div className="md:hidden divide-y divide-gray-100">
+        {paginatedData.map((row, index) => {
+          const timestamp = row.timestamp instanceof Date
+            ? row.timestamp.getTime()
+            : new Date(row.timestamp).getTime();
+
+          return (
+            <div
+              key={`${row.tagName}-${timestamp}-${index}-mobile`}
+              className="p-4 space-y-2 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+            >
+              <div className="flex justify-between items-start">
+                <span className="text-sm font-semibold text-gray-900 truncate mr-2">
+                  {row.tagName}
+                </span>
+                <QualityIndicator qualityCode={row.quality} />
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-500">
+                  {formatTimestamp(row.timestamp)}
+                </span>
+                <span className="text-sm font-mono font-bold text-blue-700">
+                  {formatValue(row.value)}
+                </span>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Pagination */}
