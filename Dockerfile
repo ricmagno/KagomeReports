@@ -87,18 +87,20 @@ USER historian
 EXPOSE 3000
 
 # Environment defaults
+ARG VERSION=unknown
 ENV NODE_ENV=production \
     PORT=3000 \
     DATA_DIR=/home/historian/data \
     REPORTS_DIR=/home/historian/reports \
     LOG_FILE=/home/historian/logs/app.log \
     TEMP_DIR=/home/historian/temp \
-    IS_DOCKER=true
+    IS_DOCKER=true \
+    VERSION=${VERSION}
 
 # Labels for metadata
 LABEL maintainer="Historian Reports Team" \
     description="Professional reporting application for AVEVA Historian database" \
-    version="0.82.0"
+    version="${VERSION}"
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

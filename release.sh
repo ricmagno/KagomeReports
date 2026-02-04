@@ -25,10 +25,12 @@ echo "🚀 Starting release process for version $VERSION..."
 
 # 2. Update Versions
 echo "📝 Updating version in package.json..."
+# Use a more flexible regex for JSON to handle spaces
 sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
 
 echo "📝 Updating version label in Dockerfile..."
-sed -i '' "s/version=\".*\"/version=\"$VERSION\"/" Dockerfile
+# Match anything starting with 'version=' including spaces
+sed -i '' "s/[[:space:]]*version=\".*\"/    version=\"$VERSION\"/" Dockerfile
 
 # 3. Commit and Tag
 echo "💾 Committing version changes..."
