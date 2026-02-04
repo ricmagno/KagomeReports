@@ -95,6 +95,11 @@ Thumbs.db
 *.db
 *.sqlite
 *.sqlite3
+*.db-shm
+*.db-wal
+
+# Large binaries
+build.zip
 
 # Docker files
 
