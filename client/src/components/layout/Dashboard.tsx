@@ -31,6 +31,7 @@ import { SpecificationLimitsConfig } from '../reports/SpecificationLimitsConfig'
 import { AnalyticsOptions } from '../reports/AnalyticsOptions';
 import { ChartOptions } from '../reports/ChartOptions';
 import { ExportImportControls } from '../reports/ExportImportControls';
+import { FormatSelectionDialog, ExportFormat } from '../reports/FormatSelectionDialog';
 import { StatusDashboard } from '../status/StatusDashboard';
 import { SchedulesList, SchedulesErrorBoundary } from '../schedules';
 import { UserManagement } from '../users';
@@ -213,6 +214,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const [realTimeEnabled, setRealTimeEnabled] = useState(false);
   const [tagSearchTerm, setTagSearchTerm] = useState('');
   const [availableTags, setAvailableTags] = useState<TagInfo[]>([]);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportingReport, setExportingReport] = useState<any>(null);
 
   // Fetch tags from API when search term changes
   useEffect(() => {
@@ -552,16 +555,29 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
   /**
    * Handle export report configuration
-   * Opens format selection dialog for the selected report
+   * Opens format selection dialog
    */
-  const handleExportReport = async (report: any) => {
+  const handleExportReport = (report: any) => {
+    setExportingReport(report);
+    setShowExportDialog(true);
+  };
+
+  /**
+   * Handle the actual export after format selection
+   */
+  const handleConfirmExport = async (format: ExportFormat) => {
+    if (!exportingReport) return;
+
+    setShowExportDialog(false);
+    setIsLoading(true);
+
     try {
       // Load the full report configuration first
-      const reportResponse = await apiService.getReportVersion(report.id, report.version);
+      const reportResponse = await apiService.getReportVersion(exportingReport.id, exportingReport.version);
       const fullConfig = reportResponse.data.config;
 
       // Export the configuration
-      const { blob, filename } = await apiService.exportConfiguration(fullConfig, 'json');
+      const { blob, filename } = await apiService.exportConfiguration(fullConfig, format);
 
       // Trigger download
       const url = window.URL.createObjectURL(blob);
@@ -573,10 +589,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
-      success('Export successful', `Report "${report.name}" has been exported`);
+      success('Export successful', `Report "${exportingReport.name}" has been exported`);
     } catch (err: any) {
       console.error('Export error:', err);
       toastError('Export failed', err.response?.data?.message || 'Failed to export report configuration');
+    } finally {
+      setIsLoading(false);
+      setExportingReport(null);
     }
   };
 
@@ -1277,6 +1296,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         )}
       </main>
       <ToastContainer toasts={toasts} onClose={id => removeToast(id)} />
+
+      {/* Format Selection Dialog for Saved Reports */}
+      <FormatSelectionDialog
+        isOpen={showExportDialog}
+        onClose={() => {
+          setShowExportDialog(false);
+          setExportingReport(null);
+        }}
+        onSelectFormat={handleConfirmExport}
+      />
     </div>
   );
 };
