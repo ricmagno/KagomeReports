@@ -13,6 +13,7 @@ export interface VersionInfo {
   commitHash: string;        // Git commit hash
   branchName: string;        // Git branch name
   buildNumber?: number;      // Optional build number
+  isDocker?: boolean;        // Optional flag for Docker environment
 }
 
 /**

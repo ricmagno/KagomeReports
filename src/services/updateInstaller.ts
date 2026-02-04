@@ -60,6 +60,10 @@ export class UpdateInstaller {
    * Install an update from a GitHub release
    */
   async installUpdate(release: GitHubRelease): Promise<void> {
+    if (process.env.IS_DOCKER === 'true') {
+      installerLogger.warn('Self-update attempted in Docker environment. Skipping.');
+      throw new Error('In-app updates are not supported for Docker installations. Please pull the latest image instead.');
+    }
     const startTime = Date.now();
     const currentVersion = versionManager.getCurrentVersion().version;
 

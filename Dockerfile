@@ -93,12 +93,13 @@ ENV NODE_ENV=production \
     DATA_DIR=/home/historian/data \
     REPORTS_DIR=/home/historian/reports \
     LOG_FILE=/home/historian/logs/app.log \
-    TEMP_DIR=/home/historian/temp
+    TEMP_DIR=/home/historian/temp \
+    IS_DOCKER=true
 
 # Labels for metadata
 LABEL maintainer="Historian Reports Team" \
     description="Professional reporting application for AVEVA Historian database" \
-    version="0.74.0"
+    version="0.75.0"
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

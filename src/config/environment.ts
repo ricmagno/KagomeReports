@@ -65,6 +65,9 @@ const envSchema = z.object({
 
   // Data Configuration
   DATA_DIR: z.string().default('./data'),
+
+  // Environment Information
+  IS_DOCKER: z.string().default('false').transform(val => val.toLowerCase() === 'true'),
 });
 
 // Validate and export environment configuration
@@ -90,3 +93,5 @@ export const isDevelopment = () => env.NODE_ENV === 'development';
 
 // Helper function to check if running in test
 export const isTest = () => env.NODE_ENV === 'test';
+// Helper function to check if running in Docker
+export const isDocker = () => env.IS_DOCKER;

@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { RefreshCw, Download, AlertCircle, CheckCircle, Clock } from 'lucide-react';
+import { RefreshCw, Download, AlertCircle, CheckCircle, Clock, Info } from 'lucide-react';
 import { VersionInfo, UpdateCheckResult, UpdateRecord } from '@/types/versionManagement';
 import './AboutSection.css';
 
@@ -406,13 +406,20 @@ export const AboutSection: React.FC<AboutSectionProps> = ({
                         </div>
                       )}
                     </div>
-                    <button
-                      className="btn btn-primary"
-                      onClick={handleInstallUpdate}
-                      disabled={isInstallingUpdate}
-                    >
-                      {isInstallingUpdate ? 'Installing...' : 'Install Update'}
-                    </button>
+                    {versionInfo?.isDocker ? (
+                      <div className="docker-update-notice">
+                        <Info size={16} />
+                        <p>In-app updates are disabled for Docker. Please pull the latest image to update.</p>
+                      </div>
+                    ) : (
+                      <button
+                        className="btn btn-primary"
+                        onClick={handleInstallUpdate}
+                        disabled={isInstallingUpdate}
+                      >
+                        {isInstallingUpdate ? 'Installing...' : 'Install Update'}
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="status-indicator up-to-date">

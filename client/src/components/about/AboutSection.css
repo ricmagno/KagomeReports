@@ -352,3 +352,25 @@
     gap: 8px;
   }
 }
+
+.docker-update-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  color: #475569;
+}
+
+.docker-update-notice p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.docker-update-notice svg {
+  color: #0ea5e9;
+  flex-shrink: 0;
+}

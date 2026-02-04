@@ -17,14 +17,19 @@ const versionLogger = dbLogger.child({ route: 'version' });
 router.get('/', (req: Request, res: Response) => {
   try {
     const versionInfo = versionManager.getCurrentVersion();
-    
+    const { isDocker } = require('@/config/environment');
+
     versionLogger.info('Version info requested', {
-      version: versionInfo.version
+      version: versionInfo.version,
+      isDocker: isDocker()
     });
 
     res.json({
       success: true,
-      data: versionInfo
+      data: {
+        ...versionInfo,
+        isDocker: isDocker()
+      }
     });
   } catch (error) {
     versionLogger.error('Failed to get version info', error);
@@ -74,7 +79,7 @@ router.get('/compare/:v1/:v2', (req: Request, res: Response): void => {
   try {
     const v1 = req.params.v1 || '';
     const v2 = req.params.v2 || '';
-    
+
     if (!versionManager.validateVersion(v1) || !versionManager.validateVersion(v2)) {
       res.status(400).json({
         success: false,
