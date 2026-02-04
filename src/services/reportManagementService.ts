@@ -16,6 +16,7 @@ import {
   ReportValidationResult
 } from '../types/reports';
 import { logger } from '../utils/logger';
+import { getDatabasePath } from '@/config/environment';
 
 export class ReportManagementService {
   private db: Database;
@@ -50,6 +51,15 @@ export class ReportManagementService {
    * Initialize database tables for report management
    */
   private initializeTables(): void {
+    // Attach auth database for user lookups
+    const authDbPath = getDatabasePath('auth.db');
+    this.db.run(`ATTACH DATABASE '${authDbPath}' AS auth`, (err) => {
+      if (err) {
+        // If it's already attached or file is locked, we'll handle it gracefully in queries
+        logger.debug('Auth database attachment note (can be ignored if already attached):', err.message);
+      }
+    });
+
     const createReportsTable = `
       CREATE TABLE IF NOT EXISTS reports (
         id TEXT PRIMARY KEY,
@@ -321,8 +331,10 @@ export class ReportManagementService {
   async loadReport(reportId: string): Promise<SavedReport | null> {
     return new Promise((resolve, reject) => {
       const query = `
-        SELECT * FROM reports 
-        WHERE id = ? AND is_latest_version = true
+        SELECT r.*, u.username as created_by_name 
+        FROM reports r
+        LEFT JOIN auth.users u ON r.created_by = u.id
+        WHERE r.id = ? AND r.is_latest_version = true
       `;
 
       this.db.get(query, [reportId], (err, row: any) => {
@@ -362,7 +374,7 @@ export class ReportManagementService {
             description: row.description || '',
             config,
             version: row.version,
-            createdBy: row.created_by,
+            createdBy: row.created_by_name || row.created_by,
             createdAt: new Date(row.created_at),
             updatedAt: new Date(row.updated_at),
             isLatestVersion: row.is_latest_version
@@ -385,8 +397,10 @@ export class ReportManagementService {
       let query = `
         SELECT 
           r.*,
+          u.username as created_by_name,
           (SELECT COUNT(*) FROM reports r2 WHERE r2.name = r.name) as total_versions
         FROM reports r 
+        LEFT JOIN auth.users u ON r.created_by = u.id
         WHERE r.is_latest_version = true
       `;
 
@@ -412,7 +426,7 @@ export class ReportManagementService {
           description: row.description || '',
           config: this.deserializeDates(JSON.parse(row.config)),
           version: row.version,
-          createdBy: row.created_by,
+          createdBy: row.created_by_name || row.created_by,
           createdAt: new Date(row.created_at),
           updatedAt: new Date(row.updated_at),
           isLatestVersion: row.is_latest_version,
@@ -483,9 +497,11 @@ export class ReportManagementService {
   async getReportVersions(reportName: string): Promise<ReportVersionHistory | null> {
     return new Promise((resolve, reject) => {
       const query = `
-        SELECT * FROM report_versions 
-        WHERE report_id = ? 
-        ORDER BY version DESC
+        SELECT rv.*, u.username as created_by_name 
+        FROM report_versions rv
+        LEFT JOIN auth.users u ON rv.created_by = u.id
+        WHERE rv.report_id = ? 
+        ORDER BY rv.version DESC
       `;
 
       this.db.all(query, [reportName], (err, rows: any[]) => {
@@ -507,7 +523,7 @@ export class ReportManagementService {
             version: row.version,
             config: this.deserializeDates(JSON.parse(row.config)),
             createdAt: new Date(row.created_at),
-            createdBy: row.created_by,
+            createdBy: row.created_by_name || row.created_by,
             changeDescription: row.change_description,
             isActive: row.is_active
           }));

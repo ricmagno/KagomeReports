@@ -101,7 +101,7 @@ export class ReportVersionService {
           reject(err);
           return;
         }
-        
+
         logger.info(`Archived version ${version} of report ${reportId}`);
         resolve();
       });
@@ -174,8 +174,10 @@ export class ReportVersionService {
   async getSpecificVersion(reportId: string, version: number): Promise<ReportVersion | null> {
     return new Promise((resolve, reject) => {
       const query = `
-        SELECT * FROM report_versions 
-        WHERE report_id = ? AND version = ?
+        SELECT rv.*, u.username as created_by_name 
+        FROM report_versions rv
+        LEFT JOIN auth.users u ON rv.created_by = u.id
+        WHERE rv.report_id = ? AND rv.version = ?
       `;
 
       this.db.get(query, [reportId, version], (err, row: any) => {
@@ -197,7 +199,7 @@ export class ReportVersionService {
             version: row.version,
             config: this.deserializeDates(JSON.parse(row.config)),
             createdAt: new Date(row.created_at),
-            createdBy: row.created_by,
+            createdBy: row.created_by_name || row.created_by,
             changeDescription: row.change_description,
             isActive: row.is_active
           };
@@ -250,7 +252,7 @@ export class ReportVersionService {
     fieldsToCompare.forEach(field => {
       const oldValue = (oldConfig as any)[field];
       const newValue = (newConfig as any)[field];
-      
+
       if (oldValue !== newValue) {
         changes.push({
           field,
@@ -283,10 +285,10 @@ export class ReportVersionService {
     // Compare time range
     const oldTimeRange = oldConfig.timeRange;
     const newTimeRange = newConfig.timeRange;
-    
+
     if (oldTimeRange.startTime.getTime() !== newTimeRange.startTime.getTime() ||
-        oldTimeRange.endTime.getTime() !== newTimeRange.endTime.getTime() ||
-        oldTimeRange.relativeRange !== newTimeRange.relativeRange) {
+      oldTimeRange.endTime.getTime() !== newTimeRange.endTime.getTime() ||
+      oldTimeRange.relativeRange !== newTimeRange.relativeRange) {
       changes.push({
         field: 'timeRange',
         oldValue: oldTimeRange,
@@ -318,7 +320,7 @@ export class ReportVersionService {
     try {
       // Get all versions for the report
       const versions = await this.getAllVersions(reportId);
-      
+
       if (versions.length <= cleanupPolicy.maxVersionsToKeep) {
         return 0; // No cleanup needed
       }
@@ -369,9 +371,11 @@ export class ReportVersionService {
   private async getAllVersions(reportId: string): Promise<ReportVersion[]> {
     return new Promise((resolve, reject) => {
       const query = `
-        SELECT * FROM report_versions 
-        WHERE report_id = ? 
-        ORDER BY version DESC
+        SELECT rv.*, u.username as created_by_name 
+        FROM report_versions rv
+        LEFT JOIN auth.users u ON rv.created_by = u.id
+        WHERE rv.report_id = ? 
+        ORDER BY rv.version DESC
       `;
 
       this.db.all(query, [reportId], (err, rows: any[]) => {
@@ -388,7 +392,7 @@ export class ReportVersionService {
             version: row.version,
             config: this.deserializeDates(JSON.parse(row.config)),
             createdAt: new Date(row.created_at),
-            createdBy: row.created_by,
+            createdBy: row.created_by_name || row.created_by,
             changeDescription: row.change_description,
             isActive: row.is_active
           }));
@@ -435,7 +439,7 @@ export class ReportVersionService {
   } | null> {
     try {
       const versions = await this.getAllVersions(reportId);
-      
+
       if (versions.length === 0) {
         return null;
       }
@@ -447,15 +451,15 @@ export class ReportVersionService {
       // Calculate average time between versions
       let totalTimeDiff = 0;
       for (let i = 1; i < versions.length; i++) {
-        const prevVersion = versions[i-1];
+        const prevVersion = versions[i - 1];
         const currentVersion = versions[i];
         if (prevVersion && currentVersion) {
           const timeDiff = prevVersion.createdAt.getTime() - currentVersion.createdAt.getTime();
           totalTimeDiff += timeDiff;
         }
       }
-      
-      const averageTimeBetweenVersions = versions.length > 1 
+
+      const averageTimeBetweenVersions = versions.length > 1
         ? totalTimeDiff / (versions.length - 1) / (1000 * 60 * 60 * 24) // Convert to days
         : 0;
 
