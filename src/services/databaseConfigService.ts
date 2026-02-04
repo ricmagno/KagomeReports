@@ -17,6 +17,7 @@ import {
 } from '@/types/databaseConfig';
 import { encryptionService } from '@/services/encryptionService';
 import { apiLogger } from '@/utils/logger';
+import { env } from '@/config/environment';
 import { createError } from '@/middleware/errorHandler';
 import { RetryHandler } from '@/utils/retryHandler';
 
@@ -695,7 +696,7 @@ export class DatabaseConfigService {
       const fs = await import('fs/promises');
       const path = await import('path');
 
-      const configDir = path.join(process.cwd(), 'data');
+      const configDir = env.DATA_DIR;
       const configFile = path.join(configDir, 'database-configs.json');
 
       try {
@@ -746,7 +747,7 @@ export class DatabaseConfigService {
       const fs = await import('fs/promises');
       const path = await import('path');
 
-      const configDir = path.join(process.cwd(), 'data');
+      const configDir = env.DATA_DIR;
       const configFile = path.join(configDir, 'database-configs.json');
 
       // Ensure data directory exists
@@ -797,8 +798,8 @@ export class DatabaseConfigService {
     }
 
     // Check for invalid start/end characters
-    if (trimmed.startsWith('-') || trimmed.endsWith('-') || 
-        trimmed.startsWith('.') || trimmed.endsWith('.')) {
+    if (trimmed.startsWith('-') || trimmed.endsWith('-') ||
+      trimmed.startsWith('.') || trimmed.endsWith('.')) {
       return false;
     }
 

@@ -8,7 +8,7 @@ import * as cron from 'node-cron';
 import { Database } from 'sqlite3';
 import path from 'path';
 import { reportLogger } from '@/utils/logger';
-import { env } from '@/config/environment';
+import { env, getDatabasePath } from '@/config/environment';
 import { ReportConfig, ReportData, reportGenerationService } from './reportGeneration';
 import { dataRetrievalService } from './dataRetrieval';
 import { statisticalAnalysisService } from './statisticalAnalysis';
@@ -70,7 +70,7 @@ export class SchedulerService {
    * Initialize SQLite database for schedule storage
    */
   private async initializeDatabase(): Promise<void> {
-    const dbPath = path.join(process.cwd(), 'data', 'scheduler.db');
+    const dbPath = getDatabasePath('scheduler.db');
     this.db = new Database(dbPath);
     this.db.configure('busyTimeout', 10000); // 10 seconds timeout
 

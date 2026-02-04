@@ -8,7 +8,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { apiLogger } from '@/utils/logger';
-import { env } from '@/config/environment';
+import { env, getDatabasePath } from '@/config/environment';
 
 export interface EncryptedData {
   data: string;
@@ -40,8 +40,8 @@ export class EncryptionService {
    * Initialize or load encryption key
    */
   private initializeEncryptionKey(): void {
-    const keyPath = path.join(process.cwd(), 'data', 'encryption.key');
-    
+    const keyPath = getDatabasePath('encryption.key');
+
     try {
       // Try to load existing key
       if (fs.existsSync(keyPath)) {
@@ -51,13 +51,13 @@ export class EncryptionService {
       } else {
         // Generate new key
         this.encryptionKey = crypto.randomBytes(this.keyLength);
-        
+
         // Ensure data directory exists
         const dataDir = path.dirname(keyPath);
         if (!fs.existsSync(dataDir)) {
           fs.mkdirSync(dataDir, { recursive: true });
         }
-        
+
         // Save key to file with restricted permissions
         fs.writeFileSync(keyPath, this.encryptionKey.toString('hex'), { mode: 0o600 });
         apiLogger.info('New encryption key generated and saved');
@@ -75,15 +75,15 @@ export class EncryptionService {
     try {
       const iv = crypto.randomBytes(this.ivLength);
       const cipher = crypto.createCipheriv('aes-256-cbc', this.encryptionKey, iv);
-      
+
       let encrypted = cipher.update(plaintext, 'utf8', 'hex');
       encrypted += cipher.final('hex');
-      
+
       // For CBC mode, we'll use HMAC for integrity
       const hmac = crypto.createHmac('sha256', this.encryptionKey);
       hmac.update(iv.toString('hex') + encrypted);
       const tag = hmac.digest('hex');
-      
+
       return {
         data: encrypted,
         iv: iv.toString('hex'),
@@ -102,21 +102,21 @@ export class EncryptionService {
   decrypt(encryptedData: EncryptedData): string {
     try {
       const iv = Buffer.from(encryptedData.iv, 'hex');
-      
+
       // Verify integrity using HMAC
       const hmac = crypto.createHmac('sha256', this.encryptionKey);
       hmac.update(encryptedData.iv + encryptedData.data);
       const expectedTag = hmac.digest('hex');
-      
+
       if (!crypto.timingSafeEqual(Buffer.from(encryptedData.tag, 'hex'), Buffer.from(expectedTag, 'hex'))) {
         throw new Error('Data integrity check failed');
       }
-      
+
       const decipher = crypto.createDecipheriv('aes-256-cbc', this.encryptionKey, iv);
-      
+
       let decrypted = decipher.update(encryptedData.data, 'hex', 'utf8');
       decrypted += decipher.final('utf8');
-      
+
       return decrypted;
     } catch (error) {
       apiLogger.error('Decryption failed', { error });
@@ -131,7 +131,7 @@ export class EncryptionService {
     try {
       const actualSalt = salt || crypto.randomBytes(16).toString('hex');
       const hash = crypto.pbkdf2Sync(data, actualSalt, 100000, 64, 'sha512').toString('hex');
-      
+
       return {
         hash,
         salt: actualSalt
@@ -168,12 +168,12 @@ export class EncryptionService {
   generateSecurePassword(length: number = 16): string {
     const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
     let password = '';
-    
+
     for (let i = 0; i < length; i++) {
       const randomIndex = crypto.randomInt(0, charset.length);
       password += charset[randomIndex];
     }
-    
+
     return password;
   }
 
@@ -213,7 +213,7 @@ export class EncryptionService {
     }
 
     const sensitiveFields = [
-      'password', 'token', 'secret', 'key', 'auth', 
+      'password', 'token', 'secret', 'key', 'auth',
       'connectionstring', 'jwt', 'session', 'cookie', 'apikey'
     ];
 
@@ -221,14 +221,14 @@ export class EncryptionService {
 
     for (const key in sanitized) {
       const lowerKey = key.toLowerCase();
-      
+
       // Check if the key itself is sensitive (exact match or contains sensitive terms)
       const isSensitiveKey = sensitiveFields.some(field => {
-        return lowerKey === field || 
-               lowerKey.includes(field) && 
-               (lowerKey.endsWith(field) || lowerKey.startsWith(field) || lowerKey.includes(field + '_') || lowerKey.includes('_' + field));
+        return lowerKey === field ||
+          lowerKey.includes(field) &&
+          (lowerKey.endsWith(field) || lowerKey.startsWith(field) || lowerKey.includes(field + '_') || lowerKey.includes('_' + field));
       });
-      
+
       if (isSensitiveKey) {
         sanitized[key] = '[REDACTED]';
       } else if (typeof sanitized[key] === 'object' && sanitized[key] !== null) {
@@ -246,11 +246,11 @@ export class EncryptionService {
     try {
       const plaintext = fs.readFileSync(filePath, 'utf8');
       const encrypted = this.encrypt(plaintext);
-      
+
       const output = outputPath || `${filePath}.encrypted`;
       fs.writeFileSync(output, JSON.stringify(encrypted), { mode: 0o600 });
-      
-      apiLogger.info('File encrypted successfully', { 
+
+      apiLogger.info('File encrypted successfully', {
         inputFile: path.basename(filePath),
         outputFile: path.basename(output)
       });
@@ -267,10 +267,10 @@ export class EncryptionService {
     try {
       const encryptedData = JSON.parse(fs.readFileSync(encryptedFilePath, 'utf8'));
       const decrypted = this.decrypt(encryptedData);
-      
+
       const output = outputPath || encryptedFilePath.replace('.encrypted', '');
       fs.writeFileSync(output, decrypted, { mode: 0o600 });
-      
+
       apiLogger.info('File decrypted successfully', {
         inputFile: path.basename(encryptedFilePath),
         outputFile: path.basename(output)
@@ -292,7 +292,7 @@ export class EncryptionService {
 
       const stats = fs.statSync(filePath);
       const fileSize = stats.size;
-      
+
       // Overwrite with random data multiple times
       const passes = 3;
       for (let i = 0; i < passes; i++) {
@@ -300,10 +300,10 @@ export class EncryptionService {
         fs.writeFileSync(filePath, randomData);
         fs.fsyncSync(fs.openSync(filePath, 'r+'));
       }
-      
+
       // Finally delete the file
       fs.unlinkSync(filePath);
-      
+
       apiLogger.info('File securely deleted', { filePath: path.basename(filePath) });
     } catch (error) {
       apiLogger.error('Secure file deletion failed', { error, filePath });
@@ -318,15 +318,15 @@ export class EncryptionService {
     try {
       const serializedData = JSON.stringify(data);
       const encrypted = this.encrypt(serializedData);
-      
+
       // Ensure backup directory exists
       const backupDir = path.dirname(backupPath);
       if (!fs.existsSync(backupDir)) {
         fs.mkdirSync(backupDir, { recursive: true });
       }
-      
+
       fs.writeFileSync(backupPath, JSON.stringify(encrypted), { mode: 0o600 });
-      
+
       apiLogger.info('Secure backup created', { backupPath: path.basename(backupPath) });
     } catch (error) {
       apiLogger.error('Secure backup creation failed', { error, backupPath });
@@ -342,7 +342,7 @@ export class EncryptionService {
       const encryptedData = JSON.parse(fs.readFileSync(backupPath, 'utf8'));
       const decrypted = this.decrypt(encryptedData);
       const data = JSON.parse(decrypted);
-      
+
       apiLogger.info('Secure backup restored', { backupPath: path.basename(backupPath) });
       return data;
     } catch (error) {

@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as path from 'path';
 import { UpdateRecord } from '@/types/versionManagement';
 import { dbLogger } from '@/utils/logger';
+import { getDatabasePath } from '@/config/environment';
 
 const historyLogger = dbLogger.child({ service: 'UpdateHistoryService' });
 
@@ -17,7 +18,7 @@ const historyLogger = dbLogger.child({ service: 'UpdateHistoryService' });
  */
 export class UpdateHistoryService {
   private db: sqlite3.Database | null = null;
-  private readonly dbPath = path.join(process.cwd(), 'data', 'update-history.db');
+  private readonly dbPath = getDatabasePath('update-history.db');
   private readonly MAX_RECORDS = 100;
   private initialized = false;
 

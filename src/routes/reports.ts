@@ -18,6 +18,7 @@ import { validateSpecificationLimitsMap } from '@/utils/specificationLimitsValid
 import { configExportService } from '@/services/configExportService';
 import { configImportService } from '@/services/configImportService';
 import { ExportRequest, ImportRequest, isValidExportFormat } from '@/types/reportExportImport';
+import { getDatabasePath } from '@/config/environment';
 import { Database } from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
@@ -31,7 +32,7 @@ let reportVersionService: ReportVersionService;
 // Initialize services with database
 const initializeServices = () => {
   if (!reportManagementService) {
-    const dbPath = process.env.DATABASE_PATH || './data/reports.db';
+    const dbPath = process.env.DATABASE_PATH || getDatabasePath('reports.db');
     const db = new Database(dbPath);
     reportManagementService = new ReportManagementService(db);
     reportVersionService = new ReportVersionService(db);

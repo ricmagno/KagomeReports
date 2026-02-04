@@ -73,6 +73,15 @@ export const env = envSchema.parse(process.env);
 // Type for environment configuration
 export type Environment = z.infer<typeof envSchema>;
 
+import path from 'path';
+
+// Helper function to get database path
+export const getDatabasePath = (dbName: string): string => {
+  return path.isAbsolute(env.DATA_DIR)
+    ? path.join(env.DATA_DIR, dbName)
+    : path.join(process.cwd(), env.DATA_DIR, dbName);
+};
+
 // Helper function to check if running in production
 export const isProduction = () => env.NODE_ENV === 'production';
 

@@ -8,7 +8,7 @@ import { Database } from 'sqlite3';
 import jwt from 'jsonwebtoken';
 import path from 'path';
 import { apiLogger } from '@/utils/logger';
-import { env } from '@/config/environment';
+import { env, getDatabasePath } from '@/config/environment';
 import { fingerprintService, FingerprintData } from '@/services/fingerprintService';
 import { AuthResult } from '@/services/authService';
 
@@ -35,7 +35,7 @@ export class AutoLoginService {
    * Initialize database connection
    */
   private initializeDatabase(): void {
-    const dbPath = path.join(process.cwd(), 'data', 'auth.db');
+    const dbPath = getDatabasePath('auth.db');
     this.db = new Database(dbPath, (err) => {
       if (err) {
         apiLogger.error('Failed to open auto-login database', { error: err });
@@ -51,10 +51,10 @@ export class AutoLoginService {
   async generateFingerprint(data: FingerprintData): Promise<string> {
     try {
       const hash = fingerprintService.generateHash(data);
-      
+
       // Store fingerprint for tracking
       await fingerprintService.storeFingerprint(hash, data);
-      
+
       return hash;
     } catch (error) {
       apiLogger.error('Failed to generate fingerprint', { error });
@@ -85,7 +85,7 @@ export class AutoLoginService {
     try {
       // Check if auto-login already exists for this user/machine combination
       const existing = await this.getMachineByFingerprint(userId, machineFingerprint);
-      
+
       if (existing) {
         // Update existing entry
         await new Promise<void>((resolve, reject) => {

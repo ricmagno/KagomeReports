@@ -10,7 +10,7 @@ import { Database } from 'sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { apiLogger } from '@/utils/logger';
-import { env } from '@/config/environment';
+import { env, getDatabasePath } from '@/config/environment';
 import { encryptionService } from '@/services/encryptionService';
 
 export interface User {
@@ -81,9 +81,7 @@ export class AuthService {
    * Initialize SQLite database for user and session storage
    */
   private async initializeDatabase(): Promise<void> {
-    const dbPath = path.isAbsolute(env.DATA_DIR)
-      ? path.join(env.DATA_DIR, 'auth.db')
-      : path.join(process.cwd(), env.DATA_DIR, 'auth.db');
+    const dbPath = getDatabasePath('auth.db');
 
     // Ensure the data directory exists
     const dataDir = path.dirname(dbPath);

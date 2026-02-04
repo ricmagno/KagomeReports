@@ -9,6 +9,7 @@ import crypto from 'crypto';
 import path from 'path';
 import { apiLogger } from '@/utils/logger';
 import { encryptionService } from '@/services/encryptionService';
+import { getDatabasePath } from '@/config/environment';
 
 export interface FingerprintData {
   userAgent: string;
@@ -44,7 +45,7 @@ export class FingerprintService {
    * Initialize database connection
    */
   private initializeDatabase(): void {
-    const dbPath = path.join(process.cwd(), 'data', 'auth.db');
+    const dbPath = getDatabasePath('auth.db');
     this.db = new Database(dbPath, (err) => {
       if (err) {
         apiLogger.error('Failed to open fingerprint database', { error: err });
@@ -82,7 +83,7 @@ export class FingerprintService {
         .update(fingerprintString)
         .digest('hex');
 
-      apiLogger.debug('Fingerprint hash generated', { 
+      apiLogger.debug('Fingerprint hash generated', {
         hashPrefix: hash.substring(0, 12),
         dataPoints: Object.keys(data).length
       });
@@ -118,7 +119,7 @@ export class FingerprintService {
           );
         });
 
-        apiLogger.debug('Fingerprint updated', { 
+        apiLogger.debug('Fingerprint updated', {
           hashPrefix: fingerprintHash.substring(0, 12),
           seenCount: existing.seenCount + 1
         });
@@ -141,7 +142,7 @@ export class FingerprintService {
           );
         });
 
-        apiLogger.info('Fingerprint stored', { 
+        apiLogger.info('Fingerprint stored', {
           id,
           hashPrefix: fingerprintHash.substring(0, 12)
         });
@@ -243,11 +244,11 @@ export class FingerprintService {
           `DELETE FROM machine_fingerprints 
            WHERE last_seen < datetime('now', '-' || ? || ' days')`,
           [daysOld],
-          function(err) {
+          function (err) {
             if (err) {
               reject(err);
             } else {
-              apiLogger.info('Old fingerprints cleaned up', { 
+              apiLogger.info('Old fingerprints cleaned up', {
                 deleted: this.changes,
                 daysOld
               });
