@@ -445,7 +445,11 @@ export class ReportGenerationService {
 
             // Generate standardized filename using report name and current date
             const reportName = getReportNameFromConfig(reportData.config);
-            const fileName = generateReportFilename(reportName, 'pdf');
+            const baseFileName = generateReportFilename(reportName, 'pdf');
+
+            // Prefix with report ID so the download route can find it
+            // Using __ as a separator
+            const fileName = `${reportData.config.id}__${baseFileName}`;
 
             const filePath = path.join(this.outputDir, fileName);
 

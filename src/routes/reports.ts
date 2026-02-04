@@ -777,8 +777,9 @@ router.get('/:id/download', asyncHandler(async (req: Request, res: Response) => 
     const reportsDir = process.env.REPORTS_DIR || './reports';
     const files = fs.readdirSync(reportsDir);
 
-    // Find file that starts with the report ID
-    const reportFile = files.find(file => id && file.startsWith(id));
+    // Find file that starts with the report ID followed by our separator
+    // This prevents matching "report_123" if the file is actually "report_1234__..."
+    const reportFile = files.find(file => id && (file === id || file.startsWith(`${id}__`)));
 
     if (!reportFile) {
       apiLogger.warn('Report file not found', { reportId: id });
@@ -807,7 +808,15 @@ router.get('/:id/download', asyncHandler(async (req: Request, res: Response) => 
     // Set response headers
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Length', stats.size);
-    res.setHeader('Content-Disposition', `attachment; filename="${reportFile}"`);
+
+    // Process filename for download (strip the reportId prefix if present)
+    let downloadFileName = reportFile;
+    if (reportFile.includes('__')) {
+      // Extract everything after the first double underscore
+      downloadFileName = reportFile.substring(reportFile.indexOf('__') + 2);
+    }
+
+    res.setHeader('Content-Disposition', `attachment; filename="${downloadFileName}"`);
     res.setHeader('Cache-Control', 'no-cache');
 
     // Stream the file

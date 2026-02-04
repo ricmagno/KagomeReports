@@ -26,6 +26,7 @@ import { ReportPreview } from '../reports/ReportPreview';
 import { VersionHistory } from '../reports/VersionHistory';
 import { SpecificationLimitsConfig } from '../reports/SpecificationLimitsConfig';
 import { AnalyticsOptions } from '../reports/AnalyticsOptions';
+import { ChartOptions } from '../reports/ChartOptions';
 import { ExportImportControls } from '../reports/ExportImportControls';
 import { StatusDashboard } from '../status/StatusDashboard';
 import { SchedulesList, SchedulesErrorBoundary } from '../schedules';
@@ -863,121 +864,36 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                       </CardContent>
                     </Card>
 
-                    {/* Chart Options */}
-                    <Card>
-                      <CardHeader>
-                        <h3 className="text-lg font-medium">Chart Options</h3>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                          <label className="block text-sm font-medium text-gray-700">
-                            Chart Types
-                          </label>
-                          <div className="space-y-2">
-                            {[
-                              { value: 'line', label: 'Line Chart' },
-                              { value: 'bar', label: 'Bar Chart' },
-                            ].map((option) => (
-                              <label key={option.value} className="flex items-center">
-                                <input
-                                  type="checkbox"
-                                  className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                                  checked={reportConfig.chartTypes?.includes(option.value as any) || false}
-                                  onChange={(e) => {
-                                    const chartTypes = reportConfig.chartTypes || [];
-                                    if (e.target.checked) {
-                                      setReportConfig(prev => ({
-                                        ...prev,
-                                        chartTypes: [...chartTypes, option.value as any],
-                                      }));
-                                    } else {
-                                      setReportConfig(prev => ({
-                                        ...prev,
-                                        chartTypes: chartTypes.filter(type => type !== option.value),
-                                      }));
-                                    }
-                                  }}
-                                />
-                                <span className="ml-2 text-sm text-gray-700">
-                                  {option.label}
-                                </span>
-                              </label>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Real-time data controls */}
-                        <div className="border-t pt-4">
-                          <div className="space-y-3">
-                            <label className="flex items-center">
-                              <input
-                                type="checkbox"
-                                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                                checked={realTimeEnabled}
-                                onChange={(e) => setRealTimeEnabled(e.target.checked)}
-                                disabled={!reportConfig.tags?.length}
-                              />
-                              <span className="ml-2 text-sm text-gray-700">
-                                Enable Real-time Updates
-                              </span>
-                            </label>
-
-                            {realTimeEnabled && (
-                              <div className="ml-6 space-y-2 text-sm text-gray-600">
-                                <div className="flex items-center justify-between">
-                                  <span>Status:</span>
-                                  <span className={cn(
-                                    "font-medium",
-                                    realTimeData.connected ? "text-green-600" :
-                                      realTimeData.loading ? "text-yellow-600" : "text-red-600"
-                                  )}>
-                                    {realTimeData.loading ? 'Connecting...' :
-                                      realTimeData.connected ? 'Connected' : 'Disconnected'}
-                                  </span>
-                                </div>
-
-                                {realTimeData.lastUpdate && (
-                                  <div className="flex items-center justify-between">
-                                    <span>Last Update:</span>
-                                    <span>{realTimeData.lastUpdate.toLocaleTimeString()}</span>
-                                  </div>
-                                )}
-
-                                {realTimeData.error && (
-                                  <div className="text-red-600 text-xs">
-                                    Error: {realTimeData.error}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
+                    {/* Chart Options Dropdown */}
+                    <div className="space-y-4">
+                      <ChartOptions
+                        chartTypes={reportConfig.chartTypes as ('line' | 'bar')[] || ['line']}
+                        onChartTypesChange={(types) => setReportConfig(prev => ({ ...prev, chartTypes: types }))}
+                        realTimeEnabled={realTimeEnabled}
+                        onRealTimeEnabledChange={setRealTimeEnabled}
+                        realTimeStatus={realTimeData}
+                        disabled={!reportConfig.tags?.length}
+                      />
+                    </div>
 
                     {/* Advanced Analytics Options */}
-                    <Card>
-                      <CardHeader>
-                        <h3 className="text-lg font-medium">Advanced Analytics</h3>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <AnalyticsOptions
-                          includeTrendLines={reportConfig.includeTrendLines}
-                          includeSPCCharts={reportConfig.includeSPCCharts}
-                          includeStatsSummary={reportConfig.includeStatsSummary}
-                          onIncludeTrendLinesChange={(value) =>
-                            setReportConfig(prev => ({ ...prev, includeTrendLines: value }))
-                          }
-                          onIncludeSPCChartsChange={(value) =>
-                            setReportConfig(prev => ({ ...prev, includeSPCCharts: value }))
-                          }
-                          onIncludeStatsSummaryChange={(value) =>
-                            setReportConfig(prev => ({ ...prev, includeStatsSummary: value }))
-                          }
-                          disabled={!reportConfig.tags?.length}
-                        />
-                      </CardContent>
-                    </Card>
+                    <div className="space-y-4">
+                      <AnalyticsOptions
+                        includeTrendLines={reportConfig.includeTrendLines}
+                        includeSPCCharts={reportConfig.includeSPCCharts}
+                        includeStatsSummary={reportConfig.includeStatsSummary}
+                        onIncludeTrendLinesChange={(value) =>
+                          setReportConfig(prev => ({ ...prev, includeTrendLines: value }))
+                        }
+                        onIncludeSPCChartsChange={(value) =>
+                          setReportConfig(prev => ({ ...prev, includeSPCCharts: value }))
+                        }
+                        onIncludeStatsSummaryChange={(value) =>
+                          setReportConfig(prev => ({ ...prev, includeStatsSummary: value }))
+                        }
+                        disabled={!reportConfig.tags?.length}
+                      />
+                    </div>
 
                     {/* Specification Limits Configuration */}
                     {reportConfig.tags && reportConfig.tags.length > 0 && reportConfig.includeSPCCharts && (

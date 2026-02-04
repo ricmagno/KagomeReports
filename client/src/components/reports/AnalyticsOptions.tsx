@@ -1,5 +1,5 @@
-import React from 'react';
-import { TrendingUp, BarChart3, PieChart } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { TrendingUp, BarChart3, PieChart, ChevronDown, Settings, X } from 'lucide-react';
 import { cn } from '../../utils/cn';
 
 interface AnalyticsOptionsProps {
@@ -23,119 +23,157 @@ export const AnalyticsOptions: React.FC<AnalyticsOptionsProps> = ({
   disabled = false,
   className
 }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  const activeCount = [includeTrendLines, includeSPCCharts, includeStatsSummary].filter(Boolean).length;
+
   return (
-    <div className={cn("space-y-3", className)}>
-      <h4 className="text-sm font-medium text-gray-900">Advanced Analytics</h4>
-      <p className="text-xs text-gray-600">
-        Select which analytics to include in your report
-      </p>
-
-      <div className="space-y-3">
-        {/* Trend Lines Option */}
-        <label 
-          className={cn(
-            "flex items-start p-3 border rounded-md cursor-pointer transition-colors",
-            includeTrendLines 
-              ? "border-primary-300 bg-primary-50" 
-              : "border-gray-200 bg-white hover:bg-gray-50",
-            disabled && "opacity-50 cursor-not-allowed"
-          )}
-        >
-          <input
-            type="checkbox"
-            className="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed"
-            checked={includeTrendLines}
-            onChange={(e) => onIncludeTrendLinesChange(e.target.checked)}
-            disabled={disabled}
-            aria-describedby="trend-lines-description"
-          />
-          <div className="ml-3 flex-1">
-            <div className="flex items-center space-x-2">
-              <TrendingUp className="h-4 w-4 text-primary-600" />
-              <span className="text-sm font-medium text-gray-900">
-                Include Trend Lines
-              </span>
-            </div>
-            <p 
-              id="trend-lines-description"
-              className="mt-1 text-xs text-gray-600"
-            >
-              Display linear regression trend lines with equations and R² values on charts 
-              (analog tags only)
-            </p>
+    <div className={cn("relative w-full", className)} ref={dropdownRef}>
+      <button
+        type="button"
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
+        className={cn(
+          "flex items-center justify-between w-full px-4 py-3 text-sm font-medium transition-all duration-200 rounded-lg border shadow-sm",
+          disabled
+            ? "bg-gray-50 text-gray-400 border-gray-200 cursor-not-allowed"
+            : "bg-white text-gray-700 border-gray-300 hover:border-primary-400 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2",
+          isOpen && "ring-2 ring-primary-500 border-primary-500 shadow-md bg-white"
+        )}
+      >
+        <div className="flex items-center">
+          <div className={cn(
+            "p-1.5 rounded-md mr-3 transition-colors",
+            isOpen ? "bg-primary-100 text-primary-600" : "bg-gray-100 text-gray-500"
+          )}>
+            <Settings className="w-4 h-4" />
           </div>
-        </label>
-
-        {/* SPC Charts Option */}
-        <label 
-          className={cn(
-            "flex items-start p-3 border rounded-md cursor-pointer transition-colors",
-            includeSPCCharts 
-              ? "border-primary-300 bg-primary-50" 
-              : "border-gray-200 bg-white hover:bg-gray-50",
-            disabled && "opacity-50 cursor-not-allowed"
-          )}
-        >
-          <input
-            type="checkbox"
-            className="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed"
-            checked={includeSPCCharts}
-            onChange={(e) => onIncludeSPCChartsChange(e.target.checked)}
-            disabled={disabled}
-            aria-describedby="spc-charts-description"
-          />
-          <div className="ml-3 flex-1">
-            <div className="flex items-center space-x-2">
-              <BarChart3 className="h-4 w-4 text-primary-600" />
-              <span className="text-sm font-medium text-gray-900">
-                Include SPC Charts
-              </span>
-            </div>
-            <p 
-              id="spc-charts-description"
-              className="mt-1 text-xs text-gray-600"
-            >
-              Generate Statistical Process Control charts with control limits (UCL/LCL) 
-              and capability metrics (Cp/Cpk) for tags with specification limits
-            </p>
+          <div className="flex flex-col items-start">
+            <span className="font-semibold">Advanced Analytics</span>
+            <span className="text-[0.7rem] text-gray-500 font-normal">
+              {activeCount === 0 ? 'None selected' : `${activeCount} option${activeCount > 1 ? 's' : ''} active`}
+            </span>
           </div>
-        </label>
-
-        {/* Statistics Summary Option */}
-        <label 
-          className={cn(
-            "flex items-start p-3 border rounded-md cursor-pointer transition-colors",
-            includeStatsSummary 
-              ? "border-primary-300 bg-primary-50" 
-              : "border-gray-200 bg-white hover:bg-gray-50",
-            disabled && "opacity-50 cursor-not-allowed"
+        </div>
+        <div className="flex items-center gap-2">
+          {!disabled && activeCount > 0 && !isOpen && (
+            <span className="flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-[0.65rem] font-bold bg-primary-600 text-white rounded-full">
+              {activeCount}
+            </span>
           )}
-        >
-          <input
-            type="checkbox"
-            className="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:cursor-not-allowed"
-            checked={includeStatsSummary}
-            onChange={(e) => onIncludeStatsSummaryChange(e.target.checked)}
-            disabled={disabled}
-            aria-describedby="stats-summary-description"
-          />
-          <div className="ml-3 flex-1">
-            <div className="flex items-center space-x-2">
-              <PieChart className="h-4 w-4 text-primary-600" />
-              <span className="text-sm font-medium text-gray-900">
-                Include Statistics Summary
-              </span>
-            </div>
-            <p 
-              id="stats-summary-description"
-              className="mt-1 text-xs text-gray-600"
+          <ChevronDown className={cn("w-4 h-4 text-gray-400 transition-transform duration-200", isOpen && "transform rotate-180 text-primary-500")} />
+        </div>
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 z-50 w-full mt-2 origin-top-right bg-white border border-gray-200 rounded-xl shadow-2xl ring-1 ring-black ring-opacity-5 focus:outline-none overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+          <div className="p-3 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+            <span className="px-1 text-[0.65rem] font-bold text-gray-400 uppercase tracking-widest">Configuration</span>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="p-1 hover:bg-gray-200 rounded-md transition-colors"
             >
-              Display statistical summaries (min, max, mean, standard deviation) 
-              directly on charts
-            </p>
+              <X className="w-3.5 h-3.5 text-gray-500" />
+            </button>
           </div>
-        </label>
-      </div>
+          <div className="p-3 space-y-2">
+            {/* Trend Lines Option */}
+            <label className={cn(
+              "flex items-start p-3 rounded-lg cursor-pointer transition-all border group",
+              includeTrendLines ? "bg-primary-50/50 border-primary-200" : "hover:bg-gray-50 border-transparent"
+            )}>
+              <div className="flex items-center h-5">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                  checked={includeTrendLines}
+                  onChange={(e) => onIncludeTrendLinesChange(e.target.checked)}
+                />
+              </div>
+              <div className="ml-3 flex-1">
+                <div className="flex items-center">
+                  <TrendingUp className={cn("w-3.5 h-3.5 mr-2", includeTrendLines ? "text-primary-600" : "text-gray-400")} />
+                  <span className={cn("text-xs font-bold", includeTrendLines ? "text-primary-900" : "text-gray-700")}>Include Trend Lines</span>
+                </div>
+                <p className="mt-1 text-[0.65rem] text-gray-500 leading-relaxed">Linear regression trend lines with equations and R² values (analog tags only)</p>
+              </div>
+            </label>
+
+            {/* SPC Charts Option */}
+            <label className={cn(
+              "flex items-start p-3 rounded-lg cursor-pointer transition-all border group",
+              includeSPCCharts ? "bg-primary-50/50 border-primary-200" : "hover:bg-gray-50 border-transparent"
+            )}>
+              <div className="flex items-center h-5">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                  checked={includeSPCCharts}
+                  onChange={(e) => onIncludeSPCChartsChange(e.target.checked)}
+                />
+              </div>
+              <div className="ml-3 flex-1">
+                <div className="flex items-center">
+                  <BarChart3 className={cn("w-3.5 h-3.5 mr-2", includeSPCCharts ? "text-primary-600" : "text-gray-400")} />
+                  <span className={cn("text-xs font-bold", includeSPCCharts ? "text-primary-900" : "text-gray-700")}>Include SPC Charts</span>
+                </div>
+                <p className="mt-1 text-[0.65rem] text-gray-500 leading-relaxed">Statistical Process Control charts with control limits (UCL/LCL) and capability metrics</p>
+              </div>
+            </label>
+
+            {/* Statistics Summary Option */}
+            <label className={cn(
+              "flex items-start p-3 rounded-lg cursor-pointer transition-all border group",
+              includeStatsSummary ? "bg-primary-50/50 border-primary-200" : "hover:bg-gray-50 border-transparent"
+            )}>
+              <div className="flex items-center h-5">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                  checked={includeStatsSummary}
+                  onChange={(e) => onIncludeStatsSummaryChange(e.target.checked)}
+                />
+              </div>
+              <div className="ml-3 flex-1">
+                <div className="flex items-center">
+                  <PieChart className={cn("w-3.5 h-3.5 mr-2", includeStatsSummary ? "text-primary-600" : "text-gray-400")} />
+                  <span className={cn("text-xs font-bold", includeStatsSummary ? "text-primary-900" : "text-gray-700")}>Include Statistics Summary</span>
+                </div>
+                <p className="mt-1 text-[0.65rem] text-gray-500 leading-relaxed">Display min, max, mean, and standard deviation directly on charts</p>
+              </div>
+            </label>
+
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="w-full py-2 text-[0.7rem] font-bold text-primary-600 bg-primary-50 hover:bg-primary-100 rounded-lg transition-colors border border-primary-100"
+              >
+                Apply Configuration
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

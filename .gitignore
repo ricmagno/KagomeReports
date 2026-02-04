@@ -97,4 +97,6 @@ Thumbs.db
 *.sqlite3
 
 # Docker files
+
+dockerimages/
 *.tar
