@@ -102,7 +102,7 @@ export interface ExportedConfiguration {
 export interface ExportedReportConfig {
   /** Selected tag names */
   tags: string[];
-  
+
   /** Time range configuration */
   timeRange: {
     /** ISO 8601 formatted start time */
@@ -114,7 +114,7 @@ export interface ExportedReportConfig {
     /** Relative range identifier (optional) */
     relativeRange?: 'last1h' | 'last2h' | 'last6h' | 'last12h' | 'last24h' | 'last7d' | 'last30d';
   };
-  
+
   /** Sampling configuration */
   sampling: {
     /** Sampling mode */
@@ -122,7 +122,7 @@ export interface ExportedReportConfig {
     /** Sampling interval in seconds (for Cyclic mode) */
     interval?: number;
   };
-  
+
   /** Analytics options */
   analytics: {
     /** Whether analytics are enabled */
@@ -134,7 +134,7 @@ export interface ExportedReportConfig {
     /** Show statistical summaries */
     showStatistics: boolean;
   };
-  
+
   /** Specification limits (if configured) */
   specificationLimits?: {
     /** Whether specification limits are enabled */
@@ -146,11 +146,13 @@ export interface ExportedReportConfig {
     /** Target value */
     target?: number;
   };
-  
+
   /** Report metadata */
   reportName?: string;
   description?: string;
-  
+  template?: string;
+  chartTypes?: string[];
+
   /** Custom settings (extensible) */
   customSettings?: Record<string, any>;
 }
@@ -362,7 +364,7 @@ export const VALID_SAMPLING_MODES = ['Cyclic', 'Delta', 'BestFit'] as const;
  * Tag name validation pattern
  * Allows alphanumeric characters, underscores, dots, and hyphens
  */
-export const TAG_NAME_PATTERN = /^[A-Za-z0-9_.\-]+$/;
+export const TAG_NAME_PATTERN = /^[A-Za-z0-9_.\- :\[\]\(\)\/]+$/;
 
 // ============================================================================
 // Type Guards

@@ -690,7 +690,8 @@ router.post('/export', authenticateToken, requirePermission('reports', 'read'), 
     } else if (errorMessage.includes('Unsupported export format')) {
       throw createError(errorMessage, 400); // Bad Request
     } else {
-      throw createError('Failed to export configuration', 500);
+      // Include the actual error message for better troubleshooting
+      throw createError(`Failed to export configuration: ${errorMessage}`, 500);
     }
   }
 }));
@@ -717,38 +718,9 @@ router.post('/import', authenticateToken, requirePermission('reports', 'write'),
     // Call import service
     const result = await configImportService.importConfiguration(fileContent);
 
-    if (result.success) {
-      apiLogger.info('Import completed successfully', {
-        configName: result.config?.name,
-        tags: result.config?.tags?.length || 0,
-        warnings: result.warnings?.length || 0,
-      });
-
-      // Return success response with config and warnings
-      res.json({
-        success: true,
-        data: result.config,
-        warnings: result.warnings,
-        metadata: {
-          schemaVersion: result.config?.importMetadata?.schemaVersion,
-        },
-      });
-    } else {
-      apiLogger.warn('Import validation failed', {
-        errorCount: result.errors?.length || 0,
-      });
-
-      // Return validation errors
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'VALIDATION_FAILED',
-          message: 'Configuration validation failed',
-          validationErrors: result.errors,
-        },
-      });
-    }
-
+    // Return the import result directly (matches client ImportResult type)
+    // We return 200 even for validation failures so the client can show the detailed dialog
+    res.json(result);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     apiLogger.error('Import failed with exception', {

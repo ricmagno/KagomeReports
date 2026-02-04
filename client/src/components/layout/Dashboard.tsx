@@ -572,9 +572,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     setIsLoading(true);
 
     try {
-      // Load the full report configuration first
-      const reportResponse = await apiService.getReportVersion(exportingReport.id, exportingReport.version);
+      // Always load the full report from the API to ensure we have the complete config
+      // including tags, chart analytics, and correct date formats
+      const reportResponse = await apiService.loadSavedReport(exportingReport.id);
+
+      if (!reportResponse || !reportResponse.success || !reportResponse.data) {
+        throw new Error('Failed to load report configuration from server');
+      }
+
       const fullConfig = reportResponse.data.config;
+
+      if (!fullConfig) {
+        throw new Error('Report configuration is empty');
+      }
 
       // Export the configuration
       const { blob, filename } = await apiService.exportConfiguration(fullConfig, format);
@@ -592,7 +602,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       success('Export successful', `Report "${exportingReport.name}" has been exported`);
     } catch (err: any) {
       console.error('Export error:', err);
-      toastError('Export failed', err.response?.data?.message || 'Failed to export report configuration');
+      // ApiError has the message from the server in .message
+      const errorMessage = err.message || 'Failed to export report configuration';
+      toastError('Export failed', errorMessage);
     } finally {
       setIsLoading(false);
       setExportingReport(null);

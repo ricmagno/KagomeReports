@@ -1,4 +1,5 @@
 import React, { useState, memo } from 'react';
+import { User } from 'lucide-react';
 import { Schedule } from '../../types/schedule';
 import { Card, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -157,9 +158,15 @@ const ScheduleCardComponent: React.FC<ScheduleCardProps> = ({
               )}
             </div>
             {schedule.description && (
-              <p className="text-sm text-gray-600 mb-3 break-words">
+              <p className="text-sm text-gray-600 mb-2 break-words">
                 {schedule.description}
               </p>
+            )}
+            {schedule.createdBy && (
+              <div className="flex items-center gap-1.5 text-xs text-blue-600 font-medium bg-blue-50 w-fit px-2 py-0.5 rounded-full border border-blue-100">
+                <User className="w-3 h-3" />
+                <span>Owner: {schedule.createdBy}</span>
+              </div>
             )}
           </div>
 
