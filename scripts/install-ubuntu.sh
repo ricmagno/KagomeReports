@@ -85,7 +85,7 @@ if [ ! -f .env ]; then
     echo "Creating .env file..."
     cat > .env <<EOF
 NODE_ENV=production
-PORT=3000
+PORT=3001
 DATA_DIR=$DATA_BASE_DIR/data
 REPORTS_DIR=$DATA_BASE_DIR/reports
 LOG_FILE=$DATA_BASE_DIR/logs/app.log
