@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: historian-reports
+  namespace: historian-reports
+  labels:
+    app: historian-reports
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: historian-reports
+  template:
+    metadata:
+      labels:
+        app: historian-reports
+    spec:
+      containers:
+      - name: historian-reports
+        image: historian-reports:v0.77.0
+        ports:
+        - containerPort: 3000
+        imagePullPolicy: Never # Use 'Never' since the image is already local
+        envFrom: # Add this section to load env vars from Secret
+        - secretRef:
+            name: historian-reports-env
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
+        volumeMounts: # New section for volume mounts
+        - name: historian-home
+          mountPath: /home/historian
+        - name: historian-data
+          mountPath: /home/historian/data
+        - name: historian-reports
+          mountPath: /home/historian/reports
+      tolerations:
+      - key: "node-role.kubernetes.io/control-plane"
+        operator: "Exists"
+        effect: "NoSchedule"
+      volumes: # New section for volumes
+      - name: historian-home
+        hostPath:
+          path: /mnt/historian
+          type: DirectoryOrCreate
+      - name: historian-data
+        hostPath:
+          path: /mnt/historian/data
+          type: DirectoryOrCreate
+      - name: historian-reports
+        hostPath:
+          path: /mnt/historian/reports
+          type: DirectoryOrCreate

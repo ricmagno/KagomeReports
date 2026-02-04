@@ -372,12 +372,8 @@ export class ReportGenerationService {
 
         // Add standard charts section (with trend lines)
         if (standardCharts.size > 0) {
-          // Only add page if we're too far down the current page
-          if (doc.y > doc.page.height - 400) {
-            doc.addPage();
-          } else {
-            doc.moveDown(1);
-          }
+          // Always start Data Visualizations on a new page as per requirements
+          doc.addPage();
           this.addChartsSection(doc, Object.fromEntries(standardCharts));
         }
 
@@ -602,9 +598,7 @@ export class ReportGenerationService {
    * Add report metadata
    */
   private addReportMetadata(doc: PDFKit.PDFDocument, reportData: ReportData): void {
-    const startY = doc.y;
-
-    // Left column
+    // Basic date formatting options
     const formatOptions: Intl.DateTimeFormatOptions = {
       year: 'numeric',
       month: '2-digit',
@@ -620,44 +614,41 @@ export class ReportGenerationService {
       ? reportData.generatedAt.toLocaleString('en-US', formatOptions)
       : 'Unknown';
 
-    doc.fontSize(10)
-      .fillColor('#111827')
-      .font('Helvetica-Bold')
-      .text('Generated:', 50, startY)
-      .fillColor('#6b7280')
-      .font('Helvetica')
-      .text(generatedDate, 120, startY);
-
-    doc.fillColor('#111827')
-      .font('Helvetica-Bold')
-      .text('Tags:', 50, startY + 15)
-      .fillColor('#6b7280')
-      .font('Helvetica')
-      .text(reportData.config.tags.join(', '), 120, startY + 15);
-
-    // Right column
     const totalDataPoints = Object.values(reportData.data)
       .reduce((sum, data) => sum + data.length, 0);
 
-    doc.fillColor('#111827')
-      .font('Helvetica-Bold')
-      .text('Data Points:', 300, startY)
-      .fillColor('#6b7280')
-      .font('Helvetica')
-      .text(totalDataPoints.toString(), 370, startY);
+    doc.fontSize(10);
 
-    doc.fillColor('#111827')
-      .font('Helvetica-Bold')
-      .text('Format:', 300, startY + 15)
-      .fillColor('#6b7280')
-      .font('Helvetica')
-      .text(reportData.config.format.toUpperCase(), 370, startY + 15);
+    // Use relative positioning to prevent overlap when content wraps
+    // Each metadata item gets its own line as per user requirements for organization
 
-    // Reset to default
+    // Reset x to consistent left alignment for metadata indented from main margin
+    doc.x = 50;
+
+    // Generated info
+    doc.fillColor('#111827').font('Helvetica-Bold').text('Generated: ', { continued: true })
+      .fillColor('#6b7280').font('Helvetica').text(generatedDate);
+
+    // Data points count
+    doc.fillColor('#111827').font('Helvetica-Bold').text('Data Points: ', { continued: true })
+      .fillColor('#6b7280').font('Helvetica').text(totalDataPoints.toString());
+
+    // Export format
+    doc.fillColor('#111827').font('Helvetica-Bold').text('Format: ', { continued: true })
+      .fillColor('#6b7280').font('Helvetica').text(reportData.config.format.toUpperCase());
+
+    // Tag list - print each tag on a new line for maximum clarity
+    doc.fillColor('#111827').font('Helvetica-Bold').text('Tags: ');
+
+    doc.fillColor('#6b7280').font('Helvetica');
+    for (const tag of reportData.config.tags) {
+      doc.text(`• ${tag}`, 65); // Indent individual tags slightly more (65 instead of 50)
+    }
+
+    // Clean up positioning and color for next section
     doc.fillColor('#111827');
-    doc.y = startY + 40;
-    doc.x = 40; // Explicitly reset x to margin after the two-column metadata
-    doc.moveDown(0.5);
+    doc.x = 40; // Reset to default margin
+    doc.moveDown(1);
   }
 
   /**
@@ -688,23 +679,32 @@ export class ReportGenerationService {
 
     doc.moveDown(0.5);
 
-    // Key findings
-    if (reportData.statistics) {
-      doc.fillColor('#111827')
-        .font('Helvetica-Bold')
-        .text('Key Findings:', 40);  // Explicit x position
+    // Key findings - iterate over all tags to ensure none are missing from the summary
+    doc.fillColor('#111827')
+      .font('Helvetica-Bold')
+      .text('Key Findings:', 40);
 
-      doc.fillColor('#111827')
-        .font('Helvetica');
+    doc.fillColor('#111827')
+      .font('Helvetica');
 
-      for (const [tagName, stats] of Object.entries(reportData.statistics)) {
+    for (const tagName of reportData.config.tags) {
+      const stats = reportData.statistics?.[tagName];
+      if (stats) {
         doc.text(`• ${tagName}: Average ${stats.average.toFixed(2)}, ` +
           `Range ${stats.min.toFixed(2)} - ${stats.max.toFixed(2)}, ` +
           `Data Quality ${stats.dataQuality.toFixed(1)}%`,
-          40, doc.y, {  // Explicit x position
+          40, doc.y, {
           width: doc.page.width - 80,
           align: 'left'
-        });
+        }
+        );
+      } else {
+        doc.text(`• ${tagName}: No statistical data available for this period.`,
+          40, doc.y, {
+          width: doc.page.width - 80,
+          align: 'left'
+        }
+        );
       }
     }
 
@@ -821,14 +821,14 @@ export class ReportGenerationService {
     });
 
     for (const [chartName, chartBuffer] of Object.entries(charts)) {
+      // New page every 2 charts to maintain clear layout and professional appearance
       if (chartCount > 0 && chartCount % 2 === 0) {
         doc.addPage();
         reportLogger.debug('Added new page for charts', { chartCount });
       }
 
-      const y = doc.y;
       const chartWidth = 535;  // Increased from 515 for wider appearance
-      const chartHeight = 320; // Slightly reduced height to fit better with wider aspect
+      const chartHeight = 320; // Maximum height to allow exactly 2 charts per page with titles and margins
 
       doc.fontSize(12)
         .fillColor('#111827')
