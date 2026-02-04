@@ -97,6 +97,7 @@ Thumbs.db
 *.sqlite3
 *.db-shm
 *.db-wal
+.build-metadata.json
 
 # Large binaries
 build.zip

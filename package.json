@@ -1,12 +1,12 @@
 {
   "name": "historian-reports",
-  "version": "0.70.0",
+  "version": "0.71.0",
   "description": "Professional reporting application for AVEVA Historian database",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "dev:mock": "tsx watch src/dev-server.ts",
-    "build": "tsc && tsc-alias",
+    "build": "node scripts/generate-build-metadata.js && tsc && tsc-alias",
     "build:electron": "tsc -p tsconfig.electron.json && tsc-alias -p tsconfig.electron.json",
     "build:client": "cd client && npm run build",
     "build:all": "npm run build && npm run build:electron && npm run build:client",
