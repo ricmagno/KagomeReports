@@ -71,7 +71,6 @@ COPY --from=backend-builder --chown=historian:nodejs /app/dist ./dist
 COPY --from=backend-builder --chown=historian:nodejs /app/package.json ./package.json
 COPY --from=backend-builder --chown=historian:nodejs /app/templates ./templates
 COPY --from=backend-builder --chown=historian:nodejs /app/scripts/healthcheck.js ./scripts/healthcheck.js
-COPY --from=backend-builder --chown=historian:nodejs /app/.env ./.env
 
 # Copy client build to be served by the backend
 COPY --from=client-builder --chown=historian:nodejs /app/client/build ./client/build
