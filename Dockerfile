@@ -71,7 +71,6 @@ COPY --from=backend-builder --chown=historian:nodejs /app/dist ./dist
 COPY --from=backend-builder --chown=historian:nodejs /app/package.json ./package.json
 COPY --from=backend-builder --chown=historian:nodejs /app/templates ./templates
 COPY --from=backend-builder --chown=historian:nodejs /app/scripts/healthcheck.js ./scripts/healthcheck.js
-COPY --from=backend-builder --chown=historian:nodejs /app/.env ./.env
 
 # Copy client build to be served by the backend
 COPY --from=client-builder --chown=historian:nodejs /app/client/build ./client/build
@@ -88,18 +87,20 @@ USER historian
 EXPOSE 3000
 
 # Environment defaults
+ARG VERSION=unknown
 ENV NODE_ENV=production \
     PORT=3000 \
     DATA_DIR=/home/historian/data \
     REPORTS_DIR=/home/historian/reports \
     LOG_FILE=/home/historian/logs/app.log \
     TEMP_DIR=/home/historian/temp \
-    IS_DOCKER=true
+    IS_DOCKER=true \
+    VERSION=${VERSION}
 
 # Labels for metadata
 LABEL maintainer="Historian Reports Team" \
     description="Professional reporting application for AVEVA Historian database" \
-    version="0.76.0"
+    version="0.83.0"
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

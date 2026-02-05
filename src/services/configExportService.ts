@@ -403,17 +403,54 @@ in
    * @private
    */
   private convertToExportedConfig(config: ReportConfig): ExportedReportConfig {
+    if (!config) {
+      throw new Error('Report configuration is missing');
+    }
+
+    // Robustly handle missing time range
+    if (!config.timeRange) {
+      throw new Error('Report configuration is missing the required timeRange object');
+    }
+
     // Extract time range
     const timeRange = config.timeRange;
-    const startTime = timeRange.startTime instanceof Date
-      ? timeRange.startTime.toISOString()
-      : new Date(timeRange.startTime).toISOString();
-    const endTime = timeRange.endTime instanceof Date
-      ? timeRange.endTime.toISOString()
-      : new Date(timeRange.endTime).toISOString();
+
+    // Safely parse dates, providing defaults if they are invalid
+    let startDate: Date;
+    let endDate: Date;
+
+    try {
+      startDate = timeRange.startTime instanceof Date
+        ? timeRange.startTime
+        : new Date(timeRange.startTime);
+
+      if (isNaN(startDate.getTime())) {
+        throw new Error('Invalid start time');
+      }
+    } catch (e) {
+      startDate = new Date(Date.now() - 3600000); // 1 hour ago default
+    }
+
+    try {
+      endDate = timeRange.endTime instanceof Date
+        ? timeRange.endTime
+        : new Date(timeRange.endTime);
+
+      if (isNaN(endDate.getTime())) {
+        throw new Error('Invalid end time');
+      }
+    } catch (e) {
+      endDate = new Date(); // now default
+    }
+
+    const startTime = startDate.toISOString();
+    const endTime = endDate.toISOString();
 
     // Calculate duration
-    const duration = new Date(endTime).getTime() - new Date(startTime).getTime();
+    const duration = endDate.getTime() - startDate.getTime();
+
+    // Ensure tags exists
+    const tags = config.tags || [];
 
     // Determine sampling configuration
     const samplingMode = this.determineSamplingMode(config);
@@ -421,9 +458,9 @@ in
 
     // Build analytics configuration
     const analytics = {
-      enabled: config.includeSPCCharts || config.includeTrendLines || config.includeStatsSummary || false,
-      showTrendLine: config.includeTrendLines || false,
-      showSPCMetrics: config.includeSPCCharts || false,
+      enabled: !!(config.includeSPCCharts || config.includeTrendLines || config.includeStatsSummary),
+      showTrendLine: !!config.includeTrendLines,
+      showSPCMetrics: !!config.includeSPCCharts,
       showStatistics: config.includeStatsSummary ?? true,
     };
 
@@ -432,7 +469,7 @@ in
 
     // Build exported config
     const exportedConfig: ExportedReportConfig = {
-      tags: config.tags,
+      tags: tags,
       timeRange: {
         startTime,
         endTime,
@@ -443,7 +480,9 @@ in
         ...(samplingInterval !== undefined && { interval: samplingInterval }),
       },
       analytics,
-      reportName: config.name,
+      reportName: config.name || 'Unnamed Report',
+      template: config.template || 'default',
+      chartTypes: (config.chartTypes || ['line']) as string[],
       ...(config.description && { description: config.description }),
     };
 
@@ -457,8 +496,6 @@ in
       exportedConfig.customSettings = {
         metadata: config.metadata,
         branding: config.branding,
-        template: config.template,
-        chartTypes: config.chartTypes,
       };
     }
 
@@ -576,17 +613,21 @@ in
 
     // Generate tag names portion
     let tagsPortion: string;
-    if (config.tags.length === 1) {
+    const tags = config.tags || [];
+
+    if (tags.length === 1) {
       // Single tag: use the tag name (sanitized)
-      tagsPortion = this.sanitizeForFilename(config.tags[0] || 'unnamed');
-    } else if (config.tags.length <= 3) {
+      tagsPortion = this.sanitizeForFilename(tags[0] || 'unnamed');
+    } else if (tags.length > 0 && tags.length <= 3) {
       // Multiple tags (up to 3): use abbreviated tag names
-      tagsPortion = config.tags
+      tagsPortion = tags
         .map(tag => this.abbreviateTagName(tag))
         .join('_');
-    } else {
+    } else if (tags.length > 3) {
       // Many tags: use count
-      tagsPortion = `${config.tags.length}Tags`;
+      tagsPortion = `${tags.length}Tags`;
+    } else {
+      tagsPortion = 'NoTags';
     }
 
     // Determine file extension

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: historian-reports-INSTANCE_NAME
+  namespace: historian-reports
+  labels:
+    app: historian-reports
+    instance: INSTANCE_NAME
+spec:
+  selector:
+    app: historian-reports
+    instance: INSTANCE_NAME
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
+      nodePort: NODE_PORT
+  type: NodePort

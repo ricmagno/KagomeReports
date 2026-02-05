@@ -375,6 +375,7 @@ export class ReportManagementService {
             config,
             version: row.version,
             createdBy: row.created_by_name || row.created_by,
+            createdByUserId: row.created_by,
             createdAt: new Date(row.created_at),
             updatedAt: new Date(row.updated_at),
             isLatestVersion: row.is_latest_version
@@ -427,6 +428,7 @@ export class ReportManagementService {
           config: this.deserializeDates(JSON.parse(row.config)),
           version: row.version,
           createdBy: row.created_by_name || row.created_by,
+          createdByUserId: row.created_by,
           createdAt: new Date(row.created_at),
           updatedAt: new Date(row.updated_at),
           isLatestVersion: row.is_latest_version,
@@ -451,8 +453,20 @@ export class ReportManagementService {
       }
 
       // Check if user has permission to delete (owner or admin)
-      if (report.createdBy !== userId) {
-        logger.warn(`User ${userId} attempted to delete report ${reportId} owned by ${report.createdBy}`);
+      // Get user role from auth database
+      const userRole = await new Promise<string>((resolve) => {
+        this.db.get('SELECT role FROM auth.users WHERE id = ?', [userId], (err, row: any) => {
+          if (err) {
+            logger.error('Error fetching user role for deletion:', err);
+            resolve('user');
+            return;
+          }
+          resolve(row?.role || 'user');
+        });
+      });
+
+      if (userRole !== 'admin' && report.createdByUserId !== userId) {
+        logger.warn(`User ${userId} (role: ${userRole}) attempted to delete report ${reportId} owned by ${report.createdByUserId}`);
         return false;
       }
 
