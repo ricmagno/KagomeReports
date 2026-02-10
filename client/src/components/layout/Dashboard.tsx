@@ -37,6 +37,9 @@ import { SchedulesList, SchedulesErrorBoundary } from '../schedules';
 import { UserManagement } from '../users';
 import { ConfigurationManagement } from '../configuration/ConfigurationManagement';
 import { AboutSection } from '../about/AboutSection';
+import { DashboardList } from '../dashboards/DashboardList';
+import { DashboardView } from '../dashboards/DashboardView';
+import { DashboardEditor } from '../dashboards/DashboardEditor';
 import { apiService } from '../../services/api';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
@@ -49,7 +52,9 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const { user, isAuthenticated, login: authLogin, logout: authLogout, isLoading: authLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'database' | 'users' | 'configuration' | 'about'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'dashboards' | 'schedules' | 'database' | 'users' | 'configuration' | 'about'>('create');
+  const [dashboardViewMode, setDashboardViewMode] = useState<'list' | 'view' | 'edit'>('list');
+  const [selectedDashboardId, setSelectedDashboardId] = useState<string | null>(null);
   const [dbActiveTab, setDbActiveTab] = useState<'status' | 'config'>('status');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [healthStatus, setHealthStatus] = useState<string>('checking...');
@@ -707,6 +712,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             {[
               { id: 'create', label: 'Create Report', icon: Plus },
               { id: 'reports', label: 'My Reports', icon: FileText },
+              { id: 'dashboards', label: 'Dashboards', icon: Activity },
               { id: 'schedules', label: 'Schedules', icon: Calendar },
               { id: 'categories', label: 'Categories', icon: Tag },
               { id: 'status', label: 'Status', icon: Activity },
@@ -789,6 +795,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               {[
                 { id: 'create', label: 'Create Report', icon: Plus },
                 { id: 'reports', label: 'My Reports', icon: FileText },
+                { id: 'dashboards', label: 'Dashboards', icon: Activity },
                 { id: 'schedules', label: 'Schedules', icon: Calendar },
                 { id: 'database', label: 'Database', icon: Database },
                 ...(currentUser?.role === 'admin' ? [{ id: 'configuration', label: 'Configuration', icon: Settings }] : []),
@@ -1092,6 +1099,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 }
               </div>
             )}
+
+            {
+              activeTab === 'dashboards' && (
+                <div className="space-y-6">
+                  {dashboardViewMode === 'list' && (
+                    <DashboardList
+                      onView={(id) => {
+                        setSelectedDashboardId(id);
+                        setDashboardViewMode('view');
+                      }}
+                      onEdit={(id) => {
+                        setSelectedDashboardId(id);
+                        setDashboardViewMode('edit');
+                      }}
+                      onCreate={() => {
+                        setSelectedDashboardId(null);
+                        setDashboardViewMode('edit');
+                      }}
+                    />
+                  )}
+                  {dashboardViewMode === 'view' && selectedDashboardId && (
+                    <DashboardView
+                      dashboardId={selectedDashboardId}
+                      onBack={() => setDashboardViewMode('list')}
+                      onEdit={() => setDashboardViewMode('edit')}
+                    />
+                  )}
+                  {dashboardViewMode === 'edit' && (
+                    <DashboardEditor
+                      dashboardId={selectedDashboardId}
+                      onSave={() => setDashboardViewMode('list')}
+                      onCancel={() => setDashboardViewMode('list')}
+                    />
+                  )}
+                </div>
+              )
+            }
 
             {
               activeTab === 'reports' && (

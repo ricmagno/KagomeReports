@@ -21,6 +21,7 @@ import autoLoginRoutes from './autoLogin';
 import versionRoutes from './version';
 import updatesRoutes from './updates';
 import configurationRoutes from './configuration';
+import dashboardRoutes from './dashboards';
 
 const router = Router();
 
@@ -28,6 +29,7 @@ const router = Router();
 router.use('/data', dataRoutes);
 router.use('/health', healthRoutes);
 router.use('/reports', reportRoutes);
+router.use('/dashboards', dashboardRoutes);
 router.use('/schedules', scheduleRoutes);
 router.use('/auth', authRoutes);
 router.use('/system', systemRoutes);
@@ -69,7 +71,8 @@ router.get('/', async (_req, res) => {
       autoLogin: '/api/auth/auto-login',
       version: '/api/version',
       updates: '/api/updates',
-      configuration: '/api/configuration'
+      configuration: '/api/configuration',
+      dashboards: '/api/dashboards'
     }
   });
 });

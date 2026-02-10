@@ -10,6 +10,7 @@ import { MultiTrendChart } from './MultiTrendChart';
 import { MiniChart } from './MiniChart';
 import { GuideLineControls } from './GuideLineControls';
 import { calculateChartScale } from '../../utils/chartBounds';
+import { cn } from '../../utils/cn';
 
 interface InteractiveChartProps {
   /** Chart data points */
@@ -36,8 +37,11 @@ interface InteractiveChartProps {
   /** Chart description */
   description?: string;
 
-  /** Optional class name */
+  /** Optional class name for the wrapper */
   className?: string;
+
+  /** Optional class name for the inner chart */
+  chartClassName?: string;
 
   /** Whether to enable guide lines (default: true) */
   enableGuideLines?: boolean;
@@ -78,6 +82,7 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
   statistics,
   units,
   color,
+  chartClassName,
 }) => {
   // Guide lines state
   const [guideLines, setGuideLines] = useState<GuideLineType[]>([]);
@@ -133,7 +138,7 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
   const verticalCount = guideLines.filter(l => l.type === 'vertical').length;
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={cn("relative flex flex-col w-full h-full", className)}>
       {/* Guide line controls */}
       {enableGuideLines && (
         <div className="mb-3 flex justify-end">
@@ -150,7 +155,7 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
       )}
 
       {/* Chart container */}
-      <div className="relative">
+      <div className="relative flex-1 min-h-0">
         {/* Render appropriate chart type */}
         {displayMode === 'multi' ? (
           <MultiTrendChart
@@ -166,6 +171,7 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
             units={units}
             includeTrendLines={includeTrendLines}
             onGuideLinesChange={setGuideLines}
+            className={chartClassName}
           />
         ) : (
           tagName && dataPoints[tagName] && (
@@ -184,6 +190,7 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
               color={color}
               guideLines={guideLines}
               onGuideLinesChange={setGuideLines}
+              className={chartClassName}
             />
           )
         )}
