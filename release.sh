@@ -32,9 +32,12 @@ echo "📝 Updating version label in Dockerfile..."
 # Match anything starting with 'version=' including spaces
 sed -i '' "s/[[:space:]]*version=\".*\"/    version=\"$VERSION\"/" Dockerfile
 
+echo "📝 Updating version in Kubernetes manifest..."
+sed -i '' "s|image: ghcr.io/ricmagno/kagomereports:.*|image: ghcr.io/ricmagno/kagomereports:$VERSION|" Kubernets/historian-reports-deployment.yaml
+
 # 3. Commit and Tag
 echo "💾 Committing version changes..."
-git add package.json Dockerfile
+git add package.json Dockerfile Kubernets/historian-reports-deployment.yaml
 git commit -m "Chore: Release version $VERSION"
 
 echo "🏷️ Creating git tag $VERSION..."
