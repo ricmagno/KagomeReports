@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     ArrowLeft,
     Settings,
@@ -34,9 +34,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
     const { error } = useToast();
 
-    const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    const fetchDashboard = async () => {
+    const fetchDashboard = useCallback(async () => {
         try {
             setLoading(true);
             const response = await apiService.loadDashboard(dashboardId);
@@ -53,22 +52,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         } finally {
             setLoading(false);
         }
-    };
+    }, [dashboardId, error]);
 
     useEffect(() => {
         fetchDashboard();
-    }, [dashboardId]);
+    }, [fetchDashboard]);
 
     // Independent timer effect
     useEffect(() => {
         if (!dashboard || !refreshEnabled) {
-            if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
             return;
         }
 
         const refreshRate = dashboard.refreshRate || 30;
 
-        timerIntervalRef.current = setInterval(() => {
+        const intervalId = setInterval(() => {
             setSecondsUntilRefresh(prev => {
                 if (prev <= 1) {
                     // Trigger refresh by incrementing counter
@@ -81,7 +79,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         }, 1000);
 
         return () => {
-            if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+            clearInterval(intervalId);
         };
     }, [dashboard, refreshEnabled]);
 

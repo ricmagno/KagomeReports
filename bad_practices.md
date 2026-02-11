@@ -17,6 +17,13 @@ This audit identified several areas for improvement across the codebase, includi
 
 ### ✅ Fixes Applied (February 11, 2026) - COMPLETE
 
+**Schedules Module Refactoring:**
+1. ✅ **SchedulesList.tsx, ExecutionHistory.tsx, ScheduleForm.tsx**: Refactored to use `useReducer` for centralized state management, fixing the "Excessive State Variables" anti-pattern.
+2. ✅ **Type Safety**: Eliminated `any` types in schedule list parameters and API responses, replacing them with proper TypeScript interfaces.
+3. ✅ **useEffect Optimization**: Consolidated and optimized `useEffect` hooks, ensuring proper dependencies and eliminating unnecessary re-renders.
+4. ✅ **Memoization**: Wrapped all major callback functions in `useCallback` to prevent child component re-renders.
+5. ✅ **Creator Info**: Added display for schedule owner/creator to support user isolation.
+
 **Deprecated Dependencies - Low Effort Fixes:**
 1. ✅ **@testing-library/user-event**: Upgraded from v13.5.0 → v14.5.2
 2. ✅ **TypeScript**: Upgraded from v4.9.5 → v5.3.3
@@ -147,34 +154,14 @@ const [exporting, setExporting] = useState(false);
 const [showExportMenu, setShowExportMenu] = useState(false);
 ```
 
-### 🔴 SchedulesList.tsx - Excessive State Variables
+### ✅ FIXED - SchedulesList.tsx - Excessive State Variables
 
-**Location:** `client/src/components/schedules/SchedulesList.tsx:119-137`
+**Location:** `client/src/components/schedules/SchedulesList.tsx`
 
-**Issues:**
-- 15+ separate state variables in one component
-- Complex interdependencies between states
-- Difficult to reason about state transitions
-
-**Recommendation:**
-- Consider using `useReducer` for complex state logic
-- Extract related state into custom hooks
-- Use state machines for UI state management
-
-```typescript
-// Example with useReducer
-const [state, dispatch] = useReducer(schedulesReducer, initialState);
-
-// Or extract to custom hook
-const {
-  schedules,
-  loading,
-  error,
-  filters,
-  pagination,
-  actions
-} = useSchedules();
-```
+**Status:** FIXED
+- **Action**: Implemented `useReducer` hook to manage complex state transitions.
+- **Impact**: Reduced complexity, improved predictability of state changes, and consolidated 15+ individual state variables into a single state machine.
+- **Also Applied To**: `ExecutionHistory.tsx` and `ScheduleForm.tsx`.
 
 ### 🟡 ReportPreview.tsx - Nested State Updates
 
@@ -275,33 +262,13 @@ useEffect(() => {
 
 #### SchedulesList.tsx
 
-**Location:** `client/src/components/schedules/SchedulesList.tsx:138-146`
+### ✅ FIXED - Unnecessary useEffect Calls - SchedulesList.tsx
 
-```typescript
-useEffect(() => {
-  fetchSchedules();
-}, [page, filterStatus, debouncedSearchQuery]);
+**Location:** `client/src/components/schedules/SchedulesList.tsx`
 
-useEffect(() => {
-  fetchReportConfigs();
-}, []);
-```
-
-**Issues:**
-- Two separate effects that could be combined
-- `fetchReportConfigs` only needs to run once but uses empty dependency array
-
-**Recommendation:**
-```typescript
-// Combine related effects or use proper dependencies
-useEffect(() => {
-  fetchSchedules();
-}, [page, filterStatus, debouncedSearchQuery, fetchSchedules]);
-
-useEffect(() => {
-  fetchReportConfigs();
-}, [fetchReportConfigs]); // Add callback as dependency
-```
+**Status:** FIXED
+- **Action**: Refactored `useEffect` hooks to use memoized fetch functions and consolidated redundant logic into the reducer's state flow.
+- **Impact**: Eliminated dual-fetch races and ensured that data is only re-fetched when meaningful state (pagination, filters) actually changes.
 
 ### 🔴 Effect Cleanup Issues
 
@@ -422,19 +389,13 @@ useEffect(() => {
 
 ### 🟡 Unnecessary Re-renders
 
-#### SchedulesList.tsx - Inline Function Definitions
+### ✅ FIXED - SchedulesList.tsx - Inline Function Definitions
 
-**Location:** Multiple locations in `SchedulesList.tsx`
+**Location:** `client/src/components/schedules/SchedulesList.tsx`
 
-**Issues:**
-- Many callback functions not memoized with `useCallback`
-- Props passed to child components change on every render
-- Causes unnecessary child re-renders
-
-**Recommendation:**
-- Wrap all callback props in `useCallback`
-- Use `React.memo` for child components
-- Consider using `useMemo` for expensive computations
+**Status:** FIXED
+- **Action**: Wrapped all handler functions in `useCallback` or replaced them with `dispatch` calls.
+- **Impact**: Child components (like `ScheduleCard` and `ScheduleForm`) no longer unnecessarily re-render on every list update, significantly improving list performance.
 
 ### 🟡 Missing Memoization
 
@@ -622,35 +583,13 @@ if (failedTags.length > 0) {
 
 ### 🟡 Type Assertions and Any Types
 
-#### SchedulesList.tsx
+### ✅ FIXED - Type Assertions and Any Types - SchedulesList.tsx
 
-**Location:** `client/src/components/schedules/SchedulesList.tsx:158`
+**Location:** `client/src/components/schedules/SchedulesList.tsx`
 
-```typescript
-const params: any = {
-  page,
-  limit,
-};
-```
-
-**Issues:**
-- Using `any` defeats TypeScript's purpose
-- No type safety for API parameters
-
-**Recommendation:**
-```typescript
-interface GetSchedulesParams {
-  page: number;
-  limit: number;
-  enabled?: boolean;
-  search?: string;
-}
-
-const params: GetSchedulesParams = {
-  page,
-  limit,
-};
-```
+**Status:** FIXED
+- **Action**: Replaced `any` types in API parameter objects and response handlers with explicit interfaces (`ExecutionHistoryParams`, `ScheduleConfig`, etc.).
+- **Impact**: Full end-to-end type safety for schedule operations, catching errors at compile-time that were previously hidden.
 
 ### 🟡 Missing Return Types
 
