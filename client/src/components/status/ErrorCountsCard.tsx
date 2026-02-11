@@ -44,7 +44,7 @@ export const ErrorCountsCard: React.FC<ErrorCountsCardProps> = ({ data }) => {
     }
   ];
 
-  const hasErrors = errorItems.some(item => (item.value ?? 0) > 0);
+  const hasErrors = errorItems.some(item => Number(item.value ?? 0) > 0);
 
   return (
     <div className="bg-white rounded-lg shadow p-6">
@@ -59,25 +59,23 @@ export const ErrorCountsCard: React.FC<ErrorCountsCardProps> = ({ data }) => {
 
       <div className="space-y-4">
         {errorItems.map((item, index) => {
-          const count = item.value ?? 0;
+          const count = Number(item.value ?? 0);
           const hasError = count > 0;
           const Icon = item.icon;
 
           return (
             <div
               key={index}
-              className={`p-4 rounded-lg border-2 transition-colors ${
-                hasError
+              className={`p-4 rounded-lg border-2 transition-colors ${hasError
                   ? 'border-red-200 bg-red-50'
                   : 'border-gray-200 bg-gray-50'
-              }`}
+                }`}
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Icon
-                    className={`w-5 h-5 ${
-                      hasError ? 'text-red-600' : 'text-gray-400'
-                    }`}
+                    className={`w-5 h-5 ${hasError ? 'text-red-600' : 'text-gray-400'
+                      }`}
                   />
                   <div>
                     <div className="font-medium text-gray-900">{item.label}</div>
@@ -87,9 +85,8 @@ export const ErrorCountsCard: React.FC<ErrorCountsCardProps> = ({ data }) => {
                   </div>
                 </div>
                 <div
-                  className={`text-2xl font-bold ${
-                    hasError ? 'text-red-600' : 'text-gray-600'
-                  }`}
+                  className={`text-2xl font-bold ${hasError ? 'text-red-600' : 'text-gray-600'
+                    }`}
                 >
                   {count}
                 </div>

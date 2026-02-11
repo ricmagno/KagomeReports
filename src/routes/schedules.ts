@@ -11,6 +11,7 @@ import { asyncHandler, createError } from '@/middleware/errorHandler';
 import { authenticateToken, requirePermission } from '@/middleware/auth';
 import { schedulerService, ScheduleConfig } from '@/services/schedulerService';
 import { ReportConfig } from '@/services/reportGeneration';
+import { userManagementService } from '@/services/userManagementService';
 import fs from 'fs';
 import path from 'path';
 
@@ -110,17 +111,32 @@ const scheduleUpdateSchema = z.object({
  */
 router.get('/', authenticateToken, requirePermission('schedules', 'read'), asyncHandler(async (req: Request, res: Response) => {
   const { page = 1, limit = 10, enabled } = req.query;
+  const currentUserId = (req as any).user?.id;
 
-  apiLogger.info('Retrieving scheduled reports', { page, limit, enabled });
+  apiLogger.info('Retrieving scheduled reports', { page, limit, enabled, userId: currentUserId });
 
   try {
-    const schedules = await schedulerService.getSchedules();
+    const schedules = await schedulerService.getSchedules(req.user?.role === 'admin' ? undefined : currentUserId);
+
+    // Resolve user IDs to usernames for display
+    const enrichedSchedules = await Promise.all(schedules.map(async (s) => {
+      let createdBy = 'System';
+      if (s.createdByUserId) {
+        try {
+          const u = await userManagementService.getUser(s.createdByUserId);
+          createdBy = u ? u.username : 'Unknown User';
+        } catch (err) {
+          createdBy = 'Unknown User';
+        }
+      }
+      return { ...s, createdBy };
+    }));
 
     // Apply filters
-    let filteredSchedules = schedules;
+    let filteredSchedules = enrichedSchedules;
     if (enabled !== undefined) {
       const isEnabled = enabled === 'true';
-      filteredSchedules = schedules.filter(s => s.enabled === isEnabled);
+      filteredSchedules = enrichedSchedules.filter(s => s.enabled === isEnabled);
     }
 
     // Apply pagination
@@ -158,11 +174,12 @@ router.post('/', authenticateToken, requirePermission('schedules', 'write'), asy
   }
 
   const config = configResult.data;
+  const currentUserId = (req as any).user?.id;
 
-  apiLogger.info('Creating new schedule', { name: config.name });
+  apiLogger.info('Creating new schedule', { name: config.name, userId: currentUserId });
 
   try {
-    const scheduleId = await schedulerService.createSchedule(config);
+    const scheduleId = await schedulerService.createSchedule(config, currentUserId);
     const savedSchedule = await schedulerService.getSchedule(scheduleId);
 
     res.status(201).json({
@@ -183,13 +200,14 @@ router.post('/', authenticateToken, requirePermission('schedules', 'write'), asy
  * GET /api/schedules/:id
  * Get a specific schedule
  */
-router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id', authenticateToken, requirePermission('schedules', 'read'), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
+  const currentUserId = (req as any).user?.id;
 
-  apiLogger.info('Retrieving schedule', { id });
+  apiLogger.info('Retrieving schedule', { id, userId: currentUserId });
 
   try {
-    const schedule = await schedulerService.getSchedule(id);
+    const schedule = await schedulerService.getSchedule(id, currentUserId);
 
     if (!schedule) {
       throw createError('Schedule not found', 404);
@@ -212,8 +230,9 @@ router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
  * PUT /api/schedules/:id
  * Update a schedule
  */
-router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
+router.put('/:id', authenticateToken, requirePermission('schedules', 'write'), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
+  const currentUserId = (req as any).user?.id;
 
   const configResult = scheduleUpdateSchema.safeParse(req.body);
   if (!configResult.success) {
@@ -223,11 +242,11 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
 
   const updates = configResult.data;
 
-  apiLogger.info('Updating schedule', { id, updates: Object.keys(updates) });
+  apiLogger.info('Updating schedule', { id, updates: Object.keys(updates), userId: currentUserId });
 
   try {
-    await schedulerService.updateSchedule(id, updates);
-    const updatedSchedule = await schedulerService.getSchedule(id);
+    await schedulerService.updateSchedule(id, updates, currentUserId);
+    const updatedSchedule = await schedulerService.getSchedule(id, currentUserId);
 
     res.json({
       success: true,
@@ -251,11 +270,12 @@ router.put('/:id', asyncHandler(async (req: Request, res: Response) => {
  */
 router.delete('/:id', authenticateToken, requirePermission('schedules', 'delete'), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
+  const currentUserId = (req as any).user?.id;
 
-  apiLogger.info('Deleting schedule', { id });
+  apiLogger.info('Deleting schedule', { id, userId: currentUserId });
 
   try {
-    await schedulerService.deleteSchedule(id);
+    await schedulerService.deleteSchedule(id, currentUserId);
 
     res.json({
       success: true,
@@ -271,14 +291,15 @@ router.delete('/:id', authenticateToken, requirePermission('schedules', 'delete'
  * POST /api/schedules/:id/execute
  * Manually execute a schedule
  */
-router.post('/:id/execute', asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/execute', authenticateToken, requirePermission('schedules', 'write'), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
+  const currentUserId = (req as any).user?.id;
 
-  apiLogger.info('Manually executing schedule', { id });
+  apiLogger.info('Manually executing schedule', { id, userId: currentUserId });
 
   try {
     // Trigger the execution through the scheduler service
-    const executionId = await schedulerService.executeScheduleManually(id);
+    const executionId = await schedulerService.executeScheduleManually(id, currentUserId);
 
     res.json({
       success: true,
@@ -302,14 +323,15 @@ router.post('/:id/execute', asyncHandler(async (req: Request, res: Response) => 
  * POST /api/schedules/:id/enable
  * Enable a schedule
  */
-router.post('/:id/enable', asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/enable', authenticateToken, requirePermission('schedules', 'write'), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
+  const currentUserId = (req as any).user?.id;
 
-  apiLogger.info('Enabling schedule', { id });
+  apiLogger.info('Enabling schedule', { id, userId: currentUserId });
 
   try {
-    await schedulerService.updateSchedule(id, { enabled: true });
-    const updatedSchedule = await schedulerService.getSchedule(id);
+    await schedulerService.updateSchedule(id, { enabled: true }, currentUserId);
+    const updatedSchedule = await schedulerService.getSchedule(id, currentUserId);
 
     res.json({
       success: true,
@@ -331,14 +353,15 @@ router.post('/:id/enable', asyncHandler(async (req: Request, res: Response) => {
  * POST /api/schedules/:id/disable
  * Disable a schedule
  */
-router.post('/:id/disable', asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/disable', authenticateToken, requirePermission('schedules', 'write'), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
+  const currentUserId = (req as any).user?.id;
 
-  apiLogger.info('Disabling schedule', { id });
+  apiLogger.info('Disabling schedule', { id, userId: currentUserId });
 
   try {
-    await schedulerService.updateSchedule(id, { enabled: false });
-    const updatedSchedule = await schedulerService.getSchedule(id);
+    await schedulerService.updateSchedule(id, { enabled: false }, currentUserId);
+    const updatedSchedule = await schedulerService.getSchedule(id, currentUserId);
 
     res.json({
       success: true,
@@ -360,14 +383,15 @@ router.post('/:id/disable', asyncHandler(async (req: Request, res: Response) => 
  * GET /api/schedules/:id/executions
  * Get execution history for a schedule
  */
-router.get('/:id/executions', asyncHandler(async (req: Request, res: Response) => {
+router.get('/:id/executions', authenticateToken, requirePermission('schedules', 'read'), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params.id as string;
+  const currentUserId = (req as any).user?.id;
   const { page = 1, limit = 10, status } = req.query;
 
-  apiLogger.info('Retrieving schedule execution history', { id, page, limit, status });
+  apiLogger.info('Retrieving schedule execution history', { id, page, limit, status, userId: currentUserId });
 
   try {
-    const executions = await schedulerService.getExecutionHistory(id, Number(limit) * Number(page));
+    const executions = await schedulerService.getExecutionHistory(id, Number(limit) * Number(page), currentUserId);
 
     // Apply status filter if provided
     let filteredExecutions = executions;

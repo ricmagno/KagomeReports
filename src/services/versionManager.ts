@@ -36,7 +36,7 @@ export class VersionManager {
 
     // Read fresh version info
     const versionInfo = this.readVersionInfo();
-    
+
     // Update cache
     this.versionCache = {
       ...versionInfo,
@@ -115,9 +115,22 @@ export class VersionManager {
   }
 
   /**
-   * Get version from package.json
+   * Get version from environment or package.json
    */
   getVersionFromPackageJson(): string {
+    // 1. Check for VERSION environment variable (set during Docker build)
+    if (process.env.VERSION) {
+      // Remove 'v' prefix if present (consistent with SemVer)
+      const version = process.env.VERSION.startsWith('v')
+        ? process.env.VERSION.substring(1)
+        : process.env.VERSION;
+
+      if (this.validateVersion(version)) {
+        return version;
+      }
+    }
+
+    // 2. Fallback to package.json
     try {
       const packageJsonPath = path.join(process.cwd(), 'package.json');
       const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
@@ -130,7 +143,7 @@ export class VersionManager {
       return version;
     } catch (error) {
       versionLogger.error('Failed to read version from package.json', error);
-      throw error;
+      return '0.0.0'; // Ultimate fallback
     }
   }
 

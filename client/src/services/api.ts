@@ -407,6 +407,118 @@ export const apiService = {
     });
   },
 
+  // Export/Import Configuration
+  async exportConfiguration(config: ReportConfig, format: ExportFormat): Promise<{ blob: Blob; filename: string }> {
+    const response = await fetch(`${API_BASE_URL}/reports/export?format=${format}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+      },
+      body: JSON.stringify(config),
+    });
+
+    if (!response.ok) {
+      throw new ApiError(response.status, `Failed to export configuration: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = `report_config.${format === 'json' ? 'json' : 'yaml'}`;
+
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1];
+      }
+    }
+
+    return { blob, filename };
+  },
+
+  async importConfiguration(fileContent: string): Promise<ImportResult> {
+    return fetchWithRetry<ImportResult>('/reports/import', {
+      method: 'POST',
+      body: JSON.stringify({ fileContent }),
+    });
+  },
+
+  // Dashboards API
+  async getDashboards(): Promise<ApiResponse<any[]>> {
+    return fetchWithRetry('/dashboards');
+  },
+
+  async loadDashboard(id: string): Promise<ApiResponse<any>> {
+    return fetchWithRetry(`/dashboards/${encodeURIComponent(id)}`);
+  },
+
+  async saveDashboard(dashboard: any): Promise<ApiResponse<any>> {
+    return fetchWithRetry('/dashboards/save', {
+      method: 'POST',
+      body: JSON.stringify(dashboard),
+    });
+  },
+
+  async deleteDashboard(id: string): Promise<ApiResponse<void>> {
+    return fetchWithRetry(`/dashboards/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async getDashboardVersions(id: string): Promise<ApiResponse<any>> {
+    return fetchWithRetry(`/dashboards/${encodeURIComponent(id)}/versions`);
+  },
+
+  async exportDashboard(id: string): Promise<{ blob: Blob; filename: string }> {
+    const response = await fetch(`${API_BASE_URL}/dashboards/${encodeURIComponent(id)}/export`, {
+      headers: {
+        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+      },
+    });
+
+    if (!response.ok) {
+      throw new ApiError(response.status, `Failed to export dashboard: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    return { blob, filename: `dashboard_${id}.json` };
+  },
+
+  async importDashboard(file: File): Promise<ApiResponse<any>> {
+    const text = await file.text();
+    const data = JSON.parse(text);
+
+    return fetchWithRetry<ApiResponse<any>>('/dashboards/import', {
+      method: 'POST',
+      body: JSON.stringify({ data }),
+    });
+  },
+
+  async getHistorianData(params: {
+    tagNames: string[];
+    startTime: string;
+    endTime: string;
+    mode?: string;
+    interval?: number;
+  }): Promise<ApiResponse<any[]>> {
+    return fetchWithRetry(`/data/query`, {
+      method: 'POST',
+      body: JSON.stringify({
+        timeRange: {
+          startTime: params.startTime,
+          endTime: params.endTime
+        },
+        filter: {
+          tagNames: params.tagNames
+        },
+        options: {
+          retrievalMode: params.mode || 'Cyclic',
+          interval: params.interval
+        }
+      })
+    });
+  },
+
   async generateReport(config: any): Promise<ApiResponse<any>> {
     const response = await fetch(`${API_BASE_URL}/reports/generate`, {
       method: 'POST',
@@ -431,14 +543,15 @@ export const apiService = {
   },
 
   async downloadReport(id: string): Promise<Blob> {
+    const token = getAuthToken();
     const response = await fetch(`${API_BASE_URL}/reports/${encodeURIComponent(id)}/download`, {
       headers: {
-        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+        'Authorization': `Bearer ${token}`,
       },
     });
 
     if (!response.ok) {
-      throw new ApiError(response.status, `Failed to download report: ${response.status}`);
+      throw new Error('Failed to download execution report');
     }
 
     return response.blob();
@@ -794,50 +907,6 @@ export const apiService = {
     params.append('path', path);
     params.append('baseType', baseType);
     return fetchWithRetry(`/filesystem/validate-path?${params.toString()}`);
-  },
-
-  // Export/Import Configuration
-  async exportConfiguration(config: ReportConfig, format: ExportFormat): Promise<{ blob: Blob; filename: string }> {
-    // We use raw fetch here because we need both the blob and the headers
-    const response = await fetch(`${API_BASE_URL}/reports/export`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
-      },
-      body: JSON.stringify({ config, format }),
-    });
-
-    if (!response.ok) {
-      let errorMessage = `Export failed with status ${response.status}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.message || errorData.error || errorMessage;
-      } catch {
-        // Not a JSON error
-      }
-      throw new ApiError(response.status, errorMessage);
-    }
-
-    const contentDisposition = response.headers.get('Content-Disposition');
-    let filename = `report-config-${Date.now()}.${format === 'json' ? 'json' : 'm'}`;
-
-    if (contentDisposition) {
-      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-      if (filenameMatch && filenameMatch[1]) {
-        filename = filenameMatch[1].replace(/['"]/g, '');
-      }
-    }
-
-    const blob = await response.blob();
-    return { blob, filename };
-  },
-
-  async importConfiguration(fileContent: string): Promise<ImportResult> {
-    return fetchWithRetry<ImportResult>('/reports/import', {
-      method: 'POST',
-      body: JSON.stringify({ fileContent }),
-    });
   },
 };
 

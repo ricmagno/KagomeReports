@@ -663,12 +663,20 @@ export class UserManagementService {
       ];
 
       for (const userData of users) {
-        const exists = await this.getUserByUsername(userData.username);
-        if (!exists) {
+        const [usernameExists, emailExists] = await Promise.all([
+          this.getUserByUsername(userData.username),
+          this.getUserByEmail(userData.email)
+        ]);
+
+        if (!usernameExists && !emailExists) {
           await this.createUser(userData);
           apiLogger.info('Initial user seeded', { username: userData.username, role: userData.role });
         } else {
-          apiLogger.info('Initial user already exists', { username: userData.username });
+          apiLogger.info('Initial user already exists or email in use', {
+            username: userData.username,
+            usernameExists: !!usernameExists,
+            emailExists: !!emailExists
+          });
         }
       }
 

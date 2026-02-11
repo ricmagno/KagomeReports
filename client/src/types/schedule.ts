@@ -26,6 +26,7 @@ export interface Schedule {
   saveToFile?: boolean;
   sendEmail?: boolean;
   destinationPath?: string;
+  createdBy?: string;
 }
 
 /**

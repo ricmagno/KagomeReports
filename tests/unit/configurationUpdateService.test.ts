@@ -141,7 +141,7 @@ LOG_MAX_FILES=5`;
     const logs = auditLogger.getLogsByAction('change');
 
     expect(logs.length).toBeGreaterThan(0);
-    expect(logs[0].userId).toBe('user123');
+    expect(logs[0]?.userId).toBe('user123');
   });
 
   it('should mask sensitive values in audit logs', async () => {
@@ -154,7 +154,7 @@ LOG_MAX_FILES=5`;
     const auditLogger = updateService.getAuditLogger();
     const logs = auditLogger.getLogsByAction('change');
 
-    expect(logs[0].oldValue).toBe('••••••••');
-    expect(logs[0].newValue).toBe('••••••••');
+    expect(logs[0]?.oldValue).toBe('••••••••');
+    expect(logs[0]?.newValue).toBe('••••••••');
   });
 });

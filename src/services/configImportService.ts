@@ -567,6 +567,10 @@ export class ConfigImportService {
       },
       retrievalMode: exported.sampling.mode,
 
+      // Map template and chart types
+      template: exported.template || exported.customSettings?.template,
+      chartTypes: (exported.chartTypes || exported.customSettings?.chartTypes) as any,
+
       // Map analytics options to ReportConfig fields
       includeSPCCharts: exported.analytics?.showSPCMetrics ?? false,
       includeTrendLines: exported.analytics?.showTrendLine ?? false,

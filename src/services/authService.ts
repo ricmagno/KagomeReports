@@ -209,12 +209,15 @@ export class AuthService {
       // User permissions
       { role: 'user' as const, resource: 'reports', action: 'read' },
       { role: 'user' as const, resource: 'reports', action: 'write' },
+      { role: 'user' as const, resource: 'reports', action: 'delete' },
       { role: 'user' as const, resource: 'schedules', action: 'read' },
       { role: 'user' as const, resource: 'schedules', action: 'write' },
+      { role: 'user' as const, resource: 'schedules', action: 'delete' },
       { role: 'user' as const, resource: 'system', action: 'read' },
 
       // View-Only permissions
       { role: 'view-only' as const, resource: 'reports', action: 'read' },
+      { role: 'view-only' as const, resource: 'schedules', action: 'read' },
       { role: 'view-only' as const, resource: 'system', action: 'read' }
     ];
 
@@ -222,7 +225,7 @@ export class AuthService {
       const permId = `perm_${perm.role}_${perm.resource}_${perm.action}`;
       return new Promise<void>((resolve, reject) => {
         this.db.run(
-          `INSERT OR IGNORE INTO role_permissions (id, role, resource, action, granted)
+          `INSERT OR REPLACE INTO role_permissions (id, role, resource, action, granted)
            VALUES (?, ?, ?, ?, ?)`,
           [permId, perm.role, perm.resource, perm.action, true],
           (err) => {

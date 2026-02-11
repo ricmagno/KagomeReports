@@ -31,11 +31,15 @@ import { SpecificationLimitsConfig } from '../reports/SpecificationLimitsConfig'
 import { AnalyticsOptions } from '../reports/AnalyticsOptions';
 import { ChartOptions } from '../reports/ChartOptions';
 import { ExportImportControls } from '../reports/ExportImportControls';
+import { FormatSelectionDialog, ExportFormat } from '../reports/FormatSelectionDialog';
 import { StatusDashboard } from '../status/StatusDashboard';
 import { SchedulesList, SchedulesErrorBoundary } from '../schedules';
 import { UserManagement } from '../users';
 import { ConfigurationManagement } from '../configuration/ConfigurationManagement';
 import { AboutSection } from '../about/AboutSection';
+import { DashboardList } from '../dashboards/DashboardList';
+import { DashboardView } from '../dashboards/DashboardView';
+import { DashboardEditor } from '../dashboards/DashboardEditor';
 import { apiService } from '../../services/api';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
@@ -48,7 +52,9 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const { user, isAuthenticated, login: authLogin, logout: authLogout, isLoading: authLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'database' | 'users' | 'configuration' | 'about'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'dashboards' | 'schedules' | 'database' | 'users' | 'configuration' | 'about'>('create');
+  const [dashboardViewMode, setDashboardViewMode] = useState<'list' | 'view' | 'edit'>('list');
+  const [selectedDashboardId, setSelectedDashboardId] = useState<string | null>(null);
   const [dbActiveTab, setDbActiveTab] = useState<'status' | 'config'>('status');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [healthStatus, setHealthStatus] = useState<string>('checking...');
@@ -213,6 +219,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const [realTimeEnabled, setRealTimeEnabled] = useState(false);
   const [tagSearchTerm, setTagSearchTerm] = useState('');
   const [availableTags, setAvailableTags] = useState<TagInfo[]>([]);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportingReport, setExportingReport] = useState<any>(null);
 
   // Fetch tags from API when search term changes
   useEffect(() => {
@@ -552,16 +560,39 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
   /**
    * Handle export report configuration
-   * Opens format selection dialog for the selected report
+   * Opens format selection dialog
    */
-  const handleExportReport = async (report: any) => {
+  const handleExportReport = (report: any) => {
+    setExportingReport(report);
+    setShowExportDialog(true);
+  };
+
+  /**
+   * Handle the actual export after format selection
+   */
+  const handleConfirmExport = async (format: ExportFormat) => {
+    if (!exportingReport) return;
+
+    setShowExportDialog(false);
+    setIsLoading(true);
+
     try {
-      // Load the full report configuration first
-      const reportResponse = await apiService.getReportVersion(report.id, report.version);
+      // Always load the full report from the API to ensure we have the complete config
+      // including tags, chart analytics, and correct date formats
+      const reportResponse = await apiService.loadSavedReport(exportingReport.id);
+
+      if (!reportResponse || !reportResponse.success || !reportResponse.data) {
+        throw new Error('Failed to load report configuration from server');
+      }
+
       const fullConfig = reportResponse.data.config;
 
+      if (!fullConfig) {
+        throw new Error('Report configuration is empty');
+      }
+
       // Export the configuration
-      const { blob, filename } = await apiService.exportConfiguration(fullConfig, 'json');
+      const { blob, filename } = await apiService.exportConfiguration(fullConfig, format);
 
       // Trigger download
       const url = window.URL.createObjectURL(blob);
@@ -573,10 +604,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
-      success('Export successful', `Report "${report.name}" has been exported`);
+      success('Export successful', `Report "${exportingReport.name}" has been exported`);
     } catch (err: any) {
       console.error('Export error:', err);
-      toastError('Export failed', err.response?.data?.message || 'Failed to export report configuration');
+      // ApiError has the message from the server in .message
+      const errorMessage = err.message || 'Failed to export report configuration';
+      toastError('Export failed', errorMessage);
+    } finally {
+      setIsLoading(false);
+      setExportingReport(null);
     }
   };
 
@@ -676,6 +712,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             {[
               { id: 'create', label: 'Create Report', icon: Plus },
               { id: 'reports', label: 'My Reports', icon: FileText },
+              { id: 'dashboards', label: 'Dashboards', icon: Activity },
               { id: 'schedules', label: 'Schedules', icon: Calendar },
               { id: 'categories', label: 'Categories', icon: Tag },
               { id: 'status', label: 'Status', icon: Activity },
@@ -758,6 +795,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               {[
                 { id: 'create', label: 'Create Report', icon: Plus },
                 { id: 'reports', label: 'My Reports', icon: FileText },
+                { id: 'dashboards', label: 'Dashboards', icon: Activity },
                 { id: 'schedules', label: 'Schedules', icon: Calendar },
                 { id: 'database', label: 'Database', icon: Database },
                 ...(currentUser?.role === 'admin' ? [{ id: 'configuration', label: 'Configuration', icon: Settings }] : []),
@@ -1063,6 +1101,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             )}
 
             {
+              activeTab === 'dashboards' && (
+                <div className="space-y-6">
+                  {dashboardViewMode === 'list' && (
+                    <DashboardList
+                      onView={(id) => {
+                        setSelectedDashboardId(id);
+                        setDashboardViewMode('view');
+                      }}
+                      onEdit={(id) => {
+                        setSelectedDashboardId(id);
+                        setDashboardViewMode('edit');
+                      }}
+                      onCreate={() => {
+                        setSelectedDashboardId(null);
+                        setDashboardViewMode('edit');
+                      }}
+                    />
+                  )}
+                  {dashboardViewMode === 'view' && selectedDashboardId && (
+                    <DashboardView
+                      dashboardId={selectedDashboardId}
+                      onBack={() => setDashboardViewMode('list')}
+                      onEdit={() => setDashboardViewMode('edit')}
+                    />
+                  )}
+                  {dashboardViewMode === 'edit' && (
+                    <DashboardEditor
+                      dashboardId={selectedDashboardId}
+                      onSave={() => setDashboardViewMode('list')}
+                      onCancel={() => setDashboardViewMode('list')}
+                    />
+                  )}
+                </div>
+              )
+            }
+
+            {
               activeTab === 'reports' && (
                 <div className="space-y-6">
                   {selectedReportForHistory ? (
@@ -1277,6 +1352,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         )}
       </main>
       <ToastContainer toasts={toasts} onClose={id => removeToast(id)} />
+
+      {/* Format Selection Dialog for Saved Reports */}
+      <FormatSelectionDialog
+        isOpen={showExportDialog}
+        onClose={() => {
+          setShowExportDialog(false);
+          setExportingReport(null);
+        }}
+        onSelectFormat={handleConfirmExport}
+      />
     </div>
   );
 };
