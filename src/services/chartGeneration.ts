@@ -5,20 +5,30 @@
  */
 
 import { createCanvas } from 'canvas';
-import { Chart, ChartConfiguration, registerables } from 'chart.js';
+import { Chart, ChartConfiguration, registerables, _adapters } from 'chart.js';
 import annotationPlugin from 'chartjs-plugin-annotation';
 import { TimeSeriesData, StatisticsResult, TrendResult, SPCMetrics, SpecificationLimits } from '@/types/historian';
 import { reportLogger } from '@/utils/logger';
 import { env } from '@/config/environment';
 import { chartBufferValidator } from '@/utils/chartBufferValidator';
 
+// Make sure Chart has _adapters property which the date adapter expects
+if (Chart && !(Chart as any)._adapters) {
+  (Chart as any)._adapters = _adapters;
+}
+
 // Register Chart.js components
 Chart.register(...registerables, annotationPlugin);
 
 // Load date adapter using require (works better in CommonJS context)
 try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const adapter = require('chartjs-adapter-date-fns');
+  // Ensure Chart is available globally for the adapter to find it in Node environment
+  if (typeof global !== 'undefined') {
+    (global as any).Chart = Chart;
+  }
+
+  // Use the standard require which resolves to the correct entry point
+  require('chartjs-adapter-date-fns');
   reportLogger.info('Chart.js date adapter loaded successfully');
 } catch (error) {
   reportLogger.error('Failed to load Chart.js date adapter', {

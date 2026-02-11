@@ -21,36 +21,91 @@ interface DashboardViewProps {
     onEdit: () => void;
 }
 
+interface DashboardState {
+    dashboard: DashboardConfig | null;
+    loading: boolean;
+    refreshEnabled: boolean;
+    secondsUntilRefresh: number;
+    refreshCounter: number;
+    lastRefreshTime: Date;
+}
+
+type DashboardAction =
+    | { type: 'FETCH_START' }
+    | { type: 'FETCH_SUCCESS'; payload: DashboardConfig }
+    | { type: 'FETCH_ERROR' }
+    | { type: 'TOGGLE_REFRESH' }
+    | { type: 'TICK' }
+    | { type: 'FORCE_REFRESH' };
+
+const dashboardReducer = (state: DashboardState, action: DashboardAction): DashboardState => {
+    switch (action.type) {
+        case 'FETCH_START':
+            return { ...state, loading: true };
+        case 'FETCH_SUCCESS':
+            return {
+                ...state,
+                loading: false,
+                dashboard: action.payload,
+                secondsUntilRefresh: action.payload.refreshRate || 30
+            };
+        case 'FETCH_ERROR':
+            return { ...state, loading: false };
+        case 'TOGGLE_REFRESH':
+            return { ...state, refreshEnabled: !state.refreshEnabled };
+        case 'TICK':
+            if (state.secondsUntilRefresh <= 1) {
+                return {
+                    ...state,
+                    secondsUntilRefresh: state.dashboard?.refreshRate || 30,
+                    refreshCounter: state.refreshCounter + 1,
+                    lastRefreshTime: new Date()
+                };
+            }
+            return { ...state, secondsUntilRefresh: state.secondsUntilRefresh - 1 };
+        case 'FORCE_REFRESH':
+            return {
+                ...state,
+                refreshCounter: state.refreshCounter + 1,
+                lastRefreshTime: new Date(),
+                secondsUntilRefresh: state.dashboard?.refreshRate || 30
+            };
+        default:
+            return state;
+    }
+};
+
 export const DashboardView: React.FC<DashboardViewProps> = ({
     dashboardId,
     onBack,
     onEdit
 }) => {
-    const [dashboard, setDashboard] = useState<DashboardConfig | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [refreshEnabled, setRefreshEnabled] = useState(true);
-    const [secondsUntilRefresh, setSecondsUntilRefresh] = useState(30);
-    const [refreshCounter, setRefreshCounter] = useState(0);
-    const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
-    const { error } = useToast();
+    const [state, dispatch] = React.useReducer(dashboardReducer, {
+        dashboard: null,
+        loading: true,
+        refreshEnabled: true,
+        secondsUntilRefresh: 30,
+        refreshCounter: 0,
+        lastRefreshTime: new Date()
+    });
 
+    const { dashboard, loading, refreshEnabled, secondsUntilRefresh, refreshCounter, lastRefreshTime } = state;
+    const { error } = useToast();
 
     const fetchDashboard = useCallback(async () => {
         try {
-            setLoading(true);
+            dispatch({ type: 'FETCH_START' });
             const response = await apiService.loadDashboard(dashboardId);
             if (response.success) {
-                setDashboard(response.data.config);
-                // Reset timer to config rate
-                setSecondsUntilRefresh(response.data.config.refreshRate || 30);
+                dispatch({ type: 'FETCH_SUCCESS', payload: response.data.config });
             } else {
                 error('Failed to load dashboard');
+                dispatch({ type: 'FETCH_ERROR' });
             }
         } catch (err) {
             console.error('Error loading dashboard:', err);
             error('Failed to load dashboard');
-        } finally {
-            setLoading(false);
+            dispatch({ type: 'FETCH_ERROR' });
         }
     }, [dashboardId, error]);
 
@@ -64,18 +119,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             return;
         }
 
-        const refreshRate = dashboard.refreshRate || 30;
-
         const intervalId = setInterval(() => {
-            setSecondsUntilRefresh(prev => {
-                if (prev <= 1) {
-                    // Trigger refresh by incrementing counter
-                    setRefreshCounter(c => c + 1);
-                    setLastRefreshTime(new Date());
-                    return refreshRate;
-                }
-                return prev - 1;
-            });
+            dispatch({ type: 'TICK' });
         }, 1000);
 
         return () => {
@@ -83,15 +128,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         };
     }, [dashboard, refreshEnabled]);
 
-    const toggleRefresh = () => {
-        setRefreshEnabled(!refreshEnabled);
-    };
+    const toggleRefresh = useCallback(() => {
+        dispatch({ type: 'TOGGLE_REFRESH' });
+    }, []);
 
-    const forceRefresh = () => {
-        setRefreshCounter(c => c + 1);
-        setLastRefreshTime(new Date());
-        if (dashboard) setSecondsUntilRefresh(dashboard.refreshRate || 30);
-    };
+    const forceRefresh = useCallback(() => {
+        dispatch({ type: 'FORCE_REFRESH' });
+    }, []);
 
     if (loading) {
         return (

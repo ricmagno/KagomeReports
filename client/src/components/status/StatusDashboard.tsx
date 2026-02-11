@@ -4,7 +4,7 @@
  * Requirements: 2.1, 8.1, 8.2, 8.3, 8.4, 8.5
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useReducer } from 'react';
 import { apiService } from '../../services/api';
 import { SystemStatusResponse } from '../../types/systemStatus';
 import { RefreshCw, AlertCircle, Download } from 'lucide-react';
@@ -29,21 +29,95 @@ interface StatusDashboardState {
   showExportMenu: boolean;
 }
 
+type StatusAction =
+  | { type: 'FETCH_START' }
+  | { type: 'FETCH_SUCCESS'; payload: SystemStatusResponse; refreshInterval: number }
+  | { type: 'FETCH_ERROR'; payload: string }
+  | { type: 'TOGGLE_AUTO_REFRESH'; payload?: boolean }
+  | { type: 'TICK'; refreshInterval: number }
+  | { type: 'SET_EXPORTING'; payload: boolean }
+  | { type: 'TOGGLE_EXPORT_MENU' }
+  | { type: 'CLOSE_EXPORT_MENU' };
+
+const statusReducer = (state: StatusDashboardState, action: StatusAction): StatusDashboardState => {
+  switch (action.type) {
+    case 'FETCH_START':
+      return { ...state, loading: true, error: null };
+    case 'FETCH_SUCCESS':
+      return {
+        ...state,
+        loading: false,
+        statusData: action.payload,
+        error: null,
+        countdown: action.refreshInterval
+      };
+    case 'FETCH_ERROR':
+      return { ...state, loading: false, error: action.payload };
+    case 'TOGGLE_AUTO_REFRESH':
+      return {
+        ...state,
+        autoRefreshEnabled: action.payload !== undefined ? action.payload : !state.autoRefreshEnabled
+      };
+    case 'TICK':
+      if (state.countdown <= 1) {
+        return { ...state, countdown: action.refreshInterval };
+      }
+      return { ...state, countdown: state.countdown - 1 };
+    case 'SET_EXPORTING':
+      return { ...state, exporting: action.payload };
+    case 'TOGGLE_EXPORT_MENU':
+      return { ...state, showExportMenu: !state.showExportMenu };
+    case 'CLOSE_EXPORT_MENU':
+      return { ...state, showExportMenu: false };
+    default:
+      return state;
+  }
+};
+
 export const StatusDashboard: React.FC<StatusDashboardProps> = ({
   autoRefresh = true,
   refreshInterval = 30
 }) => {
-  const [statusData, setStatusData] = useState<SystemStatusResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(autoRefresh);
-  const [countdown, setCountdown] = useState(refreshInterval);
-  const [exporting, setExporting] = useState(false);
-  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [state, dispatch] = useReducer(statusReducer, {
+    statusData: null,
+    loading: true,
+    error: null,
+    autoRefreshEnabled: autoRefresh,
+    countdown: refreshInterval,
+    exporting: false,
+    showExportMenu: false
+  });
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const countdownRef = useRef<NodeJS.Timeout | null>(null);
+  const { statusData, loading, error, autoRefreshEnabled, countdown, exporting, showExportMenu } = state;
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * Fetch status data from API
+   */
+  const fetchStatusData = useCallback(async (isManual = false) => {
+    try {
+      dispatch({ type: 'FETCH_START' });
+
+      const response = isManual
+        ? await apiService.refreshSystemStatus()
+        : await apiService.getSystemStatus() as SystemStatusResponse;
+
+      dispatch({ type: 'FETCH_SUCCESS', payload: response, refreshInterval });
+    } catch (err) {
+      console.error('Failed to fetch status data:', err);
+      dispatch({
+        type: 'FETCH_ERROR',
+        payload: err instanceof Error ? err.message : 'Failed to load status data'
+      });
+    }
+  }, [refreshInterval]);
+
+  /**
+   * Handle manual refresh
+   */
+  const handleManualRefresh = useCallback(() => {
+    fetchStatusData(true);
+  }, [fetchStatusData]);
 
   /**
    * Close export menu when clicking outside
@@ -51,7 +125,7 @@ export const StatusDashboard: React.FC<StatusDashboardProps> = ({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
-        setShowExportMenu(false);
+        dispatch({ type: 'CLOSE_EXPORT_MENU' });
       }
     };
 
@@ -62,109 +136,51 @@ export const StatusDashboard: React.FC<StatusDashboardProps> = ({
   }, [showExportMenu]);
 
   /**
-   * Fetch status data from API
+   * Initial data fetch
    */
-  const fetchStatusData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await apiService.getSystemStatus() as SystemStatusResponse;
-
-      setStatusData(response);
-      setLoading(false);
-      setCountdown(refreshInterval);
-    } catch (err) {
-      console.error('Failed to fetch status data:', err);
-      setLoading(false);
-      setError(err instanceof Error ? err.message : 'Failed to load status data');
-    }
-  }, [refreshInterval]);
+  useEffect(() => {
+    fetchStatusData();
+  }, [fetchStatusData]);
 
   /**
-   * Handle manual refresh
+   * Auto-refresh Timer Effect
    */
-  const handleManualRefresh = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  useEffect(() => {
+    if (!autoRefreshEnabled) return;
 
-      // Force refresh with cache clear
-      const response = await apiService.refreshSystemStatus();
-
-      setStatusData(response);
-      setLoading(false);
-      setCountdown(refreshInterval);
-    } catch (err) {
-      console.error('Failed to refresh status data:', err);
-      setLoading(false);
-      setError(err instanceof Error ? err.message : 'Failed to refresh status data');
-    }
-  }, [refreshInterval]);
-
-  /**
-   * Start auto-refresh
-   */
-  const startAutoRefresh = useCallback(() => {
-    // Clear existing intervals
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (countdownRef.current) clearInterval(countdownRef.current);
-
-    // Set up refresh interval
-    intervalRef.current = setInterval(() => {
-      fetchStatusData();
-    }, refreshInterval * 1000);
-
-    // Set up countdown timer
-    countdownRef.current = setInterval(() => {
-      setCountdown(prev => {
-        const next = prev - 1;
-        return next <= 0 ? refreshInterval : next;
-      });
+    const timer = setInterval(() => {
+      dispatch({ type: 'TICK', refreshInterval });
     }, 1000);
 
-    setAutoRefreshEnabled(true);
-    setCountdown(refreshInterval);
-  }, [fetchStatusData, refreshInterval]);
+    return () => clearInterval(timer);
+  }, [autoRefreshEnabled, refreshInterval]);
 
   /**
-   * Stop auto-refresh
+   * Trigger refresh when countdown resets
    */
-  const stopAutoRefresh = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+  useEffect(() => {
+    if (autoRefreshEnabled && countdown === refreshInterval && !loading) {
+      fetchStatusData();
     }
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-      countdownRef.current = null;
-    }
-
-    setAutoRefreshEnabled(false);
-  }, []);
+  }, [countdown, autoRefreshEnabled, refreshInterval, loading, fetchStatusData]);
 
   /**
    * Toggle auto-refresh
    */
   const toggleAutoRefresh = useCallback(() => {
-    if (autoRefreshEnabled) {
-      stopAutoRefresh();
-    } else {
-      startAutoRefresh();
-    }
-  }, [autoRefreshEnabled, startAutoRefresh, stopAutoRefresh]);
+    dispatch({ type: 'TOGGLE_AUTO_REFRESH' });
+  }, []);
 
   /**
    * Handle export
    */
   const handleExport = useCallback(async (format: 'csv' | 'json') => {
     try {
-      setExporting(true);
-      setShowExportMenu(false);
+      dispatch({ type: 'SET_EXPORTING', payload: true });
+      dispatch({ type: 'CLOSE_EXPORT_MENU' });
 
       const blob = await apiService.exportSystemStatus(format);
 
-      // Create download link
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -175,11 +191,14 @@ export const StatusDashboard: React.FC<StatusDashboardProps> = ({
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
-      setExporting(false);
+      dispatch({ type: 'SET_EXPORTING', payload: false });
     } catch (err) {
       console.error('Failed to export status data:', err);
-      setExporting(false);
-      setError(err instanceof Error ? err.message : 'Failed to export status data');
+      dispatch({ type: 'SET_EXPORTING', payload: false });
+      dispatch({
+        type: 'FETCH_ERROR',
+        payload: err instanceof Error ? err.message : 'Failed to export status data'
+      });
     }
   }, []);
 
@@ -187,25 +206,8 @@ export const StatusDashboard: React.FC<StatusDashboardProps> = ({
    * Toggle export menu
    */
   const toggleExportMenu = useCallback(() => {
-    setShowExportMenu(prev => !prev);
+    dispatch({ type: 'TOGGLE_EXPORT_MENU' });
   }, []);
-
-  /**
-   * Initial data fetch and auto-refresh setup
-   */
-  useEffect(() => {
-    fetchStatusData();
-
-    if (autoRefresh) {
-      startAutoRefresh();
-    }
-
-    // Cleanup on unmount
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (countdownRef.current) clearInterval(countdownRef.current);
-    };
-  }, [fetchStatusData, startAutoRefresh, autoRefresh]);
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
@@ -226,8 +228,8 @@ export const StatusDashboard: React.FC<StatusDashboardProps> = ({
               <button
                 onClick={toggleAutoRefresh}
                 className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors touch-manipulation ${autoRefreshEnabled
-                    ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
-                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300 active:bg-gray-400'
+                  ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300 active:bg-gray-400'
                   }`}
               >
                 {autoRefreshEnabled ? 'Auto-refresh On' : 'Auto-refresh Off'}
