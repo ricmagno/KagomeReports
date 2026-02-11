@@ -8,19 +8,42 @@ import { Button } from '../ui/Button';
 import { apiService } from '../../services/api';
 import { formatYValue } from '../charts/chartUtils';
 import { InteractiveChart } from '../charts/InteractiveChart';
-import { TimeSeriesData } from '../../types/api';
+import { TimeSeriesData, TagInfo } from '../../types/api';
 import { useMemo } from 'react';
+import { RadialGauge } from './RadialGauge';
+import { ValueBlock } from './ValueBlock';
+import { RadarChart } from '../charts/RadarChart';
 
 interface WidgetProps {
     widget: WidgetConfig;
-    refreshToggle?: boolean;
+    refreshToggle?: boolean | number;
+    globalTimeRange?: {
+        startTime?: string | Date;
+        endTime?: string | Date;
+        relativeRange?: string;
+    };
 }
 
-export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle }) => {
+export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle, globalTimeRange }) => {
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [errorStatus, setErrorStatus] = useState<string | null>(null);
+    const [tagInfoMap, setTagInfoMap] = useState<Record<string, TagInfo>>({});
     const [isMaximized, setIsMaximized] = useState(false);
+    const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+    const getRangeSeconds = (range?: string) => {
+        switch (range) {
+            case 'last1h': return 3600;
+            case 'last2h': return 7200;
+            case 'last6h': return 21600;
+            case 'last12h': return 43200;
+            case 'last24h': return 86400;
+            case 'last7d': return 604800;
+            case 'last30d': return 2592000;
+            default: return 3600;
+        }
+    };
 
     const fetchData = async () => {
         if (widget.tags.length === 0) return;
@@ -29,20 +52,47 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle }) => {
             setLoading(true);
             setErrorStatus(null);
 
-            // Calculate time range based on widget config or default
+            // Calculate time range based on widget config or global dashboard config
             const endTime = new Date();
-            const startTime = new Date(endTime.getTime() - 60 * 60 * 1000); // Default: 1 hour
+            let startTime = new Date(endTime.getTime() - 60 * 60 * 1000); // Default: 1 hour
+
+            if (globalTimeRange?.relativeRange) {
+                const seconds = getRangeSeconds(globalTimeRange.relativeRange);
+                startTime = new Date(endTime.getTime() - seconds * 1000);
+            } else if (globalTimeRange?.startTime) {
+                startTime = new Date(globalTimeRange.startTime);
+            }
 
             const response = await apiService.getHistorianData({
                 tagNames: widget.tags,
                 startTime: startTime.toISOString(),
                 endTime: endTime.toISOString(),
                 mode: 'Cyclic',
-                interval: 60 // 1 minute interval for dashboards usually
+                interval: 10 // More responsive 10s interval for dashboards
             });
 
             if (response.success && response.data) {
                 setData(response.data);
+                setLastUpdated(new Date());
+
+                // Fetch tag info for metadata (min/max/units) if we don't have it
+                const missingTags = widget.tags.filter(tag => !tagInfoMap[tag]);
+                if (missingTags.length > 0) {
+                    try {
+                        const infoPromises = missingTags.map(tag => apiService.getTagInfo(tag));
+                        const infoResponses = await Promise.all(infoPromises);
+
+                        const newInfoMap = { ...tagInfoMap };
+                        infoResponses.forEach((res, index) => {
+                            if (res.success && res.data) {
+                                newInfoMap[missingTags[index]] = res.data;
+                            }
+                        });
+                        setTagInfoMap(newInfoMap);
+                    } catch (metaErr) {
+                        console.warn('Failed to fetch widget metadata, using defaults:', metaErr);
+                    }
+                }
             } else {
                 setErrorStatus(response.message || 'Failed to fetch data');
             }
@@ -56,7 +106,7 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle }) => {
 
     useEffect(() => {
         fetchData();
-    }, [widget.tags, refreshToggle]);
+    }, [widget.tags, refreshToggle, globalTimeRange]);
 
     // Group and format data points for InteractiveChart
     const dataPoints = useMemo(() => {
@@ -97,7 +147,7 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle }) => {
     const renderContent = () => {
         if (loading && data.length === 0) {
             return (
-                <div className="flex items-center justify-center h-48">
+                <div className="flex items-center justify-center h-full min-h-[200px]">
                     <Spinner size="md" />
                 </div>
             );
@@ -105,7 +155,7 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle }) => {
 
         if (errorStatus) {
             return (
-                <div className="flex flex-col items-center justify-center h-48 text-red-500 text-center p-4">
+                <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-red-500 text-center p-4">
                     <AlertCircle className="h-8 w-8 mb-2" />
                     <p className="text-sm font-medium">{errorStatus}</p>
                     <Button variant="ghost" size="sm" onClick={fetchData} className="mt-2">
@@ -117,8 +167,56 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle }) => {
 
         if (!widget.tags || widget.tags.length === 0) {
             return (
-                <div className="flex flex-col items-center justify-center h-48 text-gray-400 text-center p-4">
+                <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-gray-400 text-center p-4">
                     <p className="text-sm">No tags configured for this widget</p>
+                </div>
+            );
+        }
+
+        if (widget.type === 'radial-gauge' || widget.type === 'value-block') {
+            const tagName = widget.tags[0];
+            const tagData = dataPoints[tagName] || [];
+            const lastPoint = tagData[tagData.length - 1];
+            const tagInfo = tagInfoMap[tagName];
+
+            if (widget.type === 'radial-gauge') {
+                return (
+                    <RadialGauge
+                        value={lastPoint?.value || 0}
+                        min={tagInfo?.minValue || 0}
+                        max={tagInfo?.maxValue || 100}
+                        tagName={tagName}
+                        unit={tagInfo?.units || ''}
+                        isMaximized={isMaximized}
+                    />
+                );
+            }
+
+            return (
+                <div className="h-full w-full">
+                    <ValueBlock
+                        tagName={tagName}
+                        value={lastPoint?.value ?? 'N/A'}
+                        unit={tagInfo?.units}
+                        description={tagInfo?.description}
+                        status={lastPoint?.quality === 'Good' || lastPoint?.quality === 192 ? 'good' : 'bad'}
+                        className="rounded-none border-0 shadow-none bg-transparent"
+                        isMaximized={isMaximized}
+                    />
+                </div>
+            );
+        }
+
+        if (widget.type === 'radar') {
+            const radarData: Record<string, number> = {};
+            widget.tags.forEach(tag => {
+                const tagData = dataPoints[tag] || [];
+                radarData[tag] = tagData[tagData.length - 1]?.value || 0;
+            });
+
+            return (
+                <div className="h-full w-full">
+                    <RadarChart data={radarData} title={widget.title} />
                 </div>
             );
         }
@@ -128,7 +226,10 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle }) => {
                 widget.type;
 
         return (
-            <div className="h-full w-full flex flex-col">
+            <div className={cn(
+                "h-full w-full flex flex-col transition-opacity duration-300",
+                loading && data.length > 0 ? "opacity-60" : "opacity-100"
+            )}>
                 <InteractiveChart
                     dataPoints={dataPoints}
                     tagDescriptions={tagDescriptions}
@@ -137,19 +238,29 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle }) => {
                     width="100%"
                     height="100%"
                     displayMode="multi"
-                    enableGuideLines={true}
+                    enableGuideLines={false}
                     includeTrendLines={true}
                     title={undefined}
                     className="p-2 flex-1"
                     chartClassName="bg-transparent border-0 shadow-none p-0"
                 />
+                {loading && data.length > 0 && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/10 pointer-events-none">
+                        <div className="bg-white/80 rounded-full p-2 shadow-sm border border-gray-100">
+                            <RefreshCw className="h-4 w-4 text-primary-500 animate-spin" />
+                        </div>
+                    </div>
+                )}
             </div>
         );
     };
 
     // Convert layout dimensions to style or class
     // For now using simple aspect ratio or fixed height based on 'h'
-    const heightClass = widget.layout.h === 1 ? 'h-64' : widget.layout.h === 2 ? 'h-[512px]' : 'h-80';
+    const heightClass = widget.type === 'value-block' ? 'h-40' :
+        widget.layout.h === 1 ? 'h-64' :
+            widget.layout.h === 2 ? 'h-[512px]' :
+                'h-80';
 
     return (
         <>
@@ -157,10 +268,17 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle }) => {
                 "h-full flex flex-col overflow-hidden transition-all duration-300",
                 isMaximized ? "fixed inset-0 z-[100] m-4 md:m-8 shadow-2xl ring-2 ring-primary-500 bg-white" : "relative"
             )}>
-                <CardHeader className="py-3 px-4 flex-row items-center justify-between border-b border-gray-100 bg-gray-50/50">
-                    <h3 className="text-sm font-semibold text-gray-700 truncate">{widget.title}</h3>
+                <CardHeader className="py-2 px-4 flex-row items-center justify-between border-b border-gray-100 bg-gray-50/50">
+                    <div className="flex flex-col min-w-0">
+                        <h3 className="text-sm font-semibold text-gray-700 truncate">{widget.title}</h3>
+                        {lastUpdated && (
+                            <span className="text-[10px] text-gray-400 font-medium">
+                                Updated: {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            </span>
+                        )}
+                    </div>
                     <div className="flex items-center space-x-1">
-                        <button onClick={fetchData} className="p-1 hover:bg-gray-200 rounded transition-colors text-gray-400">
+                        <button onClick={fetchData} title="Refresh data" className="p-1 hover:bg-gray-200 rounded transition-colors text-gray-400">
                             <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
                         </button>
                         <button

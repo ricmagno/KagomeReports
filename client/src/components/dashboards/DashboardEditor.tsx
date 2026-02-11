@@ -53,7 +53,21 @@ export const DashboardEditor: React.FC<DashboardEditorProps> = ({
                     setLoading(true);
                     const response = await apiService.loadDashboard(dashboardId);
                     if (response.success) {
-                        setConfig(response.data.config);
+                        const loadedConfig = response.data.config;
+                        // Sanitize layout for legacy data
+                        if (loadedConfig.widgets) {
+                            loadedConfig.widgets = loadedConfig.widgets.map((w: WidgetConfig) => {
+                                const isSmall = w.type === 'value-block' || w.type === 'radial-gauge';
+                                if (isSmall && w.layout.w !== 1) {
+                                    return { ...w, layout: { ...w.layout, w: 1, h: 1 } };
+                                }
+                                if (!isSmall && w.layout.w === 1) {
+                                    return { ...w, layout: { ...w.layout, w: 2, h: 1 } };
+                                }
+                                return w;
+                            });
+                        }
+                        setConfig(loadedConfig);
                     } else {
                         error('Failed to load dashboard');
                     }
@@ -74,7 +88,7 @@ export const DashboardEditor: React.FC<DashboardEditorProps> = ({
             type: 'line',
             title: `New Widget ${config.widgets.length + 1}`,
             tags: [],
-            layout: { x: 0, y: 0, w: 2, h: 1 }
+            layout: { x: 0, y: 0, w: 2, h: 1 } // Chart default width is 2
         };
         setConfig(prev => ({
             ...prev,
@@ -85,7 +99,26 @@ export const DashboardEditor: React.FC<DashboardEditorProps> = ({
     const handleUpdateWidget = (id: string, updates: Partial<WidgetConfig>) => {
         setConfig(prev => ({
             ...prev,
-            widgets: prev.widgets.map(w => w.id === id ? { ...w, ...updates } : w)
+            widgets: prev.widgets.map(w => {
+                if (w.id !== id) return w;
+
+                const updated = { ...w, ...updates };
+
+                // Enforce width rules when type changes
+                if (updates.type) {
+                    const isSmallWidget = updates.type === 'value-block' || updates.type === 'radial-gauge';
+                    const wasSmallWidget = w.type === 'value-block' || w.type === 'radial-gauge';
+
+                    if (isSmallWidget) {
+                        updated.layout = { ...updated.layout, w: 1, h: 1 };
+                    } else if (wasSmallWidget) {
+                        // Switching from a small widget to a chart
+                        updated.layout = { ...updated.layout, w: 2, h: 1 };
+                    }
+                }
+
+                return updated;
+            })
         }));
     };
 
@@ -262,6 +295,9 @@ export const DashboardEditor: React.FC<DashboardEditorProps> = ({
                                                     <option value="bar">Bar Chart</option>
                                                     <option value="trend">Trend Line</option>
                                                     <option value="area">Area Chart</option>
+                                                    <option value="radial-gauge">Radial Gauge %</option>
+                                                    <option value="value-block">Value Block</option>
+                                                    <option value="radar">Radar Chart</option>
                                                 </select>
                                             </div>
                                             <div className="space-y-1">
@@ -273,10 +309,16 @@ export const DashboardEditor: React.FC<DashboardEditorProps> = ({
                                                         layout: { ...widget.layout, w: parseInt(e.target.value) as any }
                                                     })}
                                                 >
-                                                    <option value={1}>1/4 (Small)</option>
-                                                    <option value={2}>1/2 (Medium)</option>
-                                                    <option value={3}>3/4 (Large)</option>
-                                                    <option value={4}>Full Width</option>
+                                                    {widget.type === 'value-block' || widget.type === 'radial-gauge' ? (
+                                                        <>
+                                                            <option value={1}>1/4 (Block)</option>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <option value={2}>1/2 (Default Chart)</option>
+                                                            <option value={4}>Full Width (4/4)</option>
+                                                        </>
+                                                    )}
                                                 </select>
                                             </div>
                                         </div>

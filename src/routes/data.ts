@@ -82,6 +82,32 @@ router.get('/tags', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 /**
+ * GET /api/data/tags/:tagName
+ * Get metadata for a specific tag
+ */
+router.get('/tags/:tagName', asyncHandler(async (req: Request, res: Response) => {
+  const { tagName } = req.params;
+
+  if (!tagName) {
+    throw createError('Tag name is required', 400);
+  }
+
+  apiLogger.info('Retrieving tag info', { tagName });
+
+  const dataRetrievalService = cacheManager.getDataRetrievalService();
+  const tagInfo = await dataRetrievalService.getTagInfo(tagName);
+
+  if (!tagInfo) {
+    throw createError(`Tag ${tagName} not found`, 404);
+  }
+
+  res.json({
+    success: true,
+    data: tagInfo
+  });
+}));
+
+/**
  * GET /api/data/:tagName
  * Get time-series data for a specific tag
  */

@@ -585,6 +585,56 @@ export class DataRetrievalService {
   }
 
   /**
+   * Get metadata for a specific tag
+   */
+  async getTagInfo(tagName: string): Promise<TagInfo | null> {
+    try {
+      dbLogger.info('Retrieving info for tag', { tagName });
+
+      const query = `
+        SELECT 
+          t.TagName as name,
+          t.Description as description,
+          eu.Unit as units,
+          CASE 
+            WHEN t.TagType = 1 THEN 'analog'
+            WHEN t.TagType = 2 THEN 'discrete'
+            WHEN t.TagType = 3 THEN 'string'
+            ELSE 'unknown'
+          END as dataType,
+          t.DateCreated as lastUpdate,
+          at.MinEU as minValue,
+          at.MaxEU as maxValue
+        FROM Tag t
+        LEFT JOIN AnalogTag at ON t.TagName = at.TagName
+        LEFT JOIN EngineeringUnit eu ON at.EUKey = eu.EUKey
+        WHERE t.TagName = @tagName
+      `;
+
+      const result = await this.getConnection().executeQuery<any>(query, { tagName });
+
+      if (result.recordset.length === 0) {
+        return null;
+      }
+
+      const row = result.recordset[0];
+      return {
+        name: row.name,
+        description: row.description || '',
+        units: row.units || '',
+        dataType: row.dataType,
+        lastUpdate: new Date(row.lastUpdate),
+        minValue: row.minValue,
+        maxValue: row.maxValue
+      };
+
+    } catch (error) {
+      dbLogger.error('Failed to retrieve tag info:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get filtered time-series data with pagination
    */
   async getFilteredData(

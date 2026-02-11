@@ -30,10 +30,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const [loading, setLoading] = useState(true);
     const [refreshEnabled, setRefreshEnabled] = useState(true);
     const [secondsUntilRefresh, setSecondsUntilRefresh] = useState(30);
-    const [refreshToggle, setRefreshToggle] = useState(false);
+    const [refreshCounter, setRefreshCounter] = useState(0);
+    const [lastRefreshTime, setLastRefreshTime] = useState<Date>(new Date());
     const { error } = useToast();
 
-    const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
     const fetchDashboard = async () => {
@@ -42,6 +42,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             const response = await apiService.loadDashboard(dashboardId);
             if (response.success) {
                 setDashboard(response.data.config);
+                // Reset timer to config rate
                 setSecondsUntilRefresh(response.data.config.refreshRate || 30);
             } else {
                 error('Failed to load dashboard');
@@ -58,7 +59,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         fetchDashboard();
     }, [dashboardId]);
 
-    // Handle auto-refresh logic
+    // Independent timer effect
     useEffect(() => {
         if (!dashboard || !refreshEnabled) {
             if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
@@ -70,7 +71,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         timerIntervalRef.current = setInterval(() => {
             setSecondsUntilRefresh(prev => {
                 if (prev <= 1) {
-                    setRefreshToggle(t => !t); // Trigger widgets refresh
+                    // Trigger refresh by incrementing counter
+                    setRefreshCounter(c => c + 1);
+                    setLastRefreshTime(new Date());
                     return refreshRate;
                 }
                 return prev - 1;
@@ -87,7 +90,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     };
 
     const forceRefresh = () => {
-        setRefreshToggle(t => !t);
+        setRefreshCounter(c => c + 1);
+        setLastRefreshTime(new Date());
         if (dashboard) setSecondsUntilRefresh(dashboard.refreshRate || 30);
     };
 
@@ -130,6 +134,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             <span className="mx-2">•</span>
                             <Calendar className="h-3 w-3 mr-1" />
                             <span>{dashboard.timeRange.relativeRange || 'Manual'}</span>
+                            <span className="mx-2">•</span>
+                            <span className="text-primary-600 font-medium tracking-tight">
+                                Updated: {lastRefreshTime.toLocaleTimeString()}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -168,13 +176,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <div
                         key={widget.id}
                         className={
-                            widget.layout.w === 4 ? 'col-span-1 md:col-span-2 lg:col-span-4' :
-                                widget.layout.w === 3 ? 'col-span-1 md:col-span-2 lg:col-span-3' :
-                                    widget.layout.w === 2 ? 'col-span-1 md:col-span-2' :
-                                        'col-span-1'
+                            (widget.type === 'value-block' || widget.type === 'radial-gauge') ? 'col-span-1' :
+                                widget.layout.w === 4 ? 'col-span-1 md:col-span-2 lg:col-span-4' :
+                                    widget.layout.w === 3 ? 'col-span-1 md:col-span-2 lg:col-span-3' :
+                                        widget.layout.w === 2 ? 'col-span-1 md:col-span-2' :
+                                            'col-span-1 md:col-span-2' // Default for charts is 2 if somehow it was set to 1
                         }
                     >
-                        <Widget widget={widget} refreshToggle={refreshToggle} />
+                        <Widget
+                            widget={widget}
+                            refreshToggle={refreshCounter}
+                            globalTimeRange={dashboard.timeRange}
+                        />
                     </div>
                 ))}
             </div>

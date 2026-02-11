@@ -18,15 +18,26 @@ import {
 import { logger } from '../utils/logger';
 import { getDatabasePath } from '@/config/environment';
 import { DashboardVersionService } from './dashboardVersionService';
+import { authService } from './authService';
 
 export class DashboardManagementService {
     private db: Database;
     private versionService: DashboardVersionService;
+    private initPromise: Promise<void> | null = null;
 
     constructor(database: Database) {
         this.db = database;
         this.versionService = new DashboardVersionService(database);
-        this.initializeTables();
+        this.initPromise = this.initializeTables();
+    }
+
+    /**
+     * Wait for service initialization to complete
+     */
+    async waitForInitialization(): Promise<void> {
+        if (this.initPromise) {
+            await this.initPromise;
+        }
     }
 
     /**
@@ -53,65 +64,84 @@ export class DashboardManagementService {
     /**
      * Initialize database tables for dashboard management
      */
-    private initializeTables(): void {
-        // Attach auth database for user lookups
-        const authDbPath = getDatabasePath('auth.db');
-        this.db.run(`ATTACH DATABASE '${authDbPath}' AS auth`, (err) => {
-            if (err) {
-                logger.debug('Auth database attachment note (can be ignored if already attached):', err.message);
-            }
-        });
+    private async initializeTables(): Promise<void> {
+        try {
+            // Wait for auth service to be ready before attaching
+            await authService.waitForInitialization();
 
-        const createDashboardsTable = `
-      CREATE TABLE IF NOT EXISTS dashboards (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT,
-        config JSON NOT NULL,
-        version INTEGER DEFAULT 1,
-        is_latest_version BOOLEAN DEFAULT true,
-        created_by TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `;
-
-        const createDashboardVersionsTable = `
-      CREATE TABLE IF NOT EXISTS dashboard_versions (
-        id TEXT PRIMARY KEY,
-        dashboard_id TEXT NOT NULL,
-        version INTEGER NOT NULL,
-        config JSON NOT NULL,
-        change_description TEXT,
-        is_active BOOLEAN DEFAULT true,
-        created_by TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(dashboard_id, version)
-      )
-    `;
-
-        const createIndexes = [
-            'CREATE INDEX IF NOT EXISTS idx_dashboards_name ON dashboards(name)',
-            'CREATE INDEX IF NOT EXISTS idx_dashboards_created_by ON dashboards(created_by)',
-            'CREATE INDEX IF NOT EXISTS idx_dashboard_versions_dashboard_id ON dashboard_versions(dashboard_id)',
-            'CREATE INDEX IF NOT EXISTS idx_dashboard_versions_version ON dashboard_versions(dashboard_id, version DESC)'
-        ];
-
-        this.db.serialize(() => {
-            this.db.run(createDashboardsTable, (err) => {
-                if (err) logger.error('Error creating dashboards table:', err);
-            });
-            this.db.run(createDashboardVersionsTable, (err) => {
-                if (err) logger.error('Error creating dashboard_versions table:', err);
-            });
-            createIndexes.forEach(index => {
-                this.db.run(index, (err) => {
-                    if (err) logger.error('Error creating index:', err);
+            // Attach auth database for user lookups
+            const authDbPath = getDatabasePath('auth.db');
+            await new Promise<void>((resolve, reject) => {
+                this.db.run(`ATTACH DATABASE '${authDbPath}' AS auth`, (err) => {
+                    if (err) {
+                        logger.debug('Auth database attachment note (can be ignored if already attached):', err.message);
+                        // If it fails because it's already attached, that's fine
+                        if (err.message.includes('already being used') || err.message.includes('database auth is already in use')) {
+                            resolve();
+                            return;
+                        }
+                    }
+                    resolve();
                 });
             });
-        });
 
-        logger.info('Dashboard management tables initialized');
+            const createDashboardsTable = `
+          CREATE TABLE IF NOT EXISTS dashboards (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            config JSON NOT NULL,
+            version INTEGER DEFAULT 1,
+            is_latest_version BOOLEAN DEFAULT true,
+            created_by TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `;
+
+            const createDashboardVersionsTable = `
+          CREATE TABLE IF NOT EXISTS dashboard_versions (
+            id TEXT PRIMARY KEY,
+            dashboard_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            config JSON NOT NULL,
+            change_description TEXT,
+            is_active BOOLEAN DEFAULT true,
+            created_by TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(dashboard_id, version)
+          )
+        `;
+
+            const createIndexes = [
+                'CREATE INDEX IF NOT EXISTS idx_dashboards_name ON dashboards(name)',
+                'CREATE INDEX IF NOT EXISTS idx_dashboards_created_by ON dashboards(created_by)',
+                'CREATE INDEX IF NOT EXISTS idx_dashboard_versions_dashboard_id ON dashboard_versions(dashboard_id)',
+                'CREATE INDEX IF NOT EXISTS idx_dashboard_versions_version ON dashboard_versions(dashboard_id, version DESC)'
+            ];
+
+            await new Promise<void>((resolve, reject) => {
+                this.db.serialize(() => {
+                    this.db.run(createDashboardsTable, (err) => {
+                        if (err) logger.error('Error creating dashboards table:', err);
+                    });
+                    this.db.run(createDashboardVersionsTable, (err) => {
+                        if (err) logger.error('Error creating dashboard_versions table:', err);
+                    });
+                    createIndexes.forEach(index => {
+                        this.db.run(index, (err) => {
+                            if (err) logger.error('Error creating index:', err);
+                        });
+                    });
+                    resolve();
+                });
+            });
+
+            logger.info('Dashboard management tables initialized');
+        } catch (error) {
+            logger.error('Failed to initialize dashboard management tables:', error);
+            throw error;
+        }
     }
 
     /**
@@ -190,6 +220,7 @@ export class DashboardManagementService {
      * Save a dashboard configuration
      */
     async saveDashboard(request: SaveDashboardRequest, userId: string): Promise<SaveDashboardResponse> {
+        await this.waitForInitialization();
         try {
             const fullConfig = {
                 id: '',
@@ -297,6 +328,7 @@ export class DashboardManagementService {
      * Load a specific dashboard configuration
      */
     async loadDashboard(dashboardId: string): Promise<SavedDashboard | null> {
+        await this.waitForInitialization();
         return new Promise((resolve, reject) => {
             const query = `
         SELECT d.*, u.username as created_by_name 
@@ -346,6 +378,7 @@ export class DashboardManagementService {
      * List all saved dashboards
      */
     async listDashboards(userId?: string): Promise<DashboardListItem[]> {
+        await this.waitForInitialization();
         return new Promise((resolve, reject) => {
             let query = `
         SELECT 
@@ -396,6 +429,7 @@ export class DashboardManagementService {
      * Delete a dashboard and all its versions
      */
     async deleteDashboard(dashboardId: string, userId: string): Promise<boolean> {
+        await this.waitForInitialization();
         try {
             const dashboard = await this.loadDashboard(dashboardId);
             if (!dashboard) return false;
@@ -431,6 +465,7 @@ export class DashboardManagementService {
      * Get version history for a dashboard
      */
     async getDashboardVersions(dashboardName: string): Promise<DashboardVersionHistory | null> {
+        await this.waitForInitialization();
         return new Promise((resolve, reject) => {
             const query = `
         SELECT dv.*, u.username as created_by_name 
@@ -471,6 +506,7 @@ export class DashboardManagementService {
      * Create a new version of an existing dashboard
      */
     async createNewVersion(dashboardName: string, config: DashboardConfig, userId: string, changeDescription?: string): Promise<DashboardVersion | null> {
+        await this.waitForInitialization();
         try {
             const version = await this.getNextVersionNumber(dashboardName);
             await this.markPreviousVersionsAsOld(dashboardName);

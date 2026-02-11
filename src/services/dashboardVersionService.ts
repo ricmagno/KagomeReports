@@ -13,9 +13,12 @@ import {
     VersionCleanupPolicy
 } from '../types/dashboard';
 import { logger } from '../utils/logger';
+import { getDatabasePath } from '@/config/environment';
+import { authService } from './authService';
 
 export class DashboardVersionService {
     private db: Database;
+    private initPromise: Promise<void> | null = null;
     private defaultCleanupPolicy: VersionCleanupPolicy = {
         maxVersionsToKeep: 10,
         maxAgeInDays: 90,
@@ -24,6 +27,45 @@ export class DashboardVersionService {
 
     constructor(database: Database) {
         this.db = database;
+        this.initPromise = this.initialize();
+    }
+
+    /**
+     * Wait for service initialization to complete
+     */
+    async waitForInitialization(): Promise<void> {
+        if (this.initPromise) {
+            await this.initPromise;
+        }
+    }
+
+    /**
+     * Initialize service - ensures auth database is attached
+     */
+    private async initialize(): Promise<void> {
+        try {
+            // Wait for auth service to be ready before attaching
+            await authService.waitForInitialization();
+
+            // Attach auth database for user lookups
+            const authDbPath = getDatabasePath('auth.db');
+            await new Promise<void>((resolve) => {
+                this.db.run(`ATTACH DATABASE '${authDbPath}' AS auth`, (err) => {
+                    if (err) {
+                        // If it's already attached or file is locked, we'll handle it gracefully
+                        if (err.message.includes('already being used') || err.message.includes('database auth is already in use')) {
+                            resolve();
+                            return;
+                        }
+                        logger.debug('Auth database attachment note in DashboardVersionService:', err.message);
+                    }
+                    resolve();
+                });
+            });
+        } catch (error) {
+            logger.error('Failed to initialize DashboardVersionService:', error);
+            // Don't throw, we'll try to proceed
+        }
     }
 
     private deserializeDates(config: any): any {
@@ -45,6 +87,7 @@ export class DashboardVersionService {
     }
 
     async getNextVersionNumber(dashboardName: string): Promise<number> {
+        await this.waitForInitialization();
         return new Promise((resolve, reject) => {
             const query = `
         SELECT MAX(version) as max_version 
@@ -65,6 +108,7 @@ export class DashboardVersionService {
     }
 
     async getSpecificVersion(dashboardName: string, version: number): Promise<DashboardVersion | null> {
+        await this.waitForInitialization();
         return new Promise((resolve, reject) => {
             const query = `
         SELECT dv.*, u.username as created_by_name 
@@ -107,6 +151,7 @@ export class DashboardVersionService {
     }
 
     async compareVersions(dashboardName: string, oldVersion: number, newVersion: number): Promise<VersionComparison | null> {
+        await this.waitForInitialization();
         try {
             const oldVersionData = await this.getSpecificVersion(dashboardName, oldVersion);
             const newVersionData = await this.getSpecificVersion(dashboardName, newVersion);
@@ -178,6 +223,7 @@ export class DashboardVersionService {
     }
 
     async cleanupOldVersions(dashboardName: string, policy?: VersionCleanupPolicy): Promise<number> {
+        await this.waitForInitialization();
         const cleanupPolicy = policy || this.defaultCleanupPolicy;
         let deletedCount = 0;
 

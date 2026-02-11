@@ -4,7 +4,7 @@
 
 import { TimeRange } from './historian';
 
-export type WidgetType = 'line' | 'bar' | 'trend' | 'scatter' | 'metric' | 'table';
+export type WidgetType = 'line' | 'bar' | 'trend' | 'scatter' | 'metric' | 'table' | 'radial-gauge' | 'value-block' | 'radar';
 
 export interface WidgetConfig {
     id: string;

@@ -17,13 +17,24 @@ import {
 } from '../types/reports';
 import { logger } from '../utils/logger';
 import { getDatabasePath } from '@/config/environment';
+import { authService } from './authService';
 
 export class ReportManagementService {
   private db: Database;
+  private initPromise: Promise<void> | null = null;
 
   constructor(database: Database) {
     this.db = database;
-    this.initializeTables();
+    this.initPromise = this.initializeTables();
+  }
+
+  /**
+   * Wait for service initialization to complete
+   */
+  async waitForInitialization(): Promise<void> {
+    if (this.initPromise) {
+      await this.initPromise;
+    }
   }
 
   /**
@@ -50,17 +61,28 @@ export class ReportManagementService {
   /**
    * Initialize database tables for report management
    */
-  private initializeTables(): void {
-    // Attach auth database for user lookups
-    const authDbPath = getDatabasePath('auth.db');
-    this.db.run(`ATTACH DATABASE '${authDbPath}' AS auth`, (err) => {
-      if (err) {
-        // If it's already attached or file is locked, we'll handle it gracefully in queries
-        logger.debug('Auth database attachment note (can be ignored if already attached):', err.message);
-      }
-    });
+  private async initializeTables(): Promise<void> {
+    try {
+      // Wait for auth service to be ready before attaching
+      await authService.waitForInitialization();
 
-    const createReportsTable = `
+      // Attach auth database for user lookups
+      const authDbPath = getDatabasePath('auth.db');
+      await new Promise<void>((resolve, reject) => {
+        this.db.run(`ATTACH DATABASE '${authDbPath}' AS auth`, (err) => {
+          if (err) {
+            logger.debug('Auth database attachment note (can be ignored if already attached):', err.message);
+            // If it fails because it's already attached, that's fine
+            if (err.message.includes('already being used') || err.message.includes('database auth is already in use')) {
+              resolve();
+              return;
+            }
+          }
+          resolve();
+        });
+      });
+
+      const createReportsTable = `
       CREATE TABLE IF NOT EXISTS reports (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -75,7 +97,7 @@ export class ReportManagementService {
       )
     `;
 
-    const createReportVersionsTable = `
+      const createReportVersionsTable = `
       CREATE TABLE IF NOT EXISTS report_versions (
         id TEXT PRIMARY KEY,
         report_id TEXT NOT NULL,
@@ -89,20 +111,35 @@ export class ReportManagementService {
       )
     `;
 
-    const createIndexes = [
-      'CREATE INDEX IF NOT EXISTS idx_reports_name ON reports(name)',
-      'CREATE INDEX IF NOT EXISTS idx_reports_created_by ON reports(created_by)',
-      'CREATE INDEX IF NOT EXISTS idx_report_versions_report_id ON report_versions(report_id)',
-      'CREATE INDEX IF NOT EXISTS idx_report_versions_version ON report_versions(report_id, version DESC)'
-    ];
+      const createIndexes = [
+        'CREATE INDEX IF NOT EXISTS idx_reports_name ON reports(name)',
+        'CREATE INDEX IF NOT EXISTS idx_reports_created_by ON reports(created_by)',
+        'CREATE INDEX IF NOT EXISTS idx_report_versions_report_id ON report_versions(report_id)',
+        'CREATE INDEX IF NOT EXISTS idx_report_versions_version ON report_versions(report_id, version DESC)'
+      ];
 
-    this.db.serialize(() => {
-      this.db.run(createReportsTable);
-      this.db.run(createReportVersionsTable);
-      createIndexes.forEach(index => this.db.run(index));
-    });
+      await new Promise<void>((resolve, reject) => {
+        this.db.serialize(() => {
+          this.db.run(createReportsTable, (err) => {
+            if (err) logger.error('Error creating reports table:', err);
+          });
+          this.db.run(createReportVersionsTable, (err) => {
+            if (err) logger.error('Error creating report_versions table:', err);
+          });
+          createIndexes.forEach(index => {
+            this.db.run(index, (err) => {
+              if (err) logger.error('Error creating index:', err);
+            });
+          });
+          resolve();
+        });
+      });
 
-    logger.info('Report management tables initialized');
+      logger.info('Report management tables initialized');
+    } catch (error) {
+      logger.error('Failed to initialize report management tables:', error);
+      throw error;
+    }
   }
 
   /**
@@ -205,6 +242,7 @@ export class ReportManagementService {
    * Save a report configuration
    */
   async saveReport(request: SaveReportRequest, userId: string): Promise<SaveReportResponse> {
+    await this.waitForInitialization();
     try {
       const fullConfig = {
         id: '', // Will be set later
@@ -329,6 +367,7 @@ export class ReportManagementService {
    * Load a specific report configuration
    */
   async loadReport(reportId: string): Promise<SavedReport | null> {
+    await this.waitForInitialization();
     return new Promise((resolve, reject) => {
       const query = `
         SELECT r.*, u.username as created_by_name 
@@ -394,6 +433,7 @@ export class ReportManagementService {
    * List all saved reports for a user
    */
   async listReports(userId?: string): Promise<ReportListItem[]> {
+    await this.waitForInitialization();
     return new Promise((resolve, reject) => {
       let query = `
         SELECT 
@@ -444,6 +484,7 @@ export class ReportManagementService {
    * Delete a report and all its versions
    */
   async deleteReport(reportId: string, userId: string): Promise<boolean> {
+    await this.waitForInitialization();
     try {
       // First, get the report name to delete all versions
       const report = await this.loadReport(reportId);
@@ -509,6 +550,7 @@ export class ReportManagementService {
    * Get version history for a report
    */
   async getReportVersions(reportName: string): Promise<ReportVersionHistory | null> {
+    await this.waitForInitialization();
     return new Promise((resolve, reject) => {
       const query = `
         SELECT rv.*, u.username as created_by_name 
@@ -562,6 +604,7 @@ export class ReportManagementService {
    * Create a new version of an existing report
    */
   async createNewVersion(reportName: string, config: ReportConfig, userId: string, changeDescription?: string): Promise<ReportVersion | null> {
+    await this.waitForInitialization();
     try {
       // Get next version number
       const version = await this.getNextVersionNumber(reportName);

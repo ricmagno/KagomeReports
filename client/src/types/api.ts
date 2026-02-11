@@ -12,6 +12,8 @@ export interface TagInfo {
   units: string;
   dataType: 'analog' | 'discrete' | 'string';
   lastUpdate: Date;
+  minValue?: number;
+  maxValue?: number;
 }
 
 export interface SpecificationLimits {

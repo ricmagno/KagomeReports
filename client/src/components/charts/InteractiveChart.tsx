@@ -75,7 +75,7 @@ export const InteractiveChart: React.FC<InteractiveChartProps> = ({
   title,
   description,
   className = '',
-  enableGuideLines = true,
+  enableGuideLines = false,
   includeTrendLines = true,
   displayMode = 'multi',
   tagName,
