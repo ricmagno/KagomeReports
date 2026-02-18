@@ -24,7 +24,7 @@ WORKDIR /app
 # --- Stage 1: Build Backend ---
 FROM base AS backend-builder
 COPY package*.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 COPY . .
 RUN npm run build
 
@@ -32,14 +32,14 @@ RUN npm run build
 FROM base AS client-builder
 WORKDIR /app/client
 COPY client/package*.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 COPY client/ ./
 RUN npm run build
 
 # --- Stage 3: Production Dependencies ---
 FROM base AS prod-deps
 COPY package*.json ./
-RUN npm install --omit=dev && npm cache clean --force
+RUN npm install --omit=dev --legacy-peer-deps && npm cache clean --force
 
 # --- Stage 4: Final Production Image ---
 FROM node:20-bookworm-slim AS production
@@ -100,7 +100,7 @@ ENV NODE_ENV=production \
 # Labels for metadata
 LABEL maintainer="Historian Reports Team" \
     description="Professional reporting application for AVEVA Historian database" \
-    version="0.87.0"
+    version="0.86.1"
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
