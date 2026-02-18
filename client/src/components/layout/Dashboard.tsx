@@ -58,6 +58,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const [dbActiveTab, setDbActiveTab] = useState<'status' | 'config'>('status');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [healthStatus, setHealthStatus] = useState<string>('checking...');
+  const [serverTime, setServerTime] = useState<{ local: string, timezone: string } | null>(null);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginLoading, setLoginLoading] = useState(false);
   const { toasts, removeToast, success, error: toastError, warning, info } = useToast();
@@ -135,6 +136,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         }
 
         if (response.ok || response.status === 503) {
+          if (data.serverTime) {
+            setServerTime({
+              local: data.serverTime.local,
+              timezone: data.serverTime.timezone
+            });
+          }
           if (data.status === 'healthy') {
             setHealthStatus('✅ Backend');
           } else if (data.connection && data.connection.state === 'retrying' && data.connection.nextRetry) {
@@ -681,6 +688,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               }`}>
               {healthStatus}
             </div>
+            {serverTime && (
+              <div className="hidden lg:flex flex-col text-[10px] text-gray-500 leading-tight border-l border-gray-200 pl-4 py-1">
+                <span className="font-semibold text-gray-700">Server Time:</span>
+                <span className="truncate max-w-[150px]">{serverTime.local}</span>
+                <span className="text-[9px] opacity-75">{serverTime.timezone}</span>
+              </div>
+            )}
             {isAuthenticated && (
               <Button variant="ghost" size="sm" onClick={handleLogout}>
                 <LogOut className="h-4 w-4 mr-2" />

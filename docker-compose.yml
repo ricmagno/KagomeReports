@@ -5,12 +5,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: historian-reports:0.66.0
+    image: historian-reports:0.86.0
     container_name: historian-reports
     restart: unless-stopped
     ports:
       - "3001:3000"
     environment:
+      - TZ=Australia/Sydney
       - NODE_ENV=production
       - PORT=3000
       - DB_HOST=${DB_HOST}
@@ -39,6 +40,8 @@ services:
       - ./.backups:/app/.backups
       - ./.updates:/app/.updates
       - ./.env.backups:/app/.env.backups
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
       - ~:/Home
     depends_on:
       - redis

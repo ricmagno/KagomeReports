@@ -399,7 +399,7 @@ export class UserManagementService {
    */
   private async getUserByUsername(username: string): Promise<UserResponse | null> {
     return new Promise((resolve, reject) => {
-      this.db.get('SELECT * FROM users WHERE username = ?', [username], (err, row: any) => {
+      this.db.get('SELECT * FROM users WHERE username = ? COLLATE NOCASE', [username], (err, row: any) => {
         if (err) {
           reject(err);
         } else {
@@ -414,7 +414,7 @@ export class UserManagementService {
    */
   private async getUserByEmail(email: string): Promise<UserResponse | null> {
     return new Promise((resolve, reject) => {
-      this.db.get('SELECT * FROM users WHERE email = ?', [email], (err, row: any) => {
+      this.db.get('SELECT * FROM users WHERE email = ? COLLATE NOCASE', [email], (err, row: any) => {
         if (err) {
           reject(err);
         } else {
@@ -657,6 +657,14 @@ export class UserManagementService {
           password: 'supervisor',
           email: 'supervisor@historian.local',
           firstName: 'Supervisor',
+          lastName: 'User',
+          role: 'user' as const
+        },
+        {
+          username: 'Maintenance',
+          password: 'maintenance',
+          email: 'maintenance@historian.local',
+          firstName: 'Maintenance',
           lastName: 'User',
           role: 'user' as const
         }

@@ -110,8 +110,8 @@ export class AuthService {
           this.db.run(`
             CREATE TABLE IF NOT EXISTS users (
               id TEXT PRIMARY KEY,
-              username TEXT UNIQUE NOT NULL,
-              email TEXT UNIQUE NOT NULL,
+              username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+              email TEXT UNIQUE NOT NULL COLLATE NOCASE,
               first_name TEXT NOT NULL,
               last_name TEXT NOT NULL,
               role TEXT NOT NULL DEFAULT 'user',
@@ -252,7 +252,7 @@ export class AuthService {
         }
 
         this.db.get(
-          'SELECT * FROM users WHERE (username = ? OR email = ?) AND is_active = 1',
+          'SELECT * FROM users WHERE (username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE) AND is_active = 1',
           [usernameOrEmail, usernameOrEmail],
           (err, row: any) => {
             if (err) {

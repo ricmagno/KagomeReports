@@ -286,8 +286,22 @@ export const StatusDashboard: React.FC<StatusDashboardProps> = ({
 
           {/* Last update time */}
           {statusData && (
-            <div className="text-xs sm:text-sm text-gray-500 mt-2">
-              Last updated: {new Date(statusData.data.timestamp).toLocaleString()}
+            <div className="flex flex-col gap-1 mt-2">
+              <div className="text-xs sm:text-sm text-gray-500">
+                Last updated: {new Date(statusData.data.timestamp).toLocaleString()}
+              </div>
+              {statusData.serverTime && (
+                <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg inline-flex items-center gap-4 text-xs sm:text-sm">
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-blue-900">Current Server Local Time:</span>
+                    <span className="text-blue-700">{statusData.serverTime.local}</span>
+                  </div>
+                  <div className="flex flex-col border-l border-blue-200 pl-4">
+                    <span className="font-semibold text-blue-900">Timezone:</span>
+                    <span className="text-blue-700">{statusData.serverTime.timezone} (UTC{statusData.serverTime.offset > 0 ? '-' : '+'}{Math.abs(statusData.serverTime.offset / 60)})</span>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

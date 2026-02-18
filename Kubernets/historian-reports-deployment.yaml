@@ -19,10 +19,13 @@ spec:
         - name: ghcr-regcred
       containers:
         - name: historian-reports
-          image: ghcr.io/ricmagno/kagomereports:0.84.0
+          image: ghcr.io/ricmagno/kagomereports:0.86.0
           ports:
             - containerPort: 3000
           imagePullPolicy: IfNotPresent
+          env:
+            - name: TZ
+              value: "Australia/Sydney"
           envFrom: # Add this section to load env vars from Secret
             - secretRef:
                 name: historian-reports-env
@@ -40,6 +43,12 @@ spec:
               mountPath: /home/historian/data
             - name: historian-reports
               mountPath: /home/historian/reports
+            - name: tz-config
+              mountPath: /etc/localtime
+              readOnly: true
+            - name: tz-name
+              mountPath: /etc/timezone
+              readOnly: true
       tolerations:
         - key: "node-role.kubernetes.io/control-plane"
           operator: "Exists"
@@ -57,3 +66,9 @@ spec:
           hostPath:
             path: /mnt/historian/reports
             type: DirectoryOrCreate
+        - name: tz-config
+          hostPath:
+            path: /etc/localtime
+        - name: tz-name
+          hostPath:
+            path: /etc/timezone

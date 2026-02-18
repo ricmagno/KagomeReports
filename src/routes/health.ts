@@ -33,6 +33,12 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       database: 'unknown',
       historian: 'unknown',
       cache: 'unknown'
+    },
+    serverTime: {
+      utc: new Date().toISOString(),
+      local: new Date().toLocaleString(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      offset: new Date().getTimezoneOffset()
     }
   };
 
@@ -112,6 +118,12 @@ router.get('/detailed', asyncHandler(async (req: Request, res: Response) => {
         stats: null as any,
         lastCheck: null as string | null
       }
+    },
+    serverTime: {
+      utc: new Date().toISOString(),
+      local: new Date().toLocaleString(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      offset: new Date().getTimezoneOffset()
     }
   };
 
@@ -249,6 +261,12 @@ router.get('/historian', asyncHandler(async (req: Request, res: Response) => {
       successful: false,
       duration: 0,
       error: null as string | null
+    },
+    serverTime: {
+      utc: new Date().toISOString(),
+      local: new Date().toLocaleString(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      offset: new Date().getTimezoneOffset()
     }
   };
 

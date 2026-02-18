@@ -19,6 +19,13 @@ export enum QualityCode {
   Uncertain = 64
 }
 
+export interface ServerTimeInfo {
+  utc: string;
+  local: string;
+  timezone: string;
+  offset: number;
+}
+
 // System tag value with metadata
 export interface SystemTagValue {
   tagName: string;
@@ -84,6 +91,7 @@ export interface SystemStatusResponse {
       performance: PerformanceMetricsData;
     };
   };
+  serverTime?: ServerTimeInfo;
 }
 
 // Category-filtered response
@@ -102,6 +110,7 @@ export interface HealthCheckResponse {
   downServices?: string[];
   error?: string;
   timestamp: string;
+  serverTime?: ServerTimeInfo;
 }
 
 // Query parameters for status API
