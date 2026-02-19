@@ -68,6 +68,9 @@ const envSchema = z.object({
 
   // Environment Information
   IS_DOCKER: z.string().default('false').transform(val => val.toLowerCase() === 'true'),
+
+  // Timezone Configuration
+  DEFAULT_TIMEZONE: z.string().default('Australia/Sydney'),
 });
 
 // Validate and export environment configuration

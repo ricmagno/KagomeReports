@@ -575,7 +575,7 @@ export class ReportGenerationService {
       minute: '2-digit',
       second: '2-digit',
       hour12: false,
-      timeZone: config.timeRange.timezone || 'UTC'
+      timeZone: config.timeRange.timezone || env.DEFAULT_TIMEZONE
     };
 
     const startTime = config.timeRange.startTime instanceof Date
@@ -587,7 +587,7 @@ export class ReportGenerationService {
 
     doc.fontSize(12)
       .fillColor('#6b7280')
-      .text(`Report Period: ${startTime} - ${endTime} (${config.timeRange.timezone || 'UTC'})`, { align: 'center' });
+      .text(`Report Period: ${startTime} - ${endTime} (${config.timeRange.timezone || env.DEFAULT_TIMEZONE})`, { align: 'center' });
 
     // Reset to default black
     doc.fillColor('#111827');
@@ -607,7 +607,7 @@ export class ReportGenerationService {
       minute: '2-digit',
       second: '2-digit',
       hour12: false,
-      timeZone: reportData.config.timeRange.timezone || 'UTC'
+      timeZone: reportData.config.timeRange.timezone || env.DEFAULT_TIMEZONE
     };
 
     const generatedDate = reportData.generatedAt instanceof Date
@@ -742,7 +742,7 @@ export class ReportGenerationService {
         minute: '2-digit',
         second: '2-digit',
         hour12: false,
-        timeZone: reportData.config.timeRange.timezone || 'UTC'
+        timeZone: reportData.config.timeRange.timezone || env.DEFAULT_TIMEZONE
       };
       const startTime = data[0]?.timestamp?.toLocaleString('en-US', formatOptions) || 'Unknown';
       const endTime = data[data.length - 1]?.timestamp?.toLocaleString('en-US', formatOptions) || 'Unknown';

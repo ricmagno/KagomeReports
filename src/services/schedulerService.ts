@@ -604,7 +604,7 @@ export class SchedulerService {
       this.queueExecution(schedule.id);
     }, {
       scheduled: false,
-      timezone: 'UTC'
+      timezone: env.DEFAULT_TIMEZONE
     });
 
     task.start();
@@ -1030,7 +1030,7 @@ export class SchedulerService {
    */
   private getNextRunTime(cronExpression: string): Date {
     try {
-      return getNextRunTime(cronExpression);
+      return getNextRunTime(cronExpression, undefined, env.DEFAULT_TIMEZONE);
     } catch (error) {
       reportLogger.warn('Failed to calculate next run time using utility, falling back to basic calculation', {
         cronExpression,

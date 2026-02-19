@@ -289,7 +289,7 @@ export class ChartGenerationService {
                     hour: '2-digit',
                     minute: '2-digit',
                     hour12: false,
-                    timeZone: options.timezone || 'UTC'
+                    timeZone: options.timezone || env.DEFAULT_TIMEZONE
                   });
                 }
               },
@@ -552,7 +552,7 @@ export class ChartGenerationService {
                     hour: '2-digit',
                     minute: '2-digit',
                     hour12: false,
-                    timeZone: options.timezone || 'UTC'
+                    timeZone: options.timezone || env.DEFAULT_TIMEZONE
                   });
                 }
               }
@@ -959,7 +959,8 @@ export class ChartGenerationService {
                   return date.toLocaleTimeString('en-US', {
                     hour: '2-digit',
                     minute: '2-digit',
-                    hour12: false
+                    hour12: false,
+                    timeZone: options.timezone || env.DEFAULT_TIMEZONE
                   });
                 }
               },
