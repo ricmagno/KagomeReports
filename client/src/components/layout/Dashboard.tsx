@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BarChart3,
   FileText,
@@ -80,10 +80,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     includeTrendLines: true,
     includeSPCCharts: true,
     includeStatsSummary: true,
+    includeDataTable: false,
     specificationLimits: {},
   });
-  const previewRef = useRef<any>(null);
   const [savedConfig, setSavedConfig] = useState<Partial<ReportConfig> | null>(null);
+  const reportPreviewRef = React.useRef<import('../reports/ReportPreview').ReportPreviewRef>(null);
 
   // Compare current config with saved config to detect changes
   const hasChanges = React.useMemo(() => {
@@ -334,15 +335,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       setIsLoading(true);
 
       // Prepare report generation request
+      let capturedCharts: Record<string, string> = {};
+      try {
+        if (reportPreviewRef.current) {
+          capturedCharts = await reportPreviewRef.current.getCapturedCharts();
+        }
+      } catch (e) {
+        console.warn('Failed to capture charts for report:', e);
+      }
+
       const generateRequest = {
         name: reportConfig.name,
         description: reportConfig.description || '',
         tags: reportConfig.tags,
-        timeRange: {
-          startTime: reportConfig.timeRange!.startTime.toISOString(),
-          endTime: reportConfig.timeRange!.endTime.toISOString(),
-          relativeRange: reportConfig.timeRange!.relativeRange
-        },
+        timeRange: reportConfig.timeRange!,
         chartTypes: reportConfig.chartTypes || ['line'],
         template: reportConfig.template || 'default',
         format: 'pdf' as const,
@@ -355,23 +361,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         includeStatsSummary: reportConfig.includeStatsSummary ?? true,
         specificationLimits: reportConfig.specificationLimits || {},
         version: reportConfig.version,
-        retrievalMode: reportConfig.retrievalMode || 'Cyclic'
+        retrievalMode: reportConfig.retrievalMode || 'Cyclic',
+        charts: Object.keys(capturedCharts).length > 0 ? capturedCharts : undefined
       };
-
-      // Exact Chart Capture: If the preview is available, capture the current charts as images
-      // to ensure the PDF exactly matches what the user sees (including any annotations)
-      if (previewRef.current && typeof previewRef.current.getCapturedCharts === 'function') {
-        try {
-          console.log('Capturing exact charts from preview...');
-          const charts = await previewRef.current.getCapturedCharts();
-          if (Object.keys(charts).length > 0) {
-            (generateRequest as any).charts = charts;
-            console.log(`Captured ${Object.keys(charts).length} charts for PDF embedding`);
-          }
-        } catch (captureError) {
-          console.warn('Failed to capture frontend charts, falling back to backend generation:', captureError);
-        }
-      }
 
       console.log('Generating report with config:', generateRequest);
 
@@ -436,6 +428,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           includeTrendLines: reportConfig.includeTrendLines ?? true,
           includeSPCCharts: reportConfig.includeSPCCharts ?? true,
           includeStatsSummary: reportConfig.includeStatsSummary ?? true,
+          includeDataTable: reportConfig.includeDataTable ?? false,
           specificationLimits: reportConfig.specificationLimits || {},
           retrievalMode: reportConfig.retrievalMode || 'Cyclic'
         }
@@ -1027,6 +1020,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                         includeTrendLines={reportConfig.includeTrendLines}
                         includeSPCCharts={reportConfig.includeSPCCharts}
                         includeStatsSummary={reportConfig.includeStatsSummary}
+                        includeDataTable={reportConfig.includeDataTable}
                         onIncludeTrendLinesChange={(value) =>
                           setReportConfig(prev => ({ ...prev, includeTrendLines: value }))
                         }
@@ -1035,6 +1029,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                         }
                         onIncludeStatsSummaryChange={(value) =>
                           setReportConfig(prev => ({ ...prev, includeStatsSummary: value }))
+                        }
+                        onIncludeDataTableChange={(value) =>
+                          setReportConfig(prev => ({ ...prev, includeDataTable: value }))
                         }
                         disabled={!reportConfig.tags?.length}
                       />
@@ -1113,7 +1110,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   reportConfig.name && reportConfig.tags?.length && (
                     <div className="mt-8">
                       <ReportPreview
-                        ref={previewRef}
+                        ref={reportPreviewRef}
                         config={{
                           id: 'preview',
                           name: reportConfig.name,
@@ -1122,7 +1119,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           timeRange: reportConfig.timeRange!,
                           chartTypes: reportConfig.chartTypes as any[],
                           template: reportConfig.template || 'default',
-                          retrievalMode: reportConfig.retrievalMode || 'Delta'
+                          retrievalMode: reportConfig.retrievalMode || 'Delta',
+                          includeTrendLines: reportConfig.includeTrendLines,
+                          includeSPCCharts: reportConfig.includeSPCCharts,
+                          includeStatsSummary: reportConfig.includeStatsSummary,
+                          includeDataTable: reportConfig.includeDataTable,
+                          specificationLimits: reportConfig.specificationLimits
                         }}
                       />
                     </div>

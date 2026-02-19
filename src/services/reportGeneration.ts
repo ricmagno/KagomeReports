@@ -53,6 +53,7 @@ export interface ReportConfig {
   includeSPCCharts?: boolean | undefined;
   includeTrendLines?: boolean | undefined;
   includeStatsSummary?: boolean | undefined;
+  includeDataTable?: boolean | undefined;
   version?: number | undefined;
   retrievalMode?: string | undefined;
 }
@@ -127,6 +128,7 @@ export class ReportGenerationService {
         throw createError('Unsupported report format', 400);
       }
     } catch (error) {
+      console.error('DEBUG: generateReport caught error:', error);
       reportLogger.error('Report generation failed', {
         reportId: reportData.config.id,
         error
@@ -141,7 +143,7 @@ export class ReportGenerationService {
           format: reportData.config.format,
           generationTime: Date.now() - startTime
         },
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.stack || error.message : 'Unknown error'
       };
     }
   }
@@ -173,8 +175,8 @@ export class ReportGenerationService {
         const spcMetrics = new Map<string, any>();
         const spcMetricsSummary: SPCMetricsSummary[] = [];
 
-        const includeTrendLines = reportData.config.includeTrendLines !== false; // Default true
-        const includeSPCCharts = reportData.config.includeSPCCharts !== false; // Default true
+        const includeTrendLines = reportData.config.includeTrendLines === true; // Default false
+        const includeSPCCharts = reportData.config.includeSPCCharts === true; // Default false
 
         for (const [tagName, data] of Object.entries(reportData.data)) {
           const classification = tagClassifications.get(tagName);
@@ -234,29 +236,11 @@ export class ReportGenerationService {
         // Step 3: Generate enhanced charts with trend lines and statistics
         const enhancedCharts = new Map<string, Buffer>();
 
-        // Include any pre-generated charts from the report data
+        // Pre-populate with WYSIWYG charts from frontend
         if (reportData.charts) {
-          // Priority 1: Multi-trend chart should always be first
-          if (reportData.charts['combined_multi_trend']) {
-            enhancedCharts.set('Multi-trend', reportData.charts['combined_multi_trend']);
-          }
-
-          // Priority 2: Statistics summary chart
-          if (reportData.charts['statistics_summary']) {
-            enhancedCharts.set('Statistical Summary Chart', reportData.charts['statistics_summary']);
-          }
-
-          for (const [name, buffer] of Object.entries(reportData.charts)) {
-            // Already handled these specific priorities
-            if (name === 'combined_multi_trend' || name === 'statistics_summary') continue;
-
-            let friendlyName = name;
-            // Map cryptic service-internal names to user-friendly titles
-            if (name.endsWith('_line')) friendlyName = `${name.replace('_line', '')} - Time Series`;
-            else if (name.endsWith('_trend')) friendlyName = `${name.replace('_trend', '')} - Trend Analysis`;
-            else if (name.endsWith('_scatter')) friendlyName = `${name.replace('_scatter', '')} - Scatter Plot`;
-
-            enhancedCharts.set(friendlyName, buffer);
+          for (const [chartName, chartBuffer] of Object.entries(reportData.charts)) {
+            enhancedCharts.set(chartName, chartBuffer);
+            reportLogger.debug(`Using pre-generated WYSIWYG chart: ${chartName}`);
           }
         }
 
@@ -266,25 +250,23 @@ export class ReportGenerationService {
           const classification = tagClassifications.get(tagName);
           const stats = reportData.statistics?.[tagName];
 
-          // Generate standard chart with trend line and statistics
-          const trendLine = trendLines.get(tagName);
-          const tagStatistics = stats ? {
-            min: stats.min,
-            max: stats.max,
-            mean: stats.average,
-            stdDev: stats.standardDeviation
-          } : undefined;
+          // Generate standard chart with trend line and statistics if NOT provided by frontend
+          const hasFrontendChart = Array.from(enhancedCharts.keys()).some(k => k === tagName || k.startsWith(`${tagName} - `));
 
-          // Only generate internal chart if not already provided in reportData.charts
-          // to avoid duplicated visualizations for the same tag
-          if (enhancedCharts.has(`${tagName} - Time Series`)) {
-            reportLogger.debug(`Skipping internal chart generation for ${tagName}, already exists in pre-generated charts`);
-          } else {
+          if (!hasFrontendChart) {
+            const trendLine = trendLines.get(tagName);
+            const statistics = stats ? {
+              min: stats.min,
+              max: stats.max,
+              mean: stats.average,
+              stdDev: stats.standardDeviation
+            } : undefined;
+
             const lineChartData: any = {
               tagName,
               data,
               trendLine,
-              statistics: tagStatistics
+              statistics
             };
 
             try {
@@ -304,6 +286,8 @@ export class ReportGenerationService {
               reportLogger.error(`Failed to generate line chart for ${tagName}`, {
                 error: error instanceof Error ? error.message : 'Unknown error'
               });
+              // Chart generation failed - report will continue without this chart
+              // The addChartsSection method will handle missing charts gracefully
             }
           }
 
@@ -347,7 +331,7 @@ export class ReportGenerationService {
           info: {
             Title: reportData.config.name,
             Author: reportData.config.metadata?.author || 'Historian Reports',
-            Subject: reportData.config.metadata?.subject || reportData.config.description,
+            Subject: reportData.config.metadata?.subject || reportData.config.description || '',
             Keywords: reportData.config.metadata?.keywords?.join(', ') || '',
             Creator: 'Historian Reports Application',
             Producer: 'PDFKit'
@@ -372,62 +356,75 @@ export class ReportGenerationService {
         // Add executive summary
         this.addExecutiveSummary(doc, reportData);
 
-        // Add data sections for each tag
-        let isFirstTag = true;
-        for (const [tagName, data] of Object.entries(reportData.data)) {
-          if (data.length > 0) {
-            // Only add page break if not the first tag or if we're too far down the page
-            if (!isFirstTag || doc.y > doc.page.height - 300) {
-              doc.addPage();
-            } else {
-              // Add some spacing before first tag section
-              doc.moveDown(1);
-            }
-            this.addTagSection(doc, tagName, data, reportData);
-            isFirstTag = false;
-          }
+        // Add Key Findings
+        this.addKeyFindings(doc, reportData);
+
+        // -- Section and page break
+        doc.addPage();
+
+        // *** Section Information (only displayed if option Statistics Summary is selected)
+        if (reportData.config.includeStatsSummary === true && reportData.statistics) {
+          doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Statistics Summary', { align: 'center' });
+          doc.moveDown(1);
+          this.addStatisticalSummary(doc, reportData.statistics);
+          doc.addPage();
         }
 
-        // Separate standard charts from SPC charts
-        const standardCharts = new Map<string, Buffer>();
+        // *** Section Data visualization (ALWAYS DISPLAYED)
+        const multiTrendChart = enhancedCharts.get('Multi-Trend Analysis');
+        const individualCharts = new Map<string, Buffer>();
         const spcCharts = new Map<string, Buffer>();
 
         for (const [chartName, chartBuffer] of enhancedCharts.entries()) {
-          if (chartName.includes('SPC Chart')) {
+          if (chartName === 'Multi-Trend Analysis') {
+            continue;
+          } else if (chartName.includes('SPC Chart')) {
             spcCharts.set(chartName, chartBuffer);
           } else {
-            standardCharts.set(chartName, chartBuffer);
+            individualCharts.set(chartName, chartBuffer);
           }
         }
 
-        // Add standard charts section (with trend lines)
-        if (standardCharts.size > 0) {
-          // Always start Data Visualizations on a new page as per requirements
-          doc.addPage();
-          this.addChartsSection(doc, Object.fromEntries(standardCharts));
+        doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Data Visualization', { align: 'center' });
+        doc.moveDown(1);
+        if (multiTrendChart) {
+          const chartTitle = reportData.config.name || 'Multi-Trend Analysis';
+          this.addChartsSection(doc, { [chartTitle]: multiTrendChart }, false);
+        }
+        if (individualCharts.size > 0) {
+          this.addChartsSection(doc, Object.fromEntries(individualCharts), false);
         }
 
-        // Add SPC section on a new page if we have SPC data
-        if (spcCharts.size > 0 || spcMetricsSummary.length > 0) {
-          // Always start SPC section on a new page
-          doc.addPage();
+        doc.addPage();
 
-          // Add SPC section header
-          doc.fontSize(16)
-            .fillColor('#111827')
-            .font('Helvetica-Bold')
-            .text('Statistical Process Control Analysis', { align: 'center' });
-
+        // *** Trend Analysis (only displayed if Include Trend Lines option is selected)
+        if (reportData.config.includeTrendLines === true) {
+          doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Trend Analysis', { align: 'center' });
           doc.moveDown(1);
 
-          // Add SPC charts first
+          let isFirstTag = true;
+          for (const [tagName, data] of Object.entries(reportData.data)) {
+            if (data.length > 0) {
+              if (!isFirstTag || doc.y > doc.page.height - 300) {
+                doc.addPage();
+              }
+              this.addTagSection(doc, tagName, data, reportData);
+              isFirstTag = false;
+            }
+          }
+          doc.addPage();
+        }
+
+        // *** Section Statistical Process Control Analysis (only displayed if SPC charts option is selected)
+        if (reportData.config.includeSPCCharts === true && (spcCharts.size > 0 || spcMetricsSummary.length > 0)) {
+          doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Statistical Process Control Analysis', { align: 'center' });
+          doc.moveDown(1);
+
           if (spcCharts.size > 0) {
             this.addChartsSection(doc, Object.fromEntries(spcCharts));
           }
 
-          // Add SPC metrics summary table after charts
           if (spcMetricsSummary.length > 0) {
-            // Only add page if we're too far down the current page
             if (doc.y > doc.page.height - 300) {
               doc.addPage();
             } else {
@@ -435,25 +432,20 @@ export class ReportGenerationService {
             }
             this.addSPCMetricsTable(doc, spcMetricsSummary);
           }
+          doc.addPage();
         }
 
-        // Add data table for each tag
-        for (const [tagName, data] of Object.entries(reportData.data)) {
-          if (data.length > 0) {
-            doc.addPage();
-            this.addDataTable(doc, tagName, data);
-          }
-        }
+        // *** Section Data table (only displayed if Includes Data Table is selected)
+        if (reportData.config.includeDataTable) {
+          doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Data Table', { align: 'center' });
+          doc.moveDown(1);
 
-        // Add statistical summary
-        if (reportData.statistics) {
-          // Only add page if we're too far down the current page
-          if (doc.y > doc.page.height - 300) {
-            doc.addPage();
-          } else {
-            doc.moveDown(1);
+          for (const [tagName, data] of Object.entries(reportData.data)) {
+            if (data.length > 0) {
+              this.addDataTable(doc, tagName, data);
+              doc.addPage();
+            }
           }
-          this.addStatisticalSummary(doc, reportData.statistics);
         }
 
         // Get page count before adding footers
@@ -539,7 +531,8 @@ export class ReportGenerationService {
           }
         });
       } catch (error) {
-        reject(error);
+        console.error('DEBUG: generatePDFReport caught error:', error);
+        reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
   }
@@ -548,11 +541,12 @@ export class ReportGenerationService {
    * Add report header with branding
    */
   private addReportHeader(doc: PDFKit.PDFDocument, config: ReportConfig): void {
-    // Company name - Kagome branding
+    // Company name - Kagome branding or from config
+    const companyName = config.branding?.companyName || 'Kagome';
     doc.fontSize(16)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text('Kagome', 40, 25);
+      .text(companyName, 40, 25);
 
     // Subtitle - Historian Reports
     doc.fontSize(11)
@@ -574,171 +568,214 @@ export class ReportGenerationService {
   }
 
   /**
-   * Add report title and basic information
+   * Add report title (name + description).
+   * Section I component 1 & 2: Title and Description.
    */
   private addReportTitle(doc: PDFKit.PDFDocument, config: ReportConfig): void {
     const title = config.version
       ? `${config.name} (v${config.version})`
       : config.name;
 
-    doc.fontSize(20)
+    // Title — large, bold, centred
+    doc.fontSize(22)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text(title, { align: 'center' });
+      .text(title, 40, doc.y, { align: 'center', width: doc.page.width - 80 });
 
-    doc.moveDown();
+    doc.moveDown(0.6);
 
+    // Description — subtitle in muted colour
     if (config.description) {
-      doc.fontSize(14)
+      doc.fontSize(13)
         .fillColor('#6b7280')
         .font('Helvetica')
-        .text(config.description, { align: 'center' });
-      doc.moveDown();
+        .text(config.description, 40, doc.y, { align: 'center', width: doc.page.width - 80 });
+      doc.moveDown(0.5);
     }
 
-    // Time range - safely handle dates with timezone
-    const formatOptions: Intl.DateTimeFormatOptions = {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      timeZone: config.timeRange.timezone || env.DEFAULT_TIMEZONE
-    };
+    // Thin separator line
+    doc.strokeColor('#e5e7eb')
+      .lineWidth(0.5)
+      .moveTo(40, doc.y)
+      .lineTo(doc.page.width - 40, doc.y)
+      .stroke();
 
-    const startTime = config.timeRange.startTime instanceof Date
-      ? config.timeRange.startTime.toLocaleString('en-US', formatOptions)
-      : 'Unknown';
-    const endTime = config.timeRange.endTime instanceof Date
-      ? config.timeRange.endTime.toLocaleString('en-US', formatOptions)
-      : 'Unknown';
-
-    doc.fontSize(12)
-      .fillColor('#6b7280')
-      .text(`Report Period: ${startTime} - ${endTime} (${config.timeRange.timezone || env.DEFAULT_TIMEZONE})`, { align: 'center' });
-
-    // Reset to default black
+    doc.moveDown(0.8);
     doc.fillColor('#111827');
-    doc.moveDown(1);
+    doc.x = 40;
   }
 
   /**
-   * Add report metadata
+   * Add compact metadata strip (report period, tags, generated date).
+   * Section I supporting metadata — sits between Title and Executive Summary.
    */
   private addReportMetadata(doc: PDFKit.PDFDocument, reportData: ReportData): void {
-    // Basic date formatting options
+    const { config } = reportData;
+    const tz = config.timeRange.timezone || env.DEFAULT_TIMEZONE;
+
     const formatOptions: Intl.DateTimeFormatOptions = {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      timeZone: reportData.config.timeRange.timezone || env.DEFAULT_TIMEZONE
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false, timeZone: tz
     };
 
-    const generatedDate = reportData.generatedAt instanceof Date
-      ? reportData.generatedAt.toLocaleString('en-US', formatOptions)
-      : 'Unknown';
+    const fmt = (d: Date | unknown) =>
+      d instanceof Date ? d.toLocaleString('en-US', formatOptions) : 'Unknown';
 
-    const totalDataPoints = Object.values(reportData.data)
-      .reduce((sum, data) => sum + data.length, 0);
+    const startStr = fmt(config.timeRange.startTime);
+    const endStr = fmt(config.timeRange.endTime);
+    const genStr = fmt(reportData.generatedAt);
+    const tagList = config.tags.join(', ');
 
+    doc.x = 40;
     doc.fontSize(10);
 
-    // Use relative positioning to prevent overlap when content wraps
-    // Each metadata item gets its own line as per user requirements for organization
+    // Report period row
+    doc.fillColor('#6b7280').font('Helvetica')
+      .text(`Period: ${startStr} — ${endStr}  (${tz})`, 40, doc.y, {
+        width: doc.page.width - 80
+      });
 
-    // Reset x to consistent left alignment for metadata indented from main margin
-    doc.x = 50;
+    // Tags row
+    doc.text(`Tags: ${tagList}`, 40, doc.y, { width: doc.page.width - 80 });
 
-    // Generated info
-    doc.fillColor('#111827').font('Helvetica-Bold').text('Generated: ', { continued: true })
-      .fillColor('#6b7280').font('Helvetica').text(generatedDate);
+    // Generated row
+    doc.text(`Generated: ${genStr}`, 40, doc.y, { width: doc.page.width - 80 });
 
-    // Data points count
-    doc.fillColor('#111827').font('Helvetica-Bold').text('Data Points: ', { continued: true })
-      .fillColor('#6b7280').font('Helvetica').text(totalDataPoints.toString());
-
-    // Export format
-    doc.fillColor('#111827').font('Helvetica-Bold').text('Format: ', { continued: true })
-      .fillColor('#6b7280').font('Helvetica').text(reportData.config.format.toUpperCase());
-
-    // Tag list - print each tag on a new line for maximum clarity
-    doc.fillColor('#111827').font('Helvetica-Bold').text('Tags: ');
-
-    doc.fillColor('#6b7280').font('Helvetica');
-    for (const tag of reportData.config.tags) {
-      doc.text(`• ${tag}`, 65); // Indent individual tags slightly more (65 instead of 50)
-    }
-
-    // Clean up positioning and color for next section
-    doc.fillColor('#111827');
-    doc.x = 40; // Reset to default margin
     doc.moveDown(1);
+
+    // Thin separator
+    doc.strokeColor('#e5e7eb')
+      .lineWidth(0.5)
+      .moveTo(40, doc.y)
+      .lineTo(doc.page.width - 40, doc.y)
+      .stroke();
+
+    doc.moveDown(1);
+    doc.fillColor('#111827');
+    doc.x = 40;
   }
 
   /**
-   * Add executive summary
+   * Add executive summary paragraph.
+   * Section I component 3: Executive Summary.
+   * Note: Key Findings is a separate component (addKeyFindings) — not embedded here.
    */
   private addExecutiveSummary(doc: PDFKit.PDFDocument, reportData: ReportData): void {
-    doc.fontSize(14)
-      .fillColor('#111827')
-      .font('Helvetica-Bold')
-      .text('Executive Summary', 40);  // Explicit x position
-
-    doc.moveDown(0.5);
-
     const totalTags = reportData.config.tags.length;
     const totalDataPoints = Object.values(reportData.data)
       .reduce((sum, data) => sum + data.length, 0);
 
-    doc.fontSize(12)
+    // Compose adaptive summary text
+    const sections: string[] = [];
+    if (reportData.config.includeStatsSummary) sections.push('statistical summaries');
+    if (reportData.config.includeTrendLines) sections.push('trend analysis');
+    if (reportData.config.includeSPCCharts) sections.push('SPC analysis');
+    if (reportData.config.includeDataTable) sections.push('raw data tables');
+    if (sections.length === 0) sections.push('data visualization');
+
+    const sectionList = sections.length > 1
+      ? sections.slice(0, -1).join(', ') + ', and ' + sections[sections.length - 1]
+      : sections[0];
+
+    const summaryText =
+      `This report analyses ${totalTags} monitoring point(s) over the configured time period, ` +
+      `covering ${totalDataPoints.toLocaleString()} data points in total. ` +
+      `It includes ${sectionList}.`;
+
+    // Section header
+    doc.fontSize(14)
       .fillColor('#111827')
-      .font('Helvetica')
-      .text(`This report analyzes ${totalTags} tag(s) over the specified time period, ` +
-        `containing a total of ${totalDataPoints} data points. ` +
-        `The analysis includes statistical summaries, trend analysis, and data quality metrics.`,
-        40, doc.y, {  // Explicit x position and current y
-        width: doc.page.width - 80,  // Full width minus margins
-        align: 'left'
-      });
-
-    doc.moveDown(0.5);
-
-    // Key findings - iterate over all tags to ensure none are missing from the summary
-    doc.fillColor('#111827')
       .font('Helvetica-Bold')
-      .text('Key Findings:', 40);
+      .text('Executive Summary', 40, doc.y);
 
-    doc.fillColor('#111827')
-      .font('Helvetica');
+    doc.moveDown(0.4);
 
-    for (const tagName of reportData.config.tags) {
-      const stats = reportData.statistics?.[tagName];
-      if (stats) {
-        doc.text(`• ${tagName}: Average ${stats.average.toFixed(2)}, ` +
-          `Range ${stats.min.toFixed(2)} - ${stats.max.toFixed(2)}, ` +
-          `Data Quality ${stats.dataQuality.toFixed(1)}%`,
-          40, doc.y, {
-          width: doc.page.width - 80,
-          align: 'left'
-        }
-        );
-      } else {
-        doc.text(`• ${tagName}: No statistical data available for this period.`,
-          40, doc.y, {
-          width: doc.page.width - 80,
-          align: 'left'
-        }
-        );
-      }
-    }
+    // Summary paragraph
+    doc.fontSize(11)
+      .fillColor('#374151')
+      .font('Helvetica')
+      .text(summaryText, 40, doc.y, { width: doc.page.width - 80, align: 'justify' });
 
     doc.moveDown(1);
+    doc.fillColor('#111827');
+    doc.x = 40;
+  }
+
+  /**
+   * Add key findings as bullet points.
+   * Section I component 4: Key Findings.
+   */
+  private addKeyFindings(doc: PDFKit.PDFDocument, reportData: ReportData): void {
+    const totalTags = reportData.config.tags.length;
+    const totalDataPoints = Object.values(reportData.data)
+      .reduce((sum, data) => sum + data.length, 0);
+
+    // Build findings list
+    const findings: string[] = [
+      `Analysed ${totalTags} monitoring point(s) for the configured time interval.`,
+      `Processed ${totalDataPoints.toLocaleString()} data points in total across all tags.`
+    ];
+
+    // Per-tag statistical highlights
+    if (reportData.statistics && Object.keys(reportData.statistics).length > 0) {
+      let maxAvgTag = '';
+      let maxAvgVal = -Infinity;
+      let minQualityTag = '';
+      let minQualityVal = Infinity;
+
+      for (const [tag, stats] of Object.entries(reportData.statistics)) {
+        if (stats.average > maxAvgVal) {
+          maxAvgVal = stats.average;
+          maxAvgTag = tag;
+        }
+        if (stats.dataQuality < minQualityVal) {
+          minQualityVal = stats.dataQuality;
+          minQualityTag = tag;
+        }
+      }
+
+      if (maxAvgTag) {
+        findings.push(
+          `Highest average value: ${maxAvgTag} at ${maxAvgVal.toFixed(2)}.`
+        );
+      }
+      if (minQualityTag && minQualityVal < 100) {
+        findings.push(
+          `Data quality attention: ${minQualityTag} has ${minQualityVal.toFixed(1)}% good-quality readings.`
+        );
+      }
+    } else {
+      findings.push('No statistical summary available — enable "Include Statistics Summary" for detailed metrics.');
+    }
+
+    // Conditional-section summaries
+    const enabledSections: string[] = [];
+    if (reportData.config.includeStatsSummary) enabledSections.push('Statistics Summary');
+    if (reportData.config.includeTrendLines) enabledSections.push('Trend Analysis');
+    if (reportData.config.includeSPCCharts) enabledSections.push('SPC Analysis');
+    if (reportData.config.includeDataTable) enabledSections.push('Data Table');
+    if (enabledSections.length > 0) {
+      findings.push(`Additional sections included: ${enabledSections.join(', ')}.`);
+    }
+
+    // --- Render ---
+    doc.fontSize(14)
+      .fillColor('#111827')
+      .font('Helvetica-Bold')
+      .text('Key Findings', 40, doc.y);
+
+    doc.moveDown(0.4);
+    doc.fontSize(11).font('Helvetica').fillColor('#374151');
+
+    for (const finding of findings) {
+      doc.text(`•  ${finding}`, 50, doc.y, { width: doc.page.width - 90, align: 'left' });
+      doc.moveDown(0.3);
+    }
+
+    doc.moveDown(0.8);
+    doc.fillColor('#111827');
+    doc.x = 40;
   }
 
   /**
@@ -833,13 +870,14 @@ export class ReportGenerationService {
   /**
    * Add charts section
    */
-  private addChartsSection(doc: PDFKit.PDFDocument, charts: Record<string, Buffer>): void {
-    doc.fontSize(14)
-      .fillColor('#111827')
-      .font('Helvetica-Bold')
-      .text('Data Visualizations');
-
-    doc.moveDown();
+  private addChartsSection(doc: PDFKit.PDFDocument, charts: Record<string, Buffer>, printHeader: boolean = true): void {
+    if (printHeader) {
+      doc.fontSize(14)
+        .fillColor('#111827')
+        .font('Helvetica-Bold')
+        .text('Data Visualizations');
+      doc.moveDown();
+    }
 
     let chartCount = 0;
     let successCount = 0;
@@ -969,64 +1007,203 @@ export class ReportGenerationService {
   }
 
   /**
-   * Add statistical summary section
+   * Add statistical summary section (Section II of the report)
+   * Renders a professional banded table with all key metrics per tag.
+   * Columns: Tag | Mean | Median | Std Dev | Min | Max | Count | Quality %
    */
-  private addStatisticalSummary(doc: PDFKit.PDFDocument, statistics: Record<string, StatisticsResult>): void {
+  private addStatisticalSummary(
+    doc: PDFKit.PDFDocument,
+    statistics: Record<string, StatisticsResult>
+  ): void {
+    if (Object.keys(statistics).length === 0) {
+      doc.fontSize(11)
+        .fillColor('#6b7280')
+        .font('Helvetica')
+        .text('No statistical data available for the selected tags.', 40, doc.y);
+      return;
+    }
+
+    // ── Section header ──────────────────────────────────────────────────────
     doc.fontSize(14)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text('Statistical Summary', 40); // Explicit x position
+      .text('Statistical Summary', 40, doc.y);
 
-    doc.moveDown(0.5);
-
-    // Create table
-    const tableTop = doc.y;
-    const tableLeft = 40;
-    const columnWidth = 85;
-    const rowHeight = 20;
-
-    // Table headers
-    const headers = ['Tag', 'Min', 'Max', 'Average', 'Std Dev', 'Quality %'];
+    doc.moveDown(0.4);
 
     doc.fontSize(10)
-      .fillColor('#111827')
+      .fillColor('#6b7280')
+      .font('Helvetica')
+      .text(
+        'The table below shows key statistical metrics computed from the queried time-series data for each monitoring tag.',
+        40, doc.y,
+        { width: doc.page.width - 80, align: 'left' }
+      );
+
+    doc.moveDown(1);
+
+    // ── Table layout ────────────────────────────────────────────────────────
+    const pageWidth = doc.page.width - 80;  // usable width with 40px margins
+    const tableLeft = 40;
+
+    // Column definitions  [label, relativeWidth]
+    const columns: Array<{ label: string; width: number; align: 'left' | 'center' | 'right' }> = [
+      { label: 'Tag', width: pageWidth * 0.20, align: 'left' },
+      { label: 'Mean', width: pageWidth * 0.11, align: 'center' },
+      { label: 'Median', width: pageWidth * 0.11, align: 'center' },
+      { label: 'Std Dev', width: pageWidth * 0.11, align: 'center' },
+      { label: 'Min', width: pageWidth * 0.11, align: 'center' },
+      { label: 'Max', width: pageWidth * 0.11, align: 'center' },
+      { label: 'Count', width: pageWidth * 0.10, align: 'center' },
+      { label: 'Quality', width: pageWidth * 0.15, align: 'center' },
+    ];
+
+    const totalTableWidth = columns.reduce((s, c) => s + c.width, 0);
+    const headerHeight = 26;
+    const rowHeight = 22;
+
+    // ── Helper: check page break ─────────────────────────────────────────
+    const ensureSpace = (needed: number): void => {
+      if (doc.y + needed > doc.page.height - doc.page.margins.bottom - 20) {
+        doc.addPage();
+      }
+    };
+
+    // ── Draw header row ──────────────────────────────────────────────────
+    ensureSpace(headerHeight + rowHeight);
+
+    const headerTop = doc.y;
+
+    // Header background
+    doc.rect(tableLeft, headerTop, totalTableWidth, headerHeight)
+      .fill('#1e3a5f');
+
+    // Header text
+    let xPos = tableLeft;
+    doc.fontSize(8.5)
+      .fillColor('#ffffff')
       .font('Helvetica-Bold');
 
-    headers.forEach((header, i) => {
-      doc.text(header, tableLeft + i * columnWidth, tableTop, {
-        width: columnWidth,
-        align: 'center'
+    columns.forEach(col => {
+      doc.text(col.label, xPos + 4, headerTop + 7, {
+        width: col.width - 8,
+        align: col.align
       });
+      xPos += col.width;
     });
 
-    // Table rows
-    doc.fillColor('#111827')
-      .font('Helvetica');
-    let rowIndex = 1;
+    let currentY = headerTop + headerHeight;
 
-    for (const [tagName, stats] of Object.entries(statistics)) {
-      const y = tableTop + rowIndex * rowHeight;
+    // ── Draw data rows ───────────────────────────────────────────────────
+    const entries = Object.entries(statistics);
 
-      const values = [
-        tagName,
-        stats.min.toFixed(2),
-        stats.max.toFixed(2),
-        stats.average.toFixed(2),
-        stats.standardDeviation.toFixed(2),
-        stats.dataQuality.toFixed(1) + '%'
+    entries.forEach(([tagName, stats], rowIndex) => {
+      ensureSpace(rowHeight);
+      currentY = doc.y;
+
+      // Alternating row background
+      if (rowIndex % 2 === 0) {
+        doc.rect(tableLeft, currentY, totalTableWidth, rowHeight)
+          .fill('#f8fafc');
+      } else {
+        doc.rect(tableLeft, currentY, totalTableWidth, rowHeight)
+          .fill('#ffffff');
+      }
+
+      // Subtle left accent bar on odd rows
+      if (rowIndex % 2 !== 0) {
+        doc.rect(tableLeft, currentY, 3, rowHeight)
+          .fill('#dbeafe');
+      }
+
+      // Cell values
+      const qualityPct = stats.dataQuality;
+      const cells: string[] = [
+        tagName.length > 24 ? tagName.substring(0, 22) + '…' : tagName,
+        typeof stats.average === 'number' ? stats.average.toFixed(3) : 'N/A',
+        typeof stats.median === 'number' ? stats.median.toFixed(3) : 'N/A',
+        typeof stats.standardDeviation === 'number' ? stats.standardDeviation.toFixed(3) : 'N/A',
+        typeof stats.min === 'number' ? stats.min.toFixed(3) : 'N/A',
+        typeof stats.max === 'number' ? stats.max.toFixed(3) : 'N/A',
+        typeof stats.count === 'number' ? stats.count.toLocaleString() : 'N/A',
+        // Quality rendered separately below
+        ''
       ];
 
-      values.forEach((value, i) => {
-        doc.text(value, tableLeft + i * columnWidth, y, {
-          width: columnWidth,
-          align: 'center'
-        });
+      xPos = tableLeft;
+      doc.font('Helvetica').fontSize(8).fillColor('#111827');
+
+      cells.forEach((cell, colIndex) => {
+        const col = columns[colIndex]!;
+        if (colIndex < columns.length - 1) {
+          // Normal text cell
+          doc.text(cell, xPos + 4, currentY + 7, {
+            width: col.width - 8,
+            align: col.align
+          });
+        } else {
+          // ── Quality column: progress bar + percentage ──────────────────
+          const qualityCol = col;
+          const barAreaX = xPos + 4;
+          const barAreaW = qualityCol.width - 8;
+          const barH = 7;
+          const barY = currentY + rowHeight / 2 - barH / 2;
+
+          // Background track
+          doc.roundedRect(barAreaX, barY, barAreaW, barH, 2).fill('#e5e7eb');
+
+          // Filled portion
+          const fillW = Math.max(0, Math.min(barAreaW, barAreaW * (qualityPct / 100)));
+          const fillColor = qualityPct >= 90 ? '#16a34a'
+            : qualityPct >= 70 ? '#ca8a04'
+              : '#dc2626';
+          if (fillW > 0) {
+            doc.roundedRect(barAreaX, barY, fillW, barH, 2).fill(fillColor);
+          }
+
+          // Percentage text after bar
+          doc.fillColor('#374151').font('Helvetica').fontSize(7.5)
+            .text(`${qualityPct.toFixed(1)}%`, barAreaX, currentY + 7, {
+              width: barAreaW,
+              align: 'center'
+            });
+        }
+        xPos += col.width;
       });
 
-      rowIndex++;
-    }
+      // Bottom separator line
+      doc.strokeColor('#e5e7eb')
+        .lineWidth(0.4)
+        .moveTo(tableLeft, currentY + rowHeight)
+        .lineTo(tableLeft + totalTableWidth, currentY + rowHeight)
+        .stroke();
 
-    doc.y = tableTop + (rowIndex + 1) * rowHeight;
+      doc.y = currentY + rowHeight;
+    });
+
+    // ── Table bottom border ──────────────────────────────────────────────
+    doc.strokeColor('#1e3a5f')
+      .lineWidth(1)
+      .moveTo(tableLeft, doc.y)
+      .lineTo(tableLeft + totalTableWidth, doc.y)
+      .stroke();
+
+    doc.moveDown(1);
+
+    // ── Legend note ─────────────────────────────────────────────────────
+    doc.fontSize(8)
+      .fillColor('#6b7280')
+      .font('Helvetica')
+      .text(
+        '* Quality %: proportion of data points with Good quality status (code 192). ' +
+        'Std Dev = population standard deviation. Count = number of valid numeric data points.',
+        40, doc.y,
+        { width: doc.page.width - 80 }
+      );
+
+    doc.moveDown(0.5);
+    doc.fillColor('#111827');
+    doc.x = 40;
   }
 
   /**

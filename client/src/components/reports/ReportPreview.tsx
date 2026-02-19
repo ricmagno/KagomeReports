@@ -1,5 +1,4 @@
-import React, { useEffect, useMemo, useCallback, useReducer, useRef, useImperativeHandle, forwardRef } from 'react';
-import ApexCharts from 'apexcharts';
+import React, { useEffect, useMemo, useCallback, useReducer } from 'react';
 import {
   Eye,
   FileText,
@@ -82,7 +81,11 @@ const previewReducer = (state: PreviewData, action: PreviewAction): PreviewData 
   }
 };
 
-export const ReportPreview = forwardRef<any, ReportPreviewProps>(({
+export interface ReportPreviewRef {
+  getCapturedCharts: () => Promise<Record<string, string>>;
+}
+
+export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewProps>(({
   config,
   onEdit,
   className = ''
@@ -99,36 +102,40 @@ export const ReportPreview = forwardRef<any, ReportPreviewProps>(({
 
   const { dataPoints, statistics, loading, error, tagDescriptions, tagUnits, lastUpdated } = previewData;
 
-  /**
-   * Capture charts as base64 images
-   * Used to send exact frontend charts to the PDF generator
-   */
-  useImperativeHandle(ref, () => ({
+  React.useImperativeHandle(ref, () => ({
     getCapturedCharts: async () => {
       const charts: Record<string, string> = {};
-      const activeTags = Object.keys(dataPoints).filter(tag => dataPoints[tag].length > 0);
+      try {
+        if ((window as any).ApexCharts) {
+          // Add small delay to ensure rendering is complete
+          await new Promise(resolve => setTimeout(resolve, 500));
 
-      // 1. Capture Multi-Trend Chart if it exists
-      if (activeTags.length > 1) {
-        try {
-          const { imgURI } = await ApexCharts.exec('multi-trend-chart', 'dataURI');
-          if (imgURI) charts['combined_multi_trend'] = imgURI;
-        } catch (e) {
-          console.warn('Failed to capture multi-trend chart', e);
+          if (config.tags && config.tags.length > 1) {
+            try {
+              const multiTrendDataURI = await (window as any).ApexCharts.exec('multi-trend-chart', 'dataURI');
+              if (multiTrendDataURI && multiTrendDataURI.imgURI) {
+                charts['Multi-Trend Analysis'] = multiTrendDataURI.imgURI;
+              }
+            } catch (e) {
+              console.warn('Could not capture multi-trend chart', e);
+            }
+          }
+
+          for (const tag of (config.tags || [])) {
+            const chartId = `mini-chart-${tag}`;
+            try {
+              const dataURI = await (window as any).ApexCharts.exec(chartId, 'dataURI');
+              if (dataURI && dataURI.imgURI) {
+                charts[tag] = dataURI.imgURI;
+              }
+            } catch (e) {
+              console.warn(`Could not capture chart ${chartId}`, e);
+            }
+          }
         }
+      } catch (e) {
+        console.error('Error capturing charts:', e);
       }
-
-      // 2. Capture individual MiniCharts
-      for (const tagName of activeTags) {
-        try {
-          // IDs are defined in MiniChart.tsx as `mini-chart-${tagName}`
-          const { imgURI } = await ApexCharts.exec(`mini-chart-${tagName}`, 'dataURI');
-          if (imgURI) charts[`${tagName}_line`] = imgURI;
-        } catch (e) {
-          console.warn(`Failed to capture chart for ${tagName}`, e);
-        }
-      }
-
       return charts;
     }
   }));
@@ -568,6 +575,131 @@ export const ReportPreview = forwardRef<any, ReportPreviewProps>(({
           </div>
         )}
 
+        {/* Statistics Summary Preview - Section II */}
+        {config.includeStatsSummary && !loading && Object.keys(statistics).length > 0 && (
+          <div className="mt-8 border border-blue-200 rounded-xl overflow-hidden shadow-sm">
+            {/* Section header */}
+            <div className="bg-gradient-to-r from-[#1e3a5f] to-[#2563eb] px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <TrendingUp className="w-5 h-5 text-blue-200" />
+                <div>
+                  <h4 className="text-base font-semibold text-white">Statistics Summary</h4>
+                  <p className="text-xs text-blue-200 mt-0.5">Section II — Conditional (enabled)</p>
+                </div>
+              </div>
+              <span className="text-xs text-blue-100 bg-blue-900/40 px-2.5 py-1 rounded-full font-medium">
+                {Object.keys(statistics).length} tag{Object.keys(statistics).length !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    {['Tag', 'Mean', 'Median', 'Std Dev', 'Min', 'Max', 'Count', 'Quality'].map(h => (
+                      <th
+                        key={h}
+                        className={`px-3 py-2 font-semibold text-gray-600 ${h === 'Tag' ? 'text-left' : 'text-center'
+                          }`}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(statistics).map(([tagName, stats], idx) => {
+                    const qualityPct = stats.dataQuality;
+                    const qualityColor =
+                      qualityPct >= 90 ? 'bg-green-500'
+                        : qualityPct >= 70 ? 'bg-yellow-500'
+                          : 'bg-red-500';
+                    const tagColor = tagColors[tagName];
+
+                    return (
+                      <tr
+                        key={tagName}
+                        className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'
+                          } hover:bg-blue-50/40 transition-colors`}
+                      >
+                        {/* Tag name with colour dot */}
+                        <td className="px-3 py-2.5 font-medium text-gray-800 max-w-[160px]">
+                          <div className="flex items-center space-x-2">
+                            <span
+                              className="flex-shrink-0 w-2.5 h-2.5 rounded-full"
+                              style={{ backgroundColor: tagColor || '#6b7280' }}
+                            />
+                            <span className="truncate" title={tagName}>{tagName}</span>
+                          </div>
+                        </td>
+
+                        {/* Numeric metrics */}
+                        <td className="px-3 py-2.5 text-center text-gray-700 tabular-nums">
+                          {typeof stats.average === 'number' ? formatYValue(stats.average) : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-gray-700 tabular-nums">
+                          {typeof stats.median === 'number' ? formatYValue(stats.median) : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-gray-700 tabular-nums">
+                          {typeof stats.standardDeviation === 'number' ? formatYValue(stats.standardDeviation) : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-gray-500 tabular-nums">
+                          {typeof stats.min === 'number' ? formatYValue(stats.min) : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-gray-500 tabular-nums">
+                          {typeof stats.max === 'number' ? formatYValue(stats.max) : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-gray-600 tabular-nums">
+                          {typeof stats.count === 'number' ? stats.count.toLocaleString() : '—'}
+                        </td>
+
+                        {/* Quality bar */}
+                        <td className="px-3 py-2.5">
+                          <div className="flex flex-col items-center space-y-1">
+                            <div className="w-full max-w-[80px] h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${qualityColor}`}
+                                style={{ width: `${Math.min(100, qualityPct)}%` }}
+                              />
+                            </div>
+                            <span className={`text-[10px] font-medium ${qualityPct >= 90 ? 'text-green-700'
+                                : qualityPct >= 70 ? 'text-yellow-700'
+                                  : 'text-red-700'
+                              }`}>
+                              {qualityPct.toFixed(1)}%
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer note */}
+            <div className="px-4 py-2 bg-gray-50 border-t border-gray-100">
+              <p className="text-[10px] text-gray-400">
+                Quality %: proportion of readings with Good quality (code 192). Std Dev = population standard deviation.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Statistics Summary placeholder when option is enabled but data not yet queried */}
+        {config.includeStatsSummary && !loading && Object.keys(statistics).length === 0 && dataQuality.totalPoints === 0 && (
+          <div className="mt-6 p-4 border border-dashed border-blue-300 rounded-xl bg-blue-50/40">
+            <div className="flex items-center space-x-3 text-blue-700">
+              <TrendingUp className="w-4 h-4 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium">Statistics Summary will appear here</p>
+                <p className="text-xs text-blue-600 mt-0.5">Query data first to preview statistics (Section II).</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Data Visualization Preview */}
         {!previewData.loading && dataQuality.totalPoints > 0 && (
           <div className="mt-8">
@@ -577,7 +709,7 @@ export const ReportPreview = forwardRef<any, ReportPreviewProps>(({
             </h4>
             <div className="grid grid-cols-1 gap-6 sm:gap-8">
               {/* Combined Multi-Trend View (only if multiple tags selected) */}
-              {Object.keys(dataPoints).filter((tag: string) => dataPoints[tag].length > 0).length > 1 && (
+              {Object.keys(dataPoints).filter(tag => dataPoints[tag].length > 0).length > 1 && (
                 <InteractiveChart
                   dataPoints={dataPoints}
                   tagDescriptions={tagDescriptions}
@@ -622,7 +754,6 @@ export const ReportPreview = forwardRef<any, ReportPreviewProps>(({
                   );
                 })}
             </div>
-
             {Object.keys(dataPoints).length > 6 && (
               <p className="text-xs text-gray-500 mt-2 text-center">
                 +{Object.keys(dataPoints).length - 6} more charts will be included in the report

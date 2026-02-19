@@ -299,6 +299,7 @@ export class DataRetrievalService {
           average: 0,
           min: 0,
           max: 0,
+          median: 0,
           standardDeviation: 0,
           count: 0,
           dataQuality: 0
@@ -313,6 +314,7 @@ export class DataRetrievalService {
         average: Number(row.average),
         min: Number(row.min),
         max: Number(row.max),
+        median: 0, // SQL aggregates don't support median; compute client-side if needed
         standardDeviation: Number(row.standardDeviation) || 0,
         count: totalCount,
         dataQuality

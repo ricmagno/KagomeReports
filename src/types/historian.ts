@@ -87,6 +87,7 @@ export interface StatisticsResult {
   min: number;
   max: number;
   average: number;
+  median: number;           // Middle value (50th percentile)
   standardDeviation: number;
   count: number;
   dataQuality: number; // Percentage of good quality data

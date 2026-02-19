@@ -55,13 +55,13 @@ export interface LineChartData {
     intercept: number;
     rSquared: number;
     equation: string;
-  } | undefined;
+  };
   statistics?: {
     min: number;
     max: number;
     mean: number;
     stdDev: number;
-  } | undefined;
+  };
 }
 
 export interface BarChartData {
@@ -87,16 +87,14 @@ export class ChartGenerationService {
     this.defaultWidth = (env.CHART_WIDTH as number) || 2400;  // Increased to 2400 for high resolution
     this.defaultHeight = (env.CHART_HEIGHT as number) || 1200; // Increased to 1200 for high resolution
     this.defaultColors = [
-      '#3b82f6', // Modern Blue
-      '#10b981', // Emerald Green
-      '#f59e0b', // Amber
-      '#ef4444', // Rose Red
-      '#8b5cf6', // Violet
-      '#ec4899', // Pink
-      '#06b6d4', // Cyan
+      '#3b82f6', // Blue
+      '#10b981', // Green
+      '#f59e0b', // Yellow
+      '#ef4444', // Red
+      '#8b5cf6', // Purple
       '#f97316', // Orange
-      '#14b8a6', // Teal
-      '#6366f1'  // Indigo
+      '#06b6d4', // Cyan
+      '#84cc16'  // Lime
     ];
   }
 
@@ -153,14 +151,6 @@ export class ChartGenerationService {
       datasets.forEach((dataset, index) => {
         const baseColor = grayscale ? '#000000' : (dataset.color || this.defaultColors[index % this.defaultColors.length]);
 
-        // Hex to RGBA helper for cool area fills
-        const hexToRgba = (hex: string, alpha: number) => {
-          const r = parseInt(hex.slice(1, 3), 16);
-          const g = parseInt(hex.slice(3, 5), 16);
-          const b = parseInt(hex.slice(5, 7), 16);
-          return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-        };
-
         chartDatasets.push({
           label: dataset.tagName,
           data: dataset.data.map(point => ({
@@ -168,26 +158,18 @@ export class ChartGenerationService {
             y: point.value
           })),
           borderColor: baseColor,
-          backgroundColor: hexToRgba(baseColor as string, 0.1),
-          borderWidth: 3,
-          fill: true,
-          tension: 0.4,
-          pointRadius: 3,
-          pointHoverRadius: 6,
-          pointBackgroundColor: baseColor,
-          pointBorderColor: '#ffffff',
-          pointBorderWidth: 1
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          fill: false,
+          tension: 0.1,
+          pointRadius: 2,
+          pointHoverRadius: 4
         });
 
         // Add trend line if available
         if (dataset.trendLine && dataset.data.length >= 3) {
-          const firstPoint = dataset.data[0];
-          const lastPoint = dataset.data[dataset.data.length - 1];
-
-          if (!firstPoint || !lastPoint) return;
-
-          const startTime = firstPoint.timestamp.getTime();
-          const endTime = lastPoint.timestamp.getTime();
+          const startTime = dataset.data[0]!.timestamp.getTime();
+          const endTime = dataset.data[dataset.data.length - 1]!.timestamp.getTime();
           const timeSpanSeconds = (endTime - startTime) / 1000;
 
           // Calculate y values at start and end
@@ -1156,52 +1138,6 @@ export class ChartGenerationService {
               { title: `${tagName} - Time Series` }
             );
             charts[`${tagName}_line`] = chartBuffer;
-          }
-        }
-
-        // Generate combined multi-trend chart if multiple tags are selected
-        const multiTagData = Object.entries(data).filter(([_, tagData]) => tagData.length > 0);
-        if (multiTagData.length > 1) {
-          try {
-            const combinedDatasets: LineChartData[] = multiTagData.map(([tagName, tagData]) => {
-              const stats = statistics?.[tagName];
-              let trendLine = null;
-              try {
-                trendLine = statisticalAnalysisService.calculateAdvancedTrendLine(tagData);
-              } catch (e) {
-                // Ignore trend calculation errors for combined chart
-              }
-
-              return {
-                tagName,
-                data: tagData,
-                trendLine: trendLine ? {
-                  slope: trendLine.slope,
-                  intercept: trendLine.intercept,
-                  rSquared: trendLine.rSquared,
-                  equation: trendLine.equation
-                } : undefined,
-                statistics: stats ? {
-                  min: stats.min,
-                  max: stats.max,
-                  mean: stats.average,
-                  stdDev: stats.standardDeviation
-                } : undefined
-              };
-            });
-
-            const chartBuffer = await this.generateLineChart(
-              combinedDatasets,
-              { title: options.title || 'Combined Multi-Trend Analysis', timezone: options.timezone }
-            );
-            charts['combined_multi_trend'] = chartBuffer;
-            reportLogger.info('Combined multi-trend chart generated', {
-              tagCount: combinedDatasets.length
-            });
-          } catch (error) {
-            reportLogger.error('Failed to generate combined multi-trend chart', {
-              error: error instanceof Error ? error.message : 'Unknown error'
-            });
           }
         }
       }

@@ -4,9 +4,13 @@
  */
 
 import { ReportGenerationService, ReportConfig, ReportData } from '@/services/reportGeneration';
-import { TimeSeriesData, StatisticsResult, TrendResult } from '@/types/historian';
-import fs from 'fs';
-import path from 'path';
+import { StatisticsResult, TimeSeriesData, TagClassification, TrendResult, SPCMetricsSummary } from '@/types/historian';
+import * as fs from 'fs';
+import * as path from 'path';
+
+// Use require for pdf-parse to handle module system differences in tests
+// @ts-ignore
+const pdfParse = require('pdf-parse').PDFParse;
 
 // Mock the environment configuration for testing
 jest.mock('@/config/environment', () => ({
@@ -21,14 +25,25 @@ jest.mock('@/config/environment', () => ({
 }));
 
 // Mock the logger to avoid file system issues in tests
-jest.mock('@/utils/logger', () => ({
-  reportLogger: {
+jest.mock('@/utils/logger', () => {
+  const mockLogger: any = {
     info: jest.fn(),
     warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn()
-  }
-}));
+    error: jest.fn((msg, meta) => console.log('LOGGER ERROR:', msg, meta)),
+    debug: jest.fn(),
+    child: jest.fn()
+  };
+  mockLogger.child.mockReturnValue(mockLogger);
+  return {
+    logger: mockLogger,
+    reportLogger: mockLogger,
+    dbLogger: mockLogger,
+    apiLogger: mockLogger,
+    emailLogger: mockLogger,
+    schedulerLogger: mockLogger,
+    createChildLogger: jest.fn(() => mockLogger)
+  };
+});
 
 describe('ReportGenerationService', () => {
   let service: ReportGenerationService;
@@ -48,11 +63,7 @@ describe('ReportGenerationService', () => {
   afterAll(() => {
     // Clean up test files
     if (fs.existsSync(testOutputDir)) {
-      const files = fs.readdirSync(testOutputDir);
-      files.forEach(file => {
-        fs.unlinkSync(path.join(testOutputDir, file));
-      });
-      fs.rmdirSync(testOutputDir);
+      fs.rmSync(testOutputDir, { recursive: true, force: true });
     }
   });
 
@@ -143,8 +154,7 @@ describe('ReportGenerationService', () => {
 
       // Log error if generation failed
       if (!result.success) {
-        console.error('Report generation failed:', result.error);
-        console.error('Full result:', JSON.stringify(result, null, 2));
+        throw new Error('DEBUG FAIL: ' + result.error + ' | ' + JSON.stringify(result, null, 2));
       }
 
       // Validate the result
@@ -160,7 +170,7 @@ describe('ReportGenerationService', () => {
       // Verify file was created
       if (result.filePath) {
         expect(fs.existsSync(result.filePath)).toBe(true);
-        
+
         // Verify file size matches metadata
         const stats = fs.statSync(result.filePath);
         expect(stats.size).toBe(result.metadata.fileSize);
@@ -197,6 +207,9 @@ describe('ReportGenerationService', () => {
 
       const result = await service.generateReport(reportData);
 
+      if (!result.success) {
+        throw new Error(`Report generation failed: ${result.error}`);
+      }
       expect(result.success).toBe(true);
       expect(result.metadata.pages).toBeGreaterThan(0);
     });
@@ -216,7 +229,9 @@ describe('ReportGenerationService', () => {
         format: 'pdf',
         branding: {
           companyName: 'Test Industries'
-        }
+        },
+        includeStatsSummary: true,
+        includeTrendLines: true
       };
 
       const testData: TimeSeriesData[] = [
@@ -245,19 +260,24 @@ describe('ReportGenerationService', () => {
 
       const result = await service.generateReport(reportData);
 
+      if (!result.success) {
+        throw new Error(`Report generation failed: ${result.error}`);
+      }
       expect(result.success).toBe(true);
       expect(result.metadata.pages).toBeGreaterThanOrEqual(2); // Should have multiple pages
-      
+
       // Verify buffer contains expected content markers
       if (result.buffer) {
-        const pdfContent = result.buffer.toString();
-        
+        const parser = new pdfParse({ data: result.buffer });
+        const textResult = await parser.getText();
+        const pdfContent = textResult.text;
+
         // Check for report title
         expect(pdfContent).toContain('Complete Test Report');
-        
+
         // Check for company branding
         expect(pdfContent).toContain('Test Industries');
-        
+
         // Check for tag name
         expect(pdfContent).toContain('TAG001');
       }
@@ -300,7 +320,8 @@ describe('ReportGenerationService', () => {
         },
         chartTypes: ['line'],
         template: 'default',
-        format: 'pdf'
+        format: 'pdf',
+        includeTrendLines: true
       };
 
       // Create data with mixed quality codes
@@ -320,12 +341,17 @@ describe('ReportGenerationService', () => {
 
       const result = await service.generateReport(reportData);
 
+      if (!result.success) {
+        throw new Error(`Report generation failed: ${result.error}`);
+      }
       expect(result.success).toBe(true);
-      
+
       // The quality breakdown should be calculated correctly:
       // Good: 3/5 = 60%, Bad: 1/5 = 20%, Uncertain: 1/5 = 20%
       if (result.buffer) {
-        const pdfContent = result.buffer.toString();
+        const parser = new pdfParse({ data: result.buffer });
+        const textResult = await parser.getText();
+        const pdfContent = textResult.text;
         // These percentages should appear in the PDF content
         expect(pdfContent).toContain('60.0%'); // Good quality percentage
         expect(pdfContent).toContain('20.0%'); // Bad quality percentage
@@ -343,13 +369,13 @@ describe('ReportGenerationService', () => {
     it('should create default template if none exists', async () => {
       const templateName = 'test-template';
       const template = await service.loadTemplate(templateName);
-      
+
       expect(template).toBeDefined();
-      
+
       // Verify template file was created
       const templatePath = path.join(process.cwd(), 'templates', `${templateName}.hbs`);
       expect(fs.existsSync(templatePath)).toBe(true);
-      
+
       // Clean up
       if (fs.existsSync(templatePath)) {
         fs.unlinkSync(templatePath);
