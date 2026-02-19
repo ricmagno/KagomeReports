@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   BarChart3,
   FileText,
@@ -82,6 +82,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     includeStatsSummary: true,
     specificationLimits: {},
   });
+  const previewRef = useRef<any>(null);
   const [savedConfig, setSavedConfig] = useState<Partial<ReportConfig> | null>(null);
 
   // Compare current config with saved config to detect changes
@@ -356,6 +357,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         version: reportConfig.version,
         retrievalMode: reportConfig.retrievalMode || 'Cyclic'
       };
+
+      // Exact Chart Capture: If the preview is available, capture the current charts as images
+      // to ensure the PDF exactly matches what the user sees (including any annotations)
+      if (previewRef.current && typeof previewRef.current.getCapturedCharts === 'function') {
+        try {
+          console.log('Capturing exact charts from preview...');
+          const charts = await previewRef.current.getCapturedCharts();
+          if (Object.keys(charts).length > 0) {
+            (generateRequest as any).charts = charts;
+            console.log(`Captured ${Object.keys(charts).length} charts for PDF embedding`);
+          }
+        } catch (captureError) {
+          console.warn('Failed to capture frontend charts, falling back to backend generation:', captureError);
+        }
+      }
 
       console.log('Generating report with config:', generateRequest);
 
@@ -1097,6 +1113,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   reportConfig.name && reportConfig.tags?.length && (
                     <div className="mt-8">
                       <ReportPreview
+                        ref={previewRef}
                         config={{
                           id: 'preview',
                           name: reportConfig.name,

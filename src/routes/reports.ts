@@ -197,7 +197,16 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
       reportConfig,
       includeStatistics: config.includeStatistics,
       includeTrends: config.includeTrends,
-      includeAnomalies: config.includeAnomalies
+      includeAnomalies: config.includeAnomalies,
+      preGeneratedCharts: req.body.charts ? Object.entries(req.body.charts as Record<string, string>).reduce((acc, [name, base64]) => {
+        if (base64 && base64.startsWith('data:image/')) {
+          const parts = base64.split(',');
+          if (parts.length > 1 && parts[1]) {
+            acc[name] = Buffer.from(parts[1], 'base64');
+          }
+        }
+        return acc;
+      }, {} as Record<string, Buffer>) : undefined
     });
 
     if (!result.success) {

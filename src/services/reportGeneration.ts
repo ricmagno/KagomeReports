@@ -234,6 +234,32 @@ export class ReportGenerationService {
         // Step 3: Generate enhanced charts with trend lines and statistics
         const enhancedCharts = new Map<string, Buffer>();
 
+        // Include any pre-generated charts from the report data
+        if (reportData.charts) {
+          // Priority 1: Multi-trend chart should always be first
+          if (reportData.charts['combined_multi_trend']) {
+            enhancedCharts.set('Multi-trend', reportData.charts['combined_multi_trend']);
+          }
+
+          // Priority 2: Statistics summary chart
+          if (reportData.charts['statistics_summary']) {
+            enhancedCharts.set('Statistical Summary Chart', reportData.charts['statistics_summary']);
+          }
+
+          for (const [name, buffer] of Object.entries(reportData.charts)) {
+            // Already handled these specific priorities
+            if (name === 'combined_multi_trend' || name === 'statistics_summary') continue;
+
+            let friendlyName = name;
+            // Map cryptic service-internal names to user-friendly titles
+            if (name.endsWith('_line')) friendlyName = `${name.replace('_line', '')} - Time Series`;
+            else if (name.endsWith('_trend')) friendlyName = `${name.replace('_trend', '')} - Trend Analysis`;
+            else if (name.endsWith('_scatter')) friendlyName = `${name.replace('_scatter', '')} - Scatter Plot`;
+
+            enhancedCharts.set(friendlyName, buffer);
+          }
+        }
+
         for (const [tagName, data] of Object.entries(reportData.data)) {
           if (data.length === 0) continue;
 
@@ -242,39 +268,43 @@ export class ReportGenerationService {
 
           // Generate standard chart with trend line and statistics
           const trendLine = trendLines.get(tagName);
-          const statistics = stats ? {
+          const tagStatistics = stats ? {
             min: stats.min,
             max: stats.max,
             mean: stats.average,
             stdDev: stats.standardDeviation
           } : undefined;
 
-          const lineChartData: any = {
-            tagName,
-            data,
-            trendLine,
-            statistics
-          };
+          // Only generate internal chart if not already provided in reportData.charts
+          // to avoid duplicated visualizations for the same tag
+          if (enhancedCharts.has(`${tagName} - Time Series`)) {
+            reportLogger.debug(`Skipping internal chart generation for ${tagName}, already exists in pre-generated charts`);
+          } else {
+            const lineChartData: any = {
+              tagName,
+              data,
+              trendLine,
+              statistics: tagStatistics
+            };
 
-          try {
-            const chartBuffer = await chartGenerationService.generateLineChart(
-              [lineChartData],
-              {
-                title: `${tagName} - Time Series Data`,
-                width: 1200,
-                height: 600,
-                timezone: reportData.config.timeRange.timezone
-              }
-            );
+            try {
+              const chartBuffer = await chartGenerationService.generateLineChart(
+                [lineChartData],
+                {
+                  title: `${tagName} - Time Series Data`,
+                  width: 1200,
+                  height: 600,
+                  timezone: reportData.config.timeRange.timezone
+                }
+              );
 
-            enhancedCharts.set(`${tagName} - Data Trend`, chartBuffer);
-            reportLogger.debug(`Enhanced chart generated for ${tagName}`);
-          } catch (error) {
-            reportLogger.error(`Failed to generate line chart for ${tagName}`, {
-              error: error instanceof Error ? error.message : 'Unknown error'
-            });
-            // Chart generation failed - report will continue without this chart
-            // The addChartsSection method will handle missing charts gracefully
+              enhancedCharts.set(`${tagName} - Data Trend`, chartBuffer);
+              reportLogger.debug(`Enhanced chart generated for ${tagName}`);
+            } catch (error) {
+              reportLogger.error(`Failed to generate line chart for ${tagName}`, {
+                error: error instanceof Error ? error.message : 'Unknown error'
+              });
+            }
           }
 
           // Generate SPC chart for analog tags if enabled

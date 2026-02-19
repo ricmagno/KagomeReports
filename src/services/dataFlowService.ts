@@ -18,6 +18,7 @@ export interface DataFlowConfig {
   includeTrends?: boolean;
   includeAnomalies?: boolean;
   realTimeData?: Record<string, TimeSeriesData[]>; // For real-time updates
+  preGeneratedCharts?: Record<string, Buffer> | undefined; // For exact frontend captures
 }
 
 export interface DataFlowResult {
@@ -86,7 +87,11 @@ export class DataFlowService {
       const finalData = this.mergeRealTimeData(data, config.realTimeData);
 
       // Step 6: Generate charts
-      const charts = await this.generateCharts(finalData, statistics, trends, config.reportConfig.chartTypes, config.reportConfig.timeRange.timezone);
+      const generatedCharts = await this.generateCharts(finalData, statistics, trends, config.reportConfig.chartTypes, config.reportConfig.timeRange.timezone);
+
+      // Step 6b: Merge with pre-generated charts from frontend capture
+      // Pre-generated charts take precedence to ensure "exact" match from preview
+      const charts = { ...generatedCharts, ...(config.preGeneratedCharts || {}) };
 
       // Step 7: Prepare report data
       const reportData: ReportData = {

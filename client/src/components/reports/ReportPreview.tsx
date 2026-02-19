@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useCallback, useReducer } from 'react';
+import React, { useEffect, useMemo, useCallback, useReducer, useRef, useImperativeHandle, forwardRef } from 'react';
+import ApexCharts from 'apexcharts';
 import {
   Eye,
   FileText,
@@ -81,11 +82,11 @@ const previewReducer = (state: PreviewData, action: PreviewAction): PreviewData 
   }
 };
 
-export const ReportPreview: React.FC<ReportPreviewProps> = ({
+export const ReportPreview = forwardRef<any, ReportPreviewProps>(({
   config,
   onEdit,
   className = ''
-}) => {
+}, ref) => {
   const [previewData, dispatch] = useReducer(previewReducer, {
     dataPoints: {},
     statistics: {},
@@ -97,6 +98,40 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
   });
 
   const { dataPoints, statistics, loading, error, tagDescriptions, tagUnits, lastUpdated } = previewData;
+
+  /**
+   * Capture charts as base64 images
+   * Used to send exact frontend charts to the PDF generator
+   */
+  useImperativeHandle(ref, () => ({
+    getCapturedCharts: async () => {
+      const charts: Record<string, string> = {};
+      const activeTags = Object.keys(dataPoints).filter(tag => dataPoints[tag].length > 0);
+
+      // 1. Capture Multi-Trend Chart if it exists
+      if (activeTags.length > 1) {
+        try {
+          const { imgURI } = await ApexCharts.exec('multi-trend-chart', 'dataURI');
+          if (imgURI) charts['combined_multi_trend'] = imgURI;
+        } catch (e) {
+          console.warn('Failed to capture multi-trend chart', e);
+        }
+      }
+
+      // 2. Capture individual MiniCharts
+      for (const tagName of activeTags) {
+        try {
+          // IDs are defined in MiniChart.tsx as `mini-chart-${tagName}`
+          const { imgURI } = await ApexCharts.exec(`mini-chart-${tagName}`, 'dataURI');
+          if (imgURI) charts[`${tagName}_line`] = imgURI;
+        } catch (e) {
+          console.warn(`Failed to capture chart for ${tagName}`, e);
+        }
+      }
+
+      return charts;
+    }
+  }));
 
   // Load preview data
   const loadPreviewData = useCallback(async () => {
@@ -542,7 +577,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
             </h4>
             <div className="grid grid-cols-1 gap-6 sm:gap-8">
               {/* Combined Multi-Trend View (only if multiple tags selected) */}
-              {Object.keys(dataPoints).filter(tag => dataPoints[tag].length > 0).length > 1 && (
+              {Object.keys(dataPoints).filter((tag: string) => dataPoints[tag].length > 0).length > 1 && (
                 <InteractiveChart
                   dataPoints={dataPoints}
                   tagDescriptions={tagDescriptions}
@@ -587,6 +622,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                   );
                 })}
             </div>
+
             {Object.keys(dataPoints).length > 6 && (
               <p className="text-xs text-gray-500 mt-2 text-center">
                 +{Object.keys(dataPoints).length - 6} more charts will be included in the report
@@ -663,4 +699,4 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
       </div>
     </div>
   );
-};
+});
