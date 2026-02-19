@@ -105,7 +105,29 @@ export const AnalyticsOptions: React.FC<AnalyticsOptionsProps> = ({
             </button>
           </div>
           <div className="p-3 space-y-2">
-            {/* Trend Lines Option */}
+            {/* Statistics Summary Option — 1st (Section II) */}
+            <label className={cn(
+              "flex items-start p-3 rounded-lg cursor-pointer transition-all border group",
+              includeStatsSummary ? "bg-primary-50/50 border-primary-200" : "hover:bg-gray-50 border-transparent"
+            )}>
+              <div className="flex items-center h-5">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                  checked={includeStatsSummary}
+                  onChange={(e) => onIncludeStatsSummaryChange(e.target.checked)}
+                />
+              </div>
+              <div className="ml-3 flex-1">
+                <div className="flex items-center">
+                  <PieChart className={cn("w-3.5 h-3.5 mr-2", includeStatsSummary ? "text-primary-600" : "text-gray-400")} />
+                  <span className={cn("text-xs font-bold", includeStatsSummary ? "text-primary-900" : "text-gray-700")}>Include Statistics Summary</span>
+                </div>
+                <p className="mt-1 text-[0.65rem] text-gray-500 leading-relaxed">Comprehensive statistical analysis including mean, median, min, max, standard deviation, count, and data quality metrics</p>
+              </div>
+            </label>
+
+            {/* Trend Lines Option — 2nd (Section IV) */}
             <label className={cn(
               "flex items-start p-3 rounded-lg cursor-pointer transition-all border group",
               includeTrendLines ? "bg-primary-50/50 border-primary-200" : "hover:bg-gray-50 border-transparent"
@@ -127,7 +149,7 @@ export const AnalyticsOptions: React.FC<AnalyticsOptionsProps> = ({
               </div>
             </label>
 
-            {/* SPC Charts Option */}
+            {/* SPC Charts Option — 3rd (Section V) */}
             <label className={cn(
               "flex items-start p-3 rounded-lg cursor-pointer transition-all border group",
               includeSPCCharts ? "bg-primary-50/50 border-primary-200" : "hover:bg-gray-50 border-transparent"
@@ -149,29 +171,7 @@ export const AnalyticsOptions: React.FC<AnalyticsOptionsProps> = ({
               </div>
             </label>
 
-            {/* Statistics Summary Option */}
-            <label className={cn(
-              "flex items-start p-3 rounded-lg cursor-pointer transition-all border group",
-              includeStatsSummary ? "bg-primary-50/50 border-primary-200" : "hover:bg-gray-50 border-transparent"
-            )}>
-              <div className="flex items-center h-5">
-                <input
-                  type="checkbox"
-                  className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
-                  checked={includeStatsSummary}
-                  onChange={(e) => onIncludeStatsSummaryChange(e.target.checked)}
-                />
-              </div>
-              <div className="ml-3 flex-1">
-                <div className="flex items-center">
-                  <PieChart className={cn("w-3.5 h-3.5 mr-2", includeStatsSummary ? "text-primary-600" : "text-gray-400")} />
-                  <span className={cn("text-xs font-bold", includeStatsSummary ? "text-primary-900" : "text-gray-700")}>Include Statistics Summary</span>
-                </div>
-                <p className="mt-1 text-[0.65rem] text-gray-500 leading-relaxed">Comprehensive statistical analysis including min, max, average, standard deviation, and data quality metrics</p>
-              </div>
-            </label>
-
-            {/* Data Table Option */}
+            {/* Data Table Option — 4th (Section VI) */}
             <label className={cn(
               "flex items-start p-3 rounded-lg cursor-pointer transition-all border group",
               includeDataTable ? "bg-primary-50/50 border-primary-200" : "hover:bg-gray-50 border-transparent"

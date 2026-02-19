@@ -181,49 +181,67 @@ export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewPro
         fetchedDataPoints[tagName] = data;
       });
 
-      // Load statistics and tag info in parallel where possible
+      // Compute statistics locally from already-fetched data (mirrors backend calculateStatisticsSync).
+      // This is preferred over a separate API call because:
+      //   1. No extra round-trip — data is already in memory.
+      //   2. The SQL-based endpoint returns median: 0 (SQL Server lacks MEDIAN aggregate).
+      //   3. A failed secondary request would silently leave the stats object empty.
       const fetchedStatistics: Record<string, StatisticsResult> = {};
       const fetchedDescriptions: Record<string, string> = {};
       const fetchedUnits: Record<string, string> = {};
 
-      const metadataPromises = config.tags.map(async (tagName) => {
-        const promises: Promise<any>[] = [];
+      // --- Local statistics helper ---
+      const computeLocalStats = (data: TimeSeriesData[]): StatisticsResult | null => {
+        const validValues = data
+          .map(p => p.value)
+          .filter(v => typeof v === 'number' && isFinite(v));
+        if (validValues.length === 0) return null;
 
-        // Stats if data present
-        if (fetchedDataPoints[tagName]?.length > 0) {
-          promises.push((async () => {
-            try {
-              const statsResponse = await apiService.getStatistics(
-                tagName,
-                config.timeRange.startTime,
-                config.timeRange.endTime
-              );
-              if (statsResponse.success) {
-                fetchedStatistics[tagName] = statsResponse.data;
-              }
-            } catch (err) {
-              console.warn(`Failed to load statistics for tag ${tagName}:`, err);
-            }
-          })());
+        const min = Math.min(...validValues);
+        const max = Math.max(...validValues);
+        const average = validValues.reduce((s, v) => s + v, 0) / validValues.length;
+
+        // Median
+        const sorted = [...validValues].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        const median = sorted.length % 2 === 0
+          ? (sorted[mid - 1]! + sorted[mid]!) / 2
+          : sorted[mid]!;
+
+        // Population std dev
+        const variance = validValues.reduce((s, v) => s + Math.pow(v - average, 2), 0) / validValues.length;
+        const standardDeviation = Math.sqrt(variance);
+
+        // Data quality: proportion of Good-quality points (code 192)
+        const goodCount = data.filter(p => p.quality === 192 || p.quality === 'Good').length;
+        const dataQuality = (goodCount / data.length) * 100;
+
+        return { min, max, average, median, standardDeviation, count: validValues.length, dataQuality };
+      };
+
+      // Compute stats for every tag that has data
+      for (const tagName of config.tags) {
+        const tagData = fetchedDataPoints[tagName];
+        if (tagData && tagData.length > 0) {
+          const stats = computeLocalStats(tagData);
+          if (stats) fetchedStatistics[tagName] = stats;
         }
+      }
 
-        // Tag details
-        promises.push((async () => {
-          try {
-            const response = await apiService.getTags(tagName);
-            if (response.success && response.data) {
-              const tagInfo = response.data.find(t => t.name === tagName);
-              if (tagInfo) {
-                fetchedDescriptions[tagName] = tagInfo.description;
-                fetchedUnits[tagName] = tagInfo.units;
-              }
+      // Fetch tag metadata (description, units) in parallel
+      const metadataPromises = config.tags.map(async (tagName) => {
+        try {
+          const response = await apiService.getTags(tagName);
+          if (response.success && response.data) {
+            const tagInfo = response.data.find(t => t.name === tagName);
+            if (tagInfo) {
+              fetchedDescriptions[tagName] = tagInfo.description;
+              fetchedUnits[tagName] = tagInfo.units;
             }
-          } catch (err) {
-            console.warn(`Failed to fetch tag info for ${tagName}:`, err);
           }
-        })());
-
-        return Promise.all(promises);
+        } catch (err) {
+          console.warn(`Failed to fetch tag info for ${tagName}:`, err);
+        }
       });
 
       await Promise.all(metadataPromises);
@@ -664,8 +682,8 @@ export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewPro
                               />
                             </div>
                             <span className={`text-[10px] font-medium ${qualityPct >= 90 ? 'text-green-700'
-                                : qualityPct >= 70 ? 'text-yellow-700'
-                                  : 'text-red-700'
+                              : qualityPct >= 70 ? 'text-yellow-700'
+                                : 'text-red-700'
                               }`}>
                               {qualityPct.toFixed(1)}%
                             </span>
