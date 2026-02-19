@@ -55,6 +55,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     unzip \
     fonts-dejavu-core \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user for security (Debian uses different flags)

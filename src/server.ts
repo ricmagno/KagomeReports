@@ -5,6 +5,12 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import { env } from '@/config/environment';
+
+// Set global timezone for the process to ensure consistency
+if (env.DEFAULT_TIMEZONE) {
+  process.env.TZ = env.DEFAULT_TIMEZONE;
+}
+
 import { initializeDatabase, closeDatabase, testDatabaseConnection } from '@/config/database';
 import { logger } from '@/utils/logger';
 import { errorHandler } from '@/middleware/errorHandler';
