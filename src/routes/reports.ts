@@ -92,6 +92,7 @@ const reportConfigBaseSchema = z.object({
   includeSPCCharts: z.boolean().default(false),
   includeTrendLines: z.boolean().default(true),
   includeStatsSummary: z.boolean().default(true),
+  includeDataTable: z.boolean().default(false),
   version: z.number().int().positive().optional()
 });
 
@@ -153,7 +154,8 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
   const config = configResult.data;
   const reportId = `report_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  // Create full report config
+  // Create full report config — include ALL analytics flags so the PDF generator
+  // can render conditional sections (Statistics Summary, Trend Lines, SPC, etc.)
   const reportConfig: any = {
     id: reportId,
     name: config.name,
@@ -166,7 +168,16 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
     branding: config.branding,
     metadata: config.metadata,
     version: config.version,
-    retrievalMode: config.retrievalMode
+    retrievalMode: config.retrievalMode,
+    // Advanced Analytics flags — conditional section rendering
+    includeStatsSummary: config.includeStatsSummary,
+    includeTrendLines: config.includeTrendLines,
+    includeSPCCharts: config.includeSPCCharts,
+    specificationLimits: config.specificationLimits,
+    includeStatistics: config.includeStatistics,
+    includeTrends: config.includeTrends,
+    includeAnomalies: config.includeAnomalies,
+    includeDataTable: config.includeDataTable,
   };
 
   apiLogger.info('Starting end-to-end report generation', {
