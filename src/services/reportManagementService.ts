@@ -430,6 +430,59 @@ export class ReportManagementService {
   }
 
   /**
+   * Load the latest version of a report by its name.
+   * Used by the scheduler to resolve the current config at execution time,
+   * since report names are the stable key across all versions.
+   */
+  async loadLatestByName(reportName: string): Promise<SavedReport | null> {
+    await this.waitForInitialization();
+    return new Promise((resolve, reject) => {
+      const query = `
+        SELECT r.*, u.username as created_by_name 
+        FROM reports r
+        LEFT JOIN auth.users u ON r.created_by = u.id
+        WHERE r.name = ? AND r.is_latest_version = true
+        LIMIT 1
+      `;
+
+      this.db.get(query, [reportName], (err, row: any) => {
+        if (err) {
+          logger.error('Error loading latest report by name:', err);
+          reject(err);
+          return;
+        }
+
+        if (!row) {
+          resolve(null);
+          return;
+        }
+
+        try {
+          const config = this.deserializeDates(JSON.parse(row.config));
+
+          const savedReport: SavedReport = {
+            id: row.id,
+            name: row.name,
+            description: row.description || '',
+            config,
+            version: row.version,
+            createdBy: row.created_by_name || row.created_by,
+            createdByUserId: row.created_by,
+            createdAt: new Date(row.created_at),
+            updatedAt: new Date(row.updated_at),
+            isLatestVersion: row.is_latest_version
+          };
+
+          resolve(savedReport);
+        } catch (parseError) {
+          logger.error('Error parsing report config in loadLatestByName:', parseError);
+          reject(parseError);
+        }
+      });
+    });
+  }
+
+  /**
    * List all saved reports for a user
    */
   async listReports(userId?: string): Promise<ReportListItem[]> {

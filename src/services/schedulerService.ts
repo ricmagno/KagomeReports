@@ -9,11 +9,12 @@ import { Database } from 'sqlite3';
 import path from 'path';
 import { reportLogger } from '@/utils/logger';
 import { env, getDatabasePath } from '@/config/environment';
-import { ReportConfig, ReportData, reportGenerationService } from './reportGeneration';
+import { ReportConfig, ReportData, ReportResult, reportGenerationService } from './reportGeneration';
 import { dataRetrievalService } from './dataRetrieval';
 import { statisticalAnalysisService } from './statisticalAnalysis';
 import { emailService } from './emailService';
 import { dataFlowService } from './dataFlowService';
+import { ReportManagementService } from './reportManagementService';
 import { getNextRunTime } from '@/utils/cronUtils';
 
 export interface ScheduleConfig {
@@ -34,6 +35,9 @@ export interface ScheduleConfig {
   sendEmail?: boolean | undefined;
   destinationPath?: string | undefined;
   createdByUserId?: string | undefined;
+  /** When set, each execution loads the LATEST saved version of this report
+   *  from ReportManagementService instead of using the stored snapshot. */
+  linkedReportId?: string | undefined;
 }
 
 export interface ScheduleExecution {
@@ -62,6 +66,17 @@ export class SchedulerService {
   private isProcessingQueue = false;
   private maxConcurrentJobs: number;
   private currentRunningJobs = 0;
+  /** Lazily-initialised ReportManagementService for loading versioned configs */
+  private _reportMgmtService: ReportManagementService | null = null;
+
+  private get reportMgmtService(): ReportManagementService {
+    if (!this._reportMgmtService) {
+      const { Database: Db } = require('sqlite3');
+      const reportsDb = new Db(getDatabasePath('reports.db'));
+      this._reportMgmtService = new ReportManagementService(reportsDb);
+    }
+    return this._reportMgmtService;
+  }
 
   constructor() {
     this.maxConcurrentJobs = env.MAX_CONCURRENT_REPORTS || 5;
@@ -100,7 +115,8 @@ export class SchedulerService {
             save_to_file BOOLEAN DEFAULT 1,
             send_email BOOLEAN DEFAULT 0,
             destination_path TEXT,
-            created_by TEXT
+            created_by TEXT,
+            linked_report_id TEXT
           )
         `);
 
@@ -154,6 +170,11 @@ export class SchedulerService {
 
           if (!columnNames.includes('created_by')) {
             this.db.run('ALTER TABLE schedules ADD COLUMN created_by TEXT');
+          }
+
+          // v1.0.3+ — link schedule to versioned report
+          if (!columnNames.includes('linked_report_id')) {
+            this.db.run('ALTER TABLE schedules ADD COLUMN linked_report_id TEXT');
           }
 
           // Migrate existing schedules: set send_email=1 if recipients exist
@@ -222,8 +243,9 @@ export class SchedulerService {
       this.db.run(
         `INSERT INTO schedules (
           id, name, description, report_config, cron_expression, enabled,
-          next_run, created_at, updated_at, recipients, save_to_file, send_email, destination_path, created_by
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          next_run, created_at, updated_at, recipients, save_to_file, send_email,
+          destination_path, created_by, linked_report_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           scheduleId,
           config.name,
@@ -238,7 +260,8 @@ export class SchedulerService {
           saveToFile ? 1 : 0,
           sendEmail ? 1 : 0,
           destinationPath,
-          userId || null
+          userId || null,
+          config.linkedReportId || null
         ],
         (err) => {
           if (err) {
@@ -318,7 +341,8 @@ export class SchedulerService {
                 saveToFile: row.save_to_file !== undefined ? Boolean(row.save_to_file) : true,
                 sendEmail: row.send_email !== undefined ? Boolean(row.send_email) : false,
                 destinationPath: row.destination_path || undefined,
-                createdByUserId: row.created_by || undefined
+                createdByUserId: row.created_by || undefined,
+                linkedReportId: row.linked_report_id || undefined
               } as ScheduleConfig;
             });
             resolve(schedules);
@@ -375,7 +399,8 @@ export class SchedulerService {
               saveToFile: row.save_to_file !== undefined ? Boolean(row.save_to_file) : true,
               sendEmail: row.send_email !== undefined ? Boolean(row.send_email) : false,
               destinationPath: row.destination_path || undefined,
-              createdByUserId: row.created_by || undefined
+              createdByUserId: row.created_by || undefined,
+              linkedReportId: row.linked_report_id || undefined
             } as ScheduleConfig);
           }
         }
@@ -697,6 +722,43 @@ export class SchedulerService {
       if (!schedule || !schedule.enabled) {
         reportLogger.warn('Schedule not found or disabled', { scheduleId });
         return;
+      }
+
+      // If this schedule is linked to a saved report, load the LATEST version
+      // so the schedule always executes the most current configuration.
+      if (schedule.linkedReportId) {
+        try {
+          const latestReport = await this.reportMgmtService.loadLatestByName(schedule.linkedReportId);
+          if (latestReport) {
+            // Merge latest config into schedule — preserve timeRange.relativeRange from
+            // the schedule so relative time windows still work correctly.
+            const relativeRange = schedule.reportConfig.timeRange?.relativeRange;
+            schedule.reportConfig = {
+              ...latestReport.config,
+              timeRange: {
+                ...latestReport.config.timeRange,
+                ...(relativeRange ? { relativeRange } : {})
+              }
+            } as ReportConfig;
+            reportLogger.info('Loaded latest report version for scheduled execution', {
+              scheduleId,
+              executionId,
+              linkedReportId: schedule.linkedReportId,
+              reportVersion: latestReport.version
+            });
+          } else {
+            reportLogger.warn('Linked report not found; falling back to stored config', {
+              scheduleId,
+              linkedReportId: schedule.linkedReportId
+            });
+          }
+        } catch (versionErr) {
+          reportLogger.warn('Failed to load latest report version; falling back to stored config', {
+            scheduleId,
+            linkedReportId: schedule.linkedReportId,
+            error: versionErr instanceof Error ? versionErr.message : String(versionErr)
+          });
+        }
       }
 
       // Recalculate time range if relativeRange is specified

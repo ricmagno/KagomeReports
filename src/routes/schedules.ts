@@ -55,7 +55,9 @@ const scheduleConfigSchema = z.object({
   recipients: z.array(z.string().email()).optional(),
   saveToFile: z.boolean().optional().default(true),
   sendEmail: z.boolean().optional(),
-  destinationPath: z.string().optional()
+  destinationPath: z.string().optional(),
+  /** Report name to link; each execution loads the latest version from ReportManagementService */
+  linkedReportId: z.string().optional()
 }).refine(data => {
   // At least one delivery method must be enabled
   const saveToFile = data.saveToFile !== undefined ? data.saveToFile : true;
@@ -75,7 +77,8 @@ const scheduleUpdateSchema = z.object({
   recipients: z.array(z.string().email()).optional(),
   saveToFile: z.boolean().optional(),
   sendEmail: z.boolean().optional(),
-  destinationPath: z.string().optional()
+  destinationPath: z.string().optional(),
+  linkedReportId: z.string().optional()
 }).transform(data => {
   // Remove undefined values to avoid TypeScript strict optional issues
   const result: any = {};
