@@ -409,13 +409,13 @@ export const apiService = {
 
   // Export/Import Configuration
   async exportConfiguration(config: ReportConfig, format: ExportFormat): Promise<{ blob: Blob; filename: string }> {
-    const response = await fetch(`${API_BASE_URL}/reports/export?format=${format}`, {
+    const response = await fetch(`${API_BASE_URL}/reports/export`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
       },
-      body: JSON.stringify(config),
+      body: JSON.stringify({ config, format }),
     });
 
     if (!response.ok) {
@@ -470,10 +470,13 @@ export const apiService = {
   },
 
   async exportDashboard(id: string): Promise<{ blob: Blob; filename: string }> {
-    const response = await fetch(`${API_BASE_URL}/dashboards/${encodeURIComponent(id)}/export`, {
+    const response = await fetch(`${API_BASE_URL}/dashboards/export`, {
+      method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
       },
+      body: JSON.stringify({ id }),
     });
 
     if (!response.ok) {
