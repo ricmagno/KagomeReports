@@ -145,14 +145,33 @@ export function constrainValue(value: number, min: number, max: number): number 
 }
 
 /**
- * Format a Y value for display
+ * Format a Y value for display with dynamic precision based on magnitude
+ * Rules (unless decimals is specified):
+ * - |x| >= 100: 0 decimals
+ * - 10 <= |x| < 100: 1 decimal
+ * - |x| < 10: 2 decimals
  * @param value - Y value to format
- * @param decimals - Number of decimal places (default: 2)
+ * @param decimals - Optional override for number of decimal places
  * @param units - Optional units to append
  * @returns Formatted string
  */
-export function formatYValue(value: number, decimals: number = 2, units?: string): string {
-  const formatted = value.toFixed(decimals);
+export function formatYValue(value: number, decimals?: number, units?: string): string {
+  if (value === null || value === undefined || isNaN(value)) return 'N/A';
+
+  let d = decimals;
+  if (d === undefined) {
+    const absVal = Math.abs(value);
+    if (absVal >= 100) {
+      d = 0;
+    } else if (absVal >= 1) {
+      d = 1;
+    } else {
+      // User requested 0 decimals for values between 0 and 1
+      d = 0;
+    }
+  }
+
+  const formatted = value.toFixed(d);
   return units ? `${formatted} ${units}` : formatted;
 }
 

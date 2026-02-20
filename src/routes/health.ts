@@ -19,10 +19,13 @@ const router = Router();
  * Basic health check endpoint
  */
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
+  const { versionManager } = await import('@/services/versionManager');
+  const versionInfo = versionManager.getCurrentVersion();
+
   const healthStatus = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version || '1.0.0',
+    version: versionInfo.version,
     environment: env.NODE_ENV,
     uptime: process.uptime(),
     memory: process.memoryUsage(),
@@ -30,6 +33,12 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       database: 'unknown',
       historian: 'unknown',
       cache: 'unknown'
+    },
+    serverTime: {
+      utc: new Date().toISOString(),
+      local: new Date().toLocaleString(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      offset: new Date().getTimezoneOffset()
     }
   };
 
@@ -76,10 +85,13 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
  * Detailed health check with component-specific information
  */
 router.get('/detailed', asyncHandler(async (req: Request, res: Response) => {
+  const { versionManager } = await import('@/services/versionManager');
+  const versionInfo = versionManager.getCurrentVersion();
+
   const detailedHealth = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version || '1.0.0',
+    version: versionInfo.version,
     environment: env.NODE_ENV,
     system: {
       uptime: process.uptime(),
@@ -106,6 +118,12 @@ router.get('/detailed', asyncHandler(async (req: Request, res: Response) => {
         stats: null as any,
         lastCheck: null as string | null
       }
+    },
+    serverTime: {
+      utc: new Date().toISOString(),
+      local: new Date().toLocaleString(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      offset: new Date().getTimezoneOffset()
     }
   };
 
@@ -135,7 +153,7 @@ router.get('/detailed', asyncHandler(async (req: Request, res: Response) => {
     const historianConnection = getHistorianConnection();
     const historianHealthy = await historianConnection.validateConnection();
     const connectionStatus = historianConnection.getConnectionStatus();
-    
+
     detailedHealth.services.historian = {
       status: historianHealthy ? 'healthy' : 'unhealthy',
       connectionStatus,
@@ -151,7 +169,7 @@ router.get('/detailed', asyncHandler(async (req: Request, res: Response) => {
   try {
     const cacheHealth = await cacheManager.healthCheck();
     const cacheStats = await cacheManager.getCacheStats();
-    
+
     detailedHealth.services.cache = {
       status: cacheHealth.cacheHealthy ? 'healthy' : 'unhealthy',
       enabled: cacheHealth.cacheEnabled,
@@ -168,7 +186,7 @@ router.get('/detailed', asyncHandler(async (req: Request, res: Response) => {
   // Determine overall status
   const allServicesHealthy = Object.values(detailedHealth.services)
     .every(service => service.status === 'healthy');
-  
+
   if (!allServicesHealthy) {
     detailedHealth.status = 'degraded';
   }
@@ -204,11 +222,11 @@ router.get('/database', asyncHandler(async (req: Request, res: Response) => {
   };
 
   const startTime = Date.now();
-  
+
   try {
     const isHealthy = await testDatabaseConnection();
     const duration = Date.now() - startTime;
-    
+
     dbHealth.status = isHealthy ? 'healthy' : 'unhealthy';
     dbHealth.test = {
       successful: isHealthy,
@@ -217,7 +235,7 @@ router.get('/database', asyncHandler(async (req: Request, res: Response) => {
     };
   } catch (error) {
     const duration = Date.now() - startTime;
-    
+
     dbHealth.status = 'unhealthy';
     dbHealth.test = {
       successful: false,
@@ -243,17 +261,23 @@ router.get('/historian', asyncHandler(async (req: Request, res: Response) => {
       successful: false,
       duration: 0,
       error: null as string | null
+    },
+    serverTime: {
+      utc: new Date().toISOString(),
+      local: new Date().toLocaleString(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      offset: new Date().getTimezoneOffset()
     }
   };
 
   const startTime = Date.now();
-  
+
   try {
     const historianConnection = getHistorianConnection();
     const isHealthy = await historianConnection.validateConnection();
     const connectionStatus = historianConnection.getConnectionStatus();
     const duration = Date.now() - startTime;
-    
+
     historianHealth.status = isHealthy ? 'healthy' : 'unhealthy';
     historianHealth.connection = connectionStatus;
     historianHealth.test = {
@@ -263,7 +287,7 @@ router.get('/historian', asyncHandler(async (req: Request, res: Response) => {
     };
   } catch (error) {
     const duration = Date.now() - startTime;
-    
+
     historianHealth.status = 'unhealthy';
     historianHealth.test = {
       successful: false,
@@ -301,12 +325,12 @@ router.get('/cache', asyncHandler(async (req: Request, res: Response) => {
   };
 
   const startTime = Date.now();
-  
+
   try {
     const healthCheck = await cacheManager.healthCheck();
     const stats = await cacheManager.getCacheStats();
     const duration = Date.now() - startTime;
-    
+
     cacheHealth.status = healthCheck.cacheHealthy ? 'healthy' : 'unhealthy';
     cacheHealth.test = {
       successful: healthCheck.cacheHealthy,
@@ -316,7 +340,7 @@ router.get('/cache', asyncHandler(async (req: Request, res: Response) => {
     cacheHealth.stats = stats;
   } catch (error) {
     const duration = Date.now() - startTime;
-    
+
     cacheHealth.status = 'unhealthy';
     cacheHealth.test = {
       successful: false,

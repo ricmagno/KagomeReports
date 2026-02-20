@@ -9,11 +9,12 @@ import { Database } from 'sqlite3';
 import path from 'path';
 import { reportLogger } from '@/utils/logger';
 import { env, getDatabasePath } from '@/config/environment';
-import { ReportConfig, ReportData, reportGenerationService } from './reportGeneration';
+import { ReportConfig, ReportData, ReportResult, reportGenerationService } from './reportGeneration';
 import { dataRetrievalService } from './dataRetrieval';
 import { statisticalAnalysisService } from './statisticalAnalysis';
 import { emailService } from './emailService';
 import { dataFlowService } from './dataFlowService';
+import { ReportManagementService } from './reportManagementService';
 import { getNextRunTime } from '@/utils/cronUtils';
 
 export interface ScheduleConfig {
@@ -33,6 +34,10 @@ export interface ScheduleConfig {
   saveToFile?: boolean | undefined;
   sendEmail?: boolean | undefined;
   destinationPath?: string | undefined;
+  createdByUserId?: string | undefined;
+  /** When set, each execution loads the LATEST saved version of this report
+   *  from ReportManagementService instead of using the stored snapshot. */
+  linkedReportId?: string | undefined;
 }
 
 export interface ScheduleExecution {
@@ -61,6 +66,17 @@ export class SchedulerService {
   private isProcessingQueue = false;
   private maxConcurrentJobs: number;
   private currentRunningJobs = 0;
+  /** Lazily-initialised ReportManagementService for loading versioned configs */
+  private _reportMgmtService: ReportManagementService | null = null;
+
+  private get reportMgmtService(): ReportManagementService {
+    if (!this._reportMgmtService) {
+      const { Database: Db } = require('sqlite3');
+      const reportsDb = new Db(getDatabasePath('reports.db'));
+      this._reportMgmtService = new ReportManagementService(reportsDb);
+    }
+    return this._reportMgmtService;
+  }
 
   constructor() {
     this.maxConcurrentJobs = env.MAX_CONCURRENT_REPORTS || 5;
@@ -98,7 +114,9 @@ export class SchedulerService {
             recipients TEXT,
             save_to_file BOOLEAN DEFAULT 1,
             send_email BOOLEAN DEFAULT 0,
-            destination_path TEXT
+            destination_path TEXT,
+            created_by TEXT,
+            linked_report_id TEXT
           )
         `);
 
@@ -150,6 +168,15 @@ export class SchedulerService {
             this.db.run('ALTER TABLE schedules ADD COLUMN destination_path TEXT');
           }
 
+          if (!columnNames.includes('created_by')) {
+            this.db.run('ALTER TABLE schedules ADD COLUMN created_by TEXT');
+          }
+
+          // v1.0.3+ — link schedule to versioned report
+          if (!columnNames.includes('linked_report_id')) {
+            this.db.run('ALTER TABLE schedules ADD COLUMN linked_report_id TEXT');
+          }
+
           // Migrate existing schedules: set send_email=1 if recipients exist
           this.db.run(`
             UPDATE schedules 
@@ -196,7 +223,7 @@ export class SchedulerService {
   /**
    * Create a new schedule
    */
-  async createSchedule(config: Omit<ScheduleConfig, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> {
+  async createSchedule(config: Omit<ScheduleConfig, 'id' | 'createdAt' | 'updatedAt'>, userId?: string): Promise<string> {
     const scheduleId = `schedule_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date();
 
@@ -216,8 +243,9 @@ export class SchedulerService {
       this.db.run(
         `INSERT INTO schedules (
           id, name, description, report_config, cron_expression, enabled,
-          next_run, created_at, updated_at, recipients, save_to_file, send_email, destination_path
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          next_run, created_at, updated_at, recipients, save_to_file, send_email,
+          destination_path, created_by, linked_report_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           scheduleId,
           config.name,
@@ -231,7 +259,9 @@ export class SchedulerService {
           config.recipients ? JSON.stringify(config.recipients) : null,
           saveToFile ? 1 : 0,
           sendEmail ? 1 : 0,
-          destinationPath
+          destinationPath,
+          userId || null,
+          config.linkedReportId || null
         ],
         (err) => {
           if (err) {
@@ -267,10 +297,21 @@ export class SchedulerService {
   /**
    * Get all schedules
    */
-  async getSchedules(): Promise<ScheduleConfig[]> {
+  async getSchedules(userId?: string): Promise<ScheduleConfig[]> {
     return new Promise((resolve, reject) => {
+      let query = 'SELECT * FROM schedules';
+      const params: any[] = [];
+
+      if (userId) {
+        query += ' WHERE created_by = ? OR created_by IS NULL';
+        params.push(userId);
+      }
+
+      query += ' ORDER BY created_at DESC';
+
       this.db.all(
-        'SELECT * FROM schedules ORDER BY created_at DESC',
+        query,
+        params,
         (err, rows: any[]) => {
           if (err) {
             reject(err);
@@ -299,7 +340,9 @@ export class SchedulerService {
                 recipients: row.recipients ? JSON.parse(row.recipients) : undefined,
                 saveToFile: row.save_to_file !== undefined ? Boolean(row.save_to_file) : true,
                 sendEmail: row.send_email !== undefined ? Boolean(row.send_email) : false,
-                destinationPath: row.destination_path || undefined
+                destinationPath: row.destination_path || undefined,
+                createdByUserId: row.created_by || undefined,
+                linkedReportId: row.linked_report_id || undefined
               } as ScheduleConfig;
             });
             resolve(schedules);
@@ -312,11 +355,19 @@ export class SchedulerService {
   /**
    * Get schedule by ID
    */
-  async getSchedule(scheduleId: string): Promise<ScheduleConfig | null> {
+  async getSchedule(scheduleId: string, userId?: string): Promise<ScheduleConfig | null> {
     return new Promise((resolve, reject) => {
+      let query = 'SELECT * FROM schedules WHERE id = ?';
+      const params: any[] = [scheduleId];
+
+      if (userId) {
+        query += ' AND (created_by = ? OR created_by IS NULL)';
+        params.push(userId);
+      }
+
       this.db.get(
-        'SELECT * FROM schedules WHERE id = ?',
-        [scheduleId],
+        query,
+        params,
         (err, row: any) => {
           if (err) {
             reject(err);
@@ -347,7 +398,9 @@ export class SchedulerService {
               recipients: row.recipients ? JSON.parse(row.recipients) : undefined,
               saveToFile: row.save_to_file !== undefined ? Boolean(row.save_to_file) : true,
               sendEmail: row.send_email !== undefined ? Boolean(row.send_email) : false,
-              destinationPath: row.destination_path || undefined
+              destinationPath: row.destination_path || undefined,
+              createdByUserId: row.created_by || undefined,
+              linkedReportId: row.linked_report_id || undefined
             } as ScheduleConfig);
           }
         }
@@ -358,8 +411,8 @@ export class SchedulerService {
   /**
    * Update a schedule
    */
-  async updateSchedule(scheduleId: string, updates: Partial<ScheduleConfig>): Promise<void> {
-    const schedule = await this.getSchedule(scheduleId);
+  async updateSchedule(scheduleId: string, updates: Partial<ScheduleConfig>, userId?: string): Promise<void> {
+    const schedule = await this.getSchedule(scheduleId, userId);
     if (!schedule) {
       throw new Error(`Schedule not found: ${scheduleId}`);
     }
@@ -466,7 +519,12 @@ export class SchedulerService {
   /**
    * Delete a schedule
    */
-  async deleteSchedule(scheduleId: string): Promise<void> {
+  async deleteSchedule(scheduleId: string, userId?: string): Promise<void> {
+    const schedule = await this.getSchedule(scheduleId, userId);
+    if (!schedule) {
+      throw new Error(`Schedule not found or unauthorized: ${scheduleId}`);
+    }
+
     return new Promise((resolve, reject) => {
       this.db.run(
         'DELETE FROM schedules WHERE id = ?',
@@ -538,11 +596,12 @@ export class SchedulerService {
   /**
    * Manually execute a schedule immediately
    * @param scheduleId - The ID of the schedule to execute
+   * @param userId - Optional user ID for authorization check
    * @returns Execution ID for tracking
    */
-  async executeScheduleManually(scheduleId: string): Promise<string> {
+  async executeScheduleManually(scheduleId: string, userId?: string): Promise<string> {
     // Verify schedule exists
-    const schedule = await this.getSchedule(scheduleId);
+    const schedule = await this.getSchedule(scheduleId, userId);
     if (!schedule) {
       throw new Error(`Schedule not found: ${scheduleId}`);
     }
@@ -570,7 +629,7 @@ export class SchedulerService {
       this.queueExecution(schedule.id);
     }, {
       scheduled: false,
-      timezone: 'UTC'
+      timezone: env.DEFAULT_TIMEZONE
     });
 
     task.start();
@@ -665,6 +724,43 @@ export class SchedulerService {
         return;
       }
 
+      // If this schedule is linked to a saved report, load the LATEST version
+      // so the schedule always executes the most current configuration.
+      if (schedule.linkedReportId) {
+        try {
+          const latestReport = await this.reportMgmtService.loadLatestByName(schedule.linkedReportId);
+          if (latestReport) {
+            // Merge latest config into schedule — preserve timeRange.relativeRange from
+            // the schedule so relative time windows still work correctly.
+            const relativeRange = schedule.reportConfig.timeRange?.relativeRange;
+            schedule.reportConfig = {
+              ...latestReport.config,
+              timeRange: {
+                ...latestReport.config.timeRange,
+                ...(relativeRange ? { relativeRange } : {})
+              }
+            } as ReportConfig;
+            reportLogger.info('Loaded latest report version for scheduled execution', {
+              scheduleId,
+              executionId,
+              linkedReportId: schedule.linkedReportId,
+              reportVersion: latestReport.version
+            });
+          } else {
+            reportLogger.warn('Linked report not found; falling back to stored config', {
+              scheduleId,
+              linkedReportId: schedule.linkedReportId
+            });
+          }
+        } catch (versionErr) {
+          reportLogger.warn('Failed to load latest report version; falling back to stored config', {
+            scheduleId,
+            linkedReportId: schedule.linkedReportId,
+            error: versionErr instanceof Error ? versionErr.message : String(versionErr)
+          });
+        }
+      }
+
       // Recalculate time range if relativeRange is specified
       if (schedule.reportConfig.timeRange.relativeRange) {
         const { startTime: newStart, endTime: newEnd } = this.calculateRelativeTimeRange(schedule.reportConfig.timeRange.relativeRange);
@@ -694,9 +790,10 @@ export class SchedulerService {
       // Execute end-to-end data flow for the report
       const dataFlowResult = await dataFlowService.executeDataFlow({
         reportConfig: schedule.reportConfig,
-        includeStatistics: true,
-        includeTrends: true,
-        includeAnomalies: false
+        includeStatistics: true, // Always calculate for Key Findings and summary sections
+        includeTrends: true,     // Always calculate for analytics consistency
+        includeAnomalies: false,
+        includeDataTable: schedule.reportConfig.includeDataTable ?? false
       });
 
       if (!dataFlowResult.success) {
@@ -996,7 +1093,7 @@ export class SchedulerService {
    */
   private getNextRunTime(cronExpression: string): Date {
     try {
-      return getNextRunTime(cronExpression);
+      return getNextRunTime(cronExpression, undefined, env.DEFAULT_TIMEZONE);
     } catch (error) {
       reportLogger.warn('Failed to calculate next run time using utility, falling back to basic calculation', {
         cronExpression,
@@ -1010,7 +1107,15 @@ export class SchedulerService {
   /**
    * Get execution history for a schedule
    */
-  async getExecutionHistory(scheduleId: string, limit: number = 50): Promise<ScheduleExecution[]> {
+  async getExecutionHistory(scheduleId: string, limit: number = 50, userId?: string): Promise<ScheduleExecution[]> {
+    // Optional ownership check
+    if (userId) {
+      const schedule = await this.getSchedule(scheduleId, userId);
+      if (!schedule) {
+        throw new Error(`Schedule not found or unauthorized: ${scheduleId}`);
+      }
+    }
+
     return new Promise((resolve, reject) => {
       this.db.all(
         'SELECT * FROM schedule_executions WHERE schedule_id = ? ORDER BY start_time DESC LIMIT ?',

@@ -1,3 +1,5 @@
+import { env } from '@/config/environment';
+
 /**
  * Report Filename Utility
  * Generates standardized filenames for reports
@@ -31,7 +33,7 @@ function formatDateForFilename(date: Date = new Date(), timezone?: string): stri
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
-      timeZone: timezone || undefined
+      timeZone: timezone || env.DEFAULT_TIMEZONE
     });
 
     const parts = formatter.formatToParts(date);

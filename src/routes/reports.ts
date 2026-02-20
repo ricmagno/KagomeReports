@@ -92,6 +92,7 @@ const reportConfigBaseSchema = z.object({
   includeSPCCharts: z.boolean().default(false),
   includeTrendLines: z.boolean().default(true),
   includeStatsSummary: z.boolean().default(true),
+  includeDataTable: z.boolean().default(false),
   version: z.number().int().positive().optional()
 });
 
@@ -153,7 +154,8 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
   const config = configResult.data;
   const reportId = `report_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  // Create full report config
+  // Create full report config — include ALL analytics flags so the PDF generator
+  // can render conditional sections (Statistics Summary, Trend Lines, SPC, etc.)
   const reportConfig: any = {
     id: reportId,
     name: config.name,
@@ -166,7 +168,16 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
     branding: config.branding,
     metadata: config.metadata,
     version: config.version,
-    retrievalMode: config.retrievalMode
+    retrievalMode: config.retrievalMode,
+    // Advanced Analytics flags — conditional section rendering
+    includeStatsSummary: config.includeStatsSummary,
+    includeTrendLines: config.includeTrendLines,
+    includeSPCCharts: config.includeSPCCharts,
+    specificationLimits: config.specificationLimits,
+    includeStatistics: config.includeStatistics,
+    includeTrends: config.includeTrends,
+    includeAnomalies: config.includeAnomalies,
+    includeDataTable: config.includeDataTable,
   };
 
   apiLogger.info('Starting end-to-end report generation', {
@@ -197,7 +208,16 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
       reportConfig,
       includeStatistics: config.includeStatistics,
       includeTrends: config.includeTrends,
-      includeAnomalies: config.includeAnomalies
+      includeAnomalies: config.includeAnomalies,
+      preGeneratedCharts: req.body.charts ? Object.entries(req.body.charts as Record<string, string>).reduce((acc, [name, base64]) => {
+        if (base64 && base64.startsWith('data:image/')) {
+          const parts = base64.split(',');
+          if (parts.length > 1 && parts[1]) {
+            acc[name] = Buffer.from(parts[1], 'base64');
+          }
+        }
+        return acc;
+      }, {} as Record<string, Buffer>) : undefined
     });
 
     if (!result.success) {
@@ -690,7 +710,8 @@ router.post('/export', authenticateToken, requirePermission('reports', 'read'), 
     } else if (errorMessage.includes('Unsupported export format')) {
       throw createError(errorMessage, 400); // Bad Request
     } else {
-      throw createError('Failed to export configuration', 500);
+      // Include the actual error message for better troubleshooting
+      throw createError(`Failed to export configuration: ${errorMessage}`, 500);
     }
   }
 }));
@@ -717,38 +738,9 @@ router.post('/import', authenticateToken, requirePermission('reports', 'write'),
     // Call import service
     const result = await configImportService.importConfiguration(fileContent);
 
-    if (result.success) {
-      apiLogger.info('Import completed successfully', {
-        configName: result.config?.name,
-        tags: result.config?.tags?.length || 0,
-        warnings: result.warnings?.length || 0,
-      });
-
-      // Return success response with config and warnings
-      res.json({
-        success: true,
-        data: result.config,
-        warnings: result.warnings,
-        metadata: {
-          schemaVersion: result.config?.importMetadata?.schemaVersion,
-        },
-      });
-    } else {
-      apiLogger.warn('Import validation failed', {
-        errorCount: result.errors?.length || 0,
-      });
-
-      // Return validation errors
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'VALIDATION_FAILED',
-          message: 'Configuration validation failed',
-          validationErrors: result.errors,
-        },
-      });
-    }
-
+    // Return the import result directly (matches client ImportResult type)
+    // We return 200 even for validation failures so the client can show the detailed dialog
+    res.json(result);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     apiLogger.error('Import failed with exception', {

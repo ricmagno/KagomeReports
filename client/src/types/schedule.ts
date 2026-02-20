@@ -26,6 +26,9 @@ export interface Schedule {
   saveToFile?: boolean;
   sendEmail?: boolean;
   destinationPath?: string;
+  createdBy?: string;
+  /** When set, executions always use the latest saved version of this report */
+  linkedReportId?: string;
 }
 
 /**

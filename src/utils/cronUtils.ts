@@ -110,22 +110,49 @@ const matchesCronField = (
     return normalizedValue === fieldValue || (isDayOfWeek && fieldValue === 7 && normalizedValue === 0);
 };
 
-/**
- * Checks if a date matches a cron expression (using UTC to match node-cron configuration)
- */
 const matchesCronExpression = (
     date: Date,
     minute: string,
     hour: string,
     dayOfMonth: string,
     month: string,
-    dayOfWeek: string
+    dayOfWeek: string,
+    timezone?: string
 ): boolean => {
-    const dateMinute = date.getUTCMinutes();
-    const dateHour = date.getUTCHours();
-    const dateDayOfMonth = date.getUTCDate();
-    const dateMonth = date.getUTCMonth() + 1; // JavaScript months are 0-indexed
-    const dateDayOfWeek = date.getUTCDay(); // 0 = Sunday
+    let dateMinute: number, dateHour: number, dateDayOfMonth: number, dateMonth: number, dateDayOfWeek: number;
+
+    if (timezone) {
+        // Use Intl to get parts in target timezone
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            minute: 'numeric',
+            hour: 'numeric',
+            day: 'numeric',
+            month: 'numeric',
+            weekday: 'short',
+            hour12: false,
+            timeZone: timezone
+        });
+        const parts = formatter.formatToParts(date);
+        const getPart = (type: string) => parts.find(p => p.type === type)?.value || '0';
+
+        dateMinute = parseInt(getPart('minute'), 10);
+        dateHour = parseInt(getPart('hour'), 10);
+        dateDayOfMonth = parseInt(getPart('day'), 10);
+        dateMonth = parseInt(getPart('month'), 10);
+
+        // Weekday is tricky with Intl, let's use another formatter for it
+        const dayFormatter = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: timezone });
+        const dayName = dayFormatter.format(date);
+        const dayMap: Record<string, number> = { 'Sun': 0, 'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6 };
+        dateDayOfWeek = dayMap[dayName] ?? 0;
+    } else {
+        // Fallback to local time (host system time)
+        dateMinute = date.getMinutes();
+        dateHour = date.getHours();
+        dateDayOfMonth = date.getDate();
+        dateMonth = date.getMonth() + 1;
+        dateDayOfWeek = date.getDay();
+    }
 
     if (!matchesCronField(dateMinute, minute, 0, 59)) return false;
     if (!matchesCronField(dateHour, hour, 0, 23)) return false;
@@ -142,11 +169,13 @@ const matchesCronExpression = (
  * Calculates the next run time for a cron expression
  * @param cronExpression - The cron expression
  * @param fromDate - Starting date (defaults to now)
+ * @param timezone - Optional timezone for calculation
  * @returns Date object representing the next run time
  */
 export const getNextRunTime = (
     cronExpression: string,
-    fromDate: Date = new Date()
+    fromDate: Date = new Date(),
+    timezone?: string
 ): Date => {
     if (!validateCronExpression(cronExpression)) {
         // If invalid, return a safe fallback (1 minute from now)
@@ -172,11 +201,11 @@ export const getNextRunTime = (
     }
 
     let currentDate = new Date(fromDate);
-    currentDate.setUTCSeconds(0);
-    currentDate.setUTCMilliseconds(0);
+    currentDate.setSeconds(0);
+    currentDate.setMilliseconds(0);
 
     // Move to next minute to avoid including current time
-    currentDate.setUTCMinutes(currentDate.getUTCMinutes() + 1);
+    currentDate.setMinutes(currentDate.getMinutes() + 1);
 
     let attempts = 0;
     const maxAttempts = 100000; // Prevent infinite loops (approx 70 days of minutes)
@@ -184,12 +213,12 @@ export const getNextRunTime = (
     while (attempts < maxAttempts) {
         attempts++;
 
-        if (matchesCronExpression(currentDate, minute, hour, dayOfMonth, month, dayOfWeek)) {
+        if (matchesCronExpression(currentDate, minute, hour, dayOfMonth, month, dayOfWeek, timezone)) {
             return new Date(currentDate);
         }
 
         // Move to next minute
-        currentDate.setUTCMinutes(currentDate.getUTCMinutes() + 1);
+        currentDate.setMinutes(currentDate.getMinutes() + 1);
     }
 
     // Fallback

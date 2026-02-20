@@ -72,6 +72,7 @@ export interface SavedReport {
   config: ReportConfig;
   version: number;
   createdBy: string;
+  createdByUserId?: string;
   createdAt: Date;
   updatedAt: Date;
   isLatestVersion: boolean;
@@ -105,6 +106,7 @@ export interface ReportListItem {
   config: ReportConfig;
   version: number;
   createdBy: string;
+  createdByUserId?: string;
   createdAt: Date;
   updatedAt: Date;
   isLatestVersion: boolean;

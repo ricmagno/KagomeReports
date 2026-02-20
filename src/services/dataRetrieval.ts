@@ -299,6 +299,7 @@ export class DataRetrievalService {
           average: 0,
           min: 0,
           max: 0,
+          median: 0,
           standardDeviation: 0,
           count: 0,
           dataQuality: 0
@@ -313,6 +314,7 @@ export class DataRetrievalService {
         average: Number(row.average),
         min: Number(row.min),
         max: Number(row.max),
+        median: 0, // SQL aggregates don't support median; compute client-side if needed
         standardDeviation: Number(row.standardDeviation) || 0,
         count: totalCount,
         dataQuality
@@ -580,6 +582,56 @@ export class DataRetrievalService {
 
     } catch (error) {
       dbLogger.error('Failed to retrieve tag list:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get metadata for a specific tag
+   */
+  async getTagInfo(tagName: string): Promise<TagInfo | null> {
+    try {
+      dbLogger.info('Retrieving info for tag', { tagName });
+
+      const query = `
+        SELECT 
+          t.TagName as name,
+          t.Description as description,
+          eu.Unit as units,
+          CASE 
+            WHEN t.TagType = 1 THEN 'analog'
+            WHEN t.TagType = 2 THEN 'discrete'
+            WHEN t.TagType = 3 THEN 'string'
+            ELSE 'unknown'
+          END as dataType,
+          t.DateCreated as lastUpdate,
+          at.MinEU as minValue,
+          at.MaxEU as maxValue
+        FROM Tag t
+        LEFT JOIN AnalogTag at ON t.TagName = at.TagName
+        LEFT JOIN EngineeringUnit eu ON at.EUKey = eu.EUKey
+        WHERE t.TagName = @tagName
+      `;
+
+      const result = await this.getConnection().executeQuery<any>(query, { tagName });
+
+      if (result.recordset.length === 0) {
+        return null;
+      }
+
+      const row = result.recordset[0];
+      return {
+        name: row.name,
+        description: row.description || '',
+        units: row.units || '',
+        dataType: row.dataType,
+        lastUpdate: new Date(row.lastUpdate),
+        minValue: row.minValue,
+        maxValue: row.maxValue
+      };
+
+    } catch (error) {
+      dbLogger.error('Failed to retrieve tag info:', error);
       throw error;
     }
   }

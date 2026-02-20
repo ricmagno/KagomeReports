@@ -399,7 +399,7 @@ export class UserManagementService {
    */
   private async getUserByUsername(username: string): Promise<UserResponse | null> {
     return new Promise((resolve, reject) => {
-      this.db.get('SELECT * FROM users WHERE username = ?', [username], (err, row: any) => {
+      this.db.get('SELECT * FROM users WHERE username = ? COLLATE NOCASE', [username], (err, row: any) => {
         if (err) {
           reject(err);
         } else {
@@ -414,7 +414,7 @@ export class UserManagementService {
    */
   private async getUserByEmail(email: string): Promise<UserResponse | null> {
     return new Promise((resolve, reject) => {
-      this.db.get('SELECT * FROM users WHERE email = ?', [email], (err, row: any) => {
+      this.db.get('SELECT * FROM users WHERE email = ? COLLATE NOCASE', [email], (err, row: any) => {
         if (err) {
           reject(err);
         } else {
@@ -659,16 +659,32 @@ export class UserManagementService {
           firstName: 'Supervisor',
           lastName: 'User',
           role: 'user' as const
+        },
+        {
+          username: 'Maintenance',
+          password: 'maintenance',
+          email: 'maintenance@historian.local',
+          firstName: 'Maintenance',
+          lastName: 'User',
+          role: 'user' as const
         }
       ];
 
       for (const userData of users) {
-        const exists = await this.getUserByUsername(userData.username);
-        if (!exists) {
+        const [usernameExists, emailExists] = await Promise.all([
+          this.getUserByUsername(userData.username),
+          this.getUserByEmail(userData.email)
+        ]);
+
+        if (!usernameExists && !emailExists) {
           await this.createUser(userData);
           apiLogger.info('Initial user seeded', { username: userData.username, role: userData.role });
         } else {
-          apiLogger.info('Initial user already exists', { username: userData.username });
+          apiLogger.info('Initial user already exists or email in use', {
+            username: userData.username,
+            usernameExists: !!usernameExists,
+            emailExists: !!emailExists
+          });
         }
       }
 

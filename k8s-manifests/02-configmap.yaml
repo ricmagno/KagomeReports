@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: historian-reports-config
+  namespace: historian-reports
+data:
+  # Common configuration for all instances
+  NODE_ENV: "production"
+  PORT: "3000"
+  BCRYPT_ROUNDS: "12"
+  SMTP_HOST: "smtp.gmail.com"
+  SMTP_PORT: "587"
+  SMTP_SECURE: "false"
+  REPORTS_DIR: "./reports"
+  TEMP_DIR: "./temp"
+  MAX_REPORT_SIZE_MB: "50"
+  CHART_WIDTH: "800"
+  CHART_HEIGHT: "400"
+  DB_POOL_MIN: "2"
+  DB_POOL_MAX: "10"
+  DB_TIMEOUT_MS: "30000"
+  CACHE_TTL_SECONDS: "300"
+  MAX_CONCURRENT_REPORTS: "5"
+  SESSION_TIMEOUT_HOURS: "24"
+  RATE_LIMIT_WINDOW_MS: "900000"
+  RATE_LIMIT_MAX_REQUESTS: "100"
+  LOG_LEVEL: "info"
+  LOG_FILE: "./logs/app.log"
+  LOG_MAX_SIZE: "10m"
+  LOG_MAX_FILES: "5"
+  IS_DOCKER: "true"

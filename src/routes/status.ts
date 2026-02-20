@@ -39,7 +39,7 @@ router.get('/database', authenticateToken, asyncHandler(async (req: Request, res
     // If category filter is provided, validate and filter
     if (category) {
       const categoryValue = category as string;
-      
+
       // Validate category
       if (!Object.values(StatusCategory).includes(categoryValue as StatusCategory)) {
         throw createError(
@@ -77,6 +77,12 @@ router.get('/database', authenticateToken, asyncHandler(async (req: Request, res
           io: statusData.io,
           performance: statusData.performance
         }
+      },
+      serverTime: {
+        utc: new Date().toISOString(),
+        local: new Date().toLocaleString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        offset: new Date().getTimezoneOffset()
       }
     };
 
@@ -84,12 +90,12 @@ router.get('/database', authenticateToken, asyncHandler(async (req: Request, res
 
   } catch (error) {
     apiLogger.error('Failed to retrieve database status', { error, category });
-    
+
     // If it's already a formatted error, rethrow it
     if (error instanceof Error && 'statusCode' in error) {
       throw error;
     }
-    
+
     // Otherwise, create a generic 500 error
     throw createError('Failed to retrieve database status', 500);
   }
@@ -106,10 +112,10 @@ router.get('/database/health', optionalAuth, asyncHandler(async (req: Request, r
   try {
     // Get service status only for quick health check
     const serviceData = await systemStatusService.getSystemTagsByCategory(StatusCategory.Services);
-    
+
     // Check if any critical services are down
     const criticalServices = ['SysStorage', 'SysRetrieval', 'SysIndexing'];
-    const downServices = serviceData.filter(tag => 
+    const downServices = serviceData.filter(tag =>
       criticalServices.includes(tag.tagName) && tag.value === 0
     );
 
@@ -120,12 +126,18 @@ router.get('/database/health', optionalAuth, asyncHandler(async (req: Request, r
       healthy: isHealthy,
       status: isHealthy ? 'operational' : 'degraded',
       downServices: downServices.map(s => s.tagName),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      serverTime: {
+        utc: new Date().toISOString(),
+        local: new Date().toLocaleString(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        offset: new Date().getTimezoneOffset()
+      }
     });
 
   } catch (error) {
     apiLogger.error('Database health check failed', { error });
-    
+
     // Return unhealthy status on error
     res.status(503).json({
       success: false,

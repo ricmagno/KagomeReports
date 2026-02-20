@@ -12,6 +12,8 @@ export interface TagInfo {
   units: string;
   dataType: 'analog' | 'discrete' | 'string';
   lastUpdate: Date;
+  minValue?: number;
+  maxValue?: number;
 }
 
 export interface SpecificationLimits {
@@ -41,6 +43,7 @@ export interface ReportConfig {
   includeTrendLines?: boolean;
   includeSPCCharts?: boolean;
   includeStatsSummary?: boolean;
+  includeDataTable?: boolean;
 }
 
 export interface ReportVersion {
@@ -80,6 +83,7 @@ export interface StatisticsResult {
   min: number;
   max: number;
   average: number;
+  median: number;
   standardDeviation: number;
   count: number;
   dataQuality: number;
