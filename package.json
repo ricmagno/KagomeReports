@@ -1,6 +1,6 @@
 {
   "name": "historian-reports",
-  "version": "0.88.1",
+  "version": "1.0.4",
   "description": "Professional reporting application for AVEVA Historian database",
   "main": "dist/server.js",
   "scripts": {
