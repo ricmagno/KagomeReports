@@ -602,7 +602,7 @@ export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewPro
                 <TrendingUp className="w-5 h-5 text-blue-200" />
                 <div>
                   <h4 className="text-base font-semibold text-white">Statistics Summary</h4>
-                  <p className="text-xs text-blue-200 mt-0.5">Section II — Conditional (enabled)</p>
+                  <p className="text-xs text-blue-200 mt-0.5">Statistical analysis and data distribution for process metrics</p>
                 </div>
               </div>
               <span className="text-xs text-blue-100 bg-blue-900/40 px-2.5 py-1 rounded-full font-medium">
@@ -712,7 +712,7 @@ export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewPro
               <TrendingUp className="w-4 h-4 flex-shrink-0" />
               <div>
                 <p className="text-sm font-medium">Statistics Summary will appear here</p>
-                <p className="text-xs text-blue-600 mt-0.5">Query data first to preview statistics (Section II).</p>
+                <p className="text-xs text-blue-600 mt-0.5">Query data first to see the statistical breakdown of your selected tags.</p>
               </div>
             </div>
           </div>
