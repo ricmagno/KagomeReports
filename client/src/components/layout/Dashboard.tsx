@@ -377,19 +377,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
         // Download the generated report using the API service
         try {
-          const blob = await apiService.downloadReport(reportId);
+          const { blob, filename } = await apiService.downloadReport(reportId);
 
-          // Create download link
+          // Create download link using the server-generated filename
           const url = window.URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
-          link.download = `${reportConfig.name}_${new Date().toISOString().split('T')[0]}.pdf`;
+          link.download = filename;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
           window.URL.revokeObjectURL(url);
 
-          console.log('Report downloaded successfully');
+          console.log('Report downloaded successfully', { filename });
         } catch (downloadError) {
           console.error('Failed to download report:', downloadError);
           alert('Report generated but download failed. Please try downloading from the Reports tab.');

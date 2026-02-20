@@ -542,7 +542,7 @@ export const apiService = {
     };
   },
 
-  async downloadReport(id: string): Promise<Blob> {
+  async downloadReport(id: string): Promise<{ blob: Blob; filename: string }> {
     const token = getAuthToken();
     const response = await fetch(`${API_BASE_URL}/reports/${encodeURIComponent(id)}/download`, {
       headers: {
@@ -551,10 +551,20 @@ export const apiService = {
     });
 
     if (!response.ok) {
-      throw new Error('Failed to download execution report');
+      throw new Error('Failed to download report');
     }
 
-    return response.blob();
+    // Extract server-generated filename from Content-Disposition header
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = `report_${id}.pdf`;
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="([^"]+)"/);
+      if (match && match[1]) {
+        filename = match[1];
+      }
+    }
+
+    return { blob: await response.blob(), filename };
   },
 
   // Schedule endpoints

@@ -216,6 +216,9 @@ const ScheduleFormComponent: React.FC<ScheduleFormProps> = ({
         saveToFile: formData.saveToFile,
         sendEmail: formData.sendEmail,
         destinationPath: formData.saveToFile && formData.destinationPath ? formData.destinationPath.trim() : undefined,
+        // Link to the report by NAME so each execution automatically loads
+        // the LATEST saved version from ReportManagementService.
+        linkedReportId: selectedReportConfig.name,
       };
 
       await onSave(scheduleConfig);
