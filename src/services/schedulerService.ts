@@ -790,8 +790,8 @@ export class SchedulerService {
       // Execute end-to-end data flow for the report
       const dataFlowResult = await dataFlowService.executeDataFlow({
         reportConfig: schedule.reportConfig,
-        includeStatistics: schedule.reportConfig.includeStatsSummary ?? true,
-        includeTrends: schedule.reportConfig.includeTrendLines ?? true,
+        includeStatistics: true, // Always calculate for Key Findings and summary sections
+        includeTrends: true,     // Always calculate for analytics consistency
         includeAnomalies: false,
         includeDataTable: schedule.reportConfig.includeDataTable ?? false
       });

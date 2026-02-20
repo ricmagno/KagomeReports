@@ -175,8 +175,19 @@ export class ReportGenerationService {
         const spcMetrics = new Map<string, any>();
         const spcMetricsSummary: SPCMetricsSummary[] = [];
 
-        const includeTrendLines = reportData.config.includeTrendLines === true; // Default false
-        const includeSPCCharts = reportData.config.includeSPCCharts === true; // Default false
+        const includeTrendLines = reportData.config.includeTrendLines !== false; // Default: true
+        const includeStatsSummary = reportData.config.includeStatsSummary !== false; // Default: true
+        const includeSPCCharts = !!reportData.config.includeSPCCharts; // Default: false
+        const includeDataTable = !!reportData.config.includeDataTable; // Default: false
+
+        reportLogger.info('PDF Generation configuration', {
+          reportId: reportData.config.id,
+          includeTrendLines,
+          includeSPCCharts,
+          includeStatsSummary,
+          includeDataTable,
+          hasStatistics: !!reportData.statistics && Object.keys(reportData.statistics).length > 0
+        });
 
         for (const [tagName, data] of Object.entries(reportData.data)) {
           const classification = tagClassifications.get(tagName);
@@ -363,7 +374,7 @@ export class ReportGenerationService {
         doc.addPage();
 
         // *** Section Information (only displayed if option Statistics Summary is selected)
-        if (reportData.config.includeStatsSummary === true && reportData.statistics) {
+        if (includeStatsSummary && reportData.statistics) {
           doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Statistics Summary', { align: 'center' });
           doc.moveDown(1);
           this.addStatisticalSummary(doc, reportData.statistics);
@@ -398,7 +409,7 @@ export class ReportGenerationService {
         doc.addPage();
 
         // *** Trend Analysis (only displayed if Include Trend Lines option is selected)
-        if (reportData.config.includeTrendLines === true) {
+        if (includeTrendLines) {
           doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Trend Analysis', { align: 'center' });
           doc.moveDown(1);
 
@@ -416,7 +427,7 @@ export class ReportGenerationService {
         }
 
         // *** Section Statistical Process Control Analysis (only displayed if SPC charts option is selected)
-        if (reportData.config.includeSPCCharts === true && (spcCharts.size > 0 || spcMetricsSummary.length > 0)) {
+        if (includeSPCCharts && (spcCharts.size > 0 || spcMetricsSummary.length > 0)) {
           doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Statistical Process Control Analysis', { align: 'center' });
           doc.moveDown(1);
 

@@ -1079,65 +1079,69 @@ export class ChartGenerationService {
       const { statisticalAnalysisService } = await import('./statisticalAnalysis');
       const { classifyTag } = await import('./tagClassificationService');
 
-      // Generate line charts for each tag with trend lines and statistics
+      // Generate line charts
       if (chartTypes.includes('line')) {
+        const analogDatasets: LineChartData[] = [];
+
         for (const [tagName, tagData] of Object.entries(data)) {
           if (tagData.length > 0) {
-            // Classify tag to determine if it's analog or digital
             const classification = classifyTag(tagData);
-
-            // Prepare chart data
             const chartData: LineChartData = {
               tagName,
               data: tagData
             };
 
-            // Add trend line for analog tags with sufficient data
-            if (classification.type === 'analog' && tagData.length >= 3) {
-              try {
-                const trendLine = statisticalAnalysisService.calculateAdvancedTrendLine(tagData);
-                chartData.trendLine = trendLine;
-                reportLogger.debug(`Trend line calculated for ${tagName}`, {
-                  equation: trendLine.equation,
-                  rSquared: trendLine.rSquared
-                });
-              } catch (error) {
-                reportLogger.warn(`Failed to calculate trend line for ${tagName}`, {
-                  error: error instanceof Error ? error.message : 'Unknown error'
-                });
+            // Calculate statistics and trends for analog tags
+            if (classification.type === 'analog') {
+              if (tagData.length >= 3) {
+                try {
+                  chartData.trendLine = statisticalAnalysisService.calculateAdvancedTrendLine(tagData);
+                } catch (e) {
+                  reportLogger.warn(`Trend calc failed for ${tagName}`, { error: e instanceof Error ? e.message : String(e) });
+                }
               }
-            }
 
-            // Add statistics if available
-            if (statistics && statistics[tagName]) {
-              chartData.statistics = {
-                min: statistics[tagName]!.min,
-                max: statistics[tagName]!.max,
-                mean: statistics[tagName]!.average,
-                stdDev: statistics[tagName]!.standardDeviation
-              };
-            } else {
-              // Calculate statistics if not provided
-              try {
-                const stats = statisticalAnalysisService.calculateStatisticsSync(tagData);
+              if (statistics && statistics[tagName]) {
                 chartData.statistics = {
-                  min: stats.min,
-                  max: stats.max,
-                  mean: stats.average,
-                  stdDev: stats.standardDeviation
+                  min: statistics[tagName]!.min,
+                  max: statistics[tagName]!.max,
+                  mean: statistics[tagName]!.average,
+                  stdDev: statistics[tagName]!.standardDeviation
                 };
-              } catch (error) {
-                reportLogger.warn(`Failed to calculate statistics for ${tagName}`, {
-                  error: error instanceof Error ? error.message : 'Unknown error'
-                });
+              } else {
+                try {
+                  const stats = statisticalAnalysisService.calculateStatisticsSync(tagData);
+                  chartData.statistics = {
+                    min: stats.min, max: stats.max, mean: stats.average, stdDev: stats.standardDeviation
+                  };
+                } catch (e) {
+                  reportLogger.warn(`Stats calc failed for ${tagName}`, { error: e instanceof Error ? e.message : String(e) });
+                }
               }
+              analogDatasets.push(chartData);
             }
 
+            // Generate individual chart for EACH tag (like frontend mini-charts)
+            // Use standard key (tag name) to match frontend expectation
             const chartBuffer = await this.generateLineChart(
               [chartData],
-              { title: `${tagName} - Time Series` }
+              { title: `${tagName} - Time Series`, timezone: options.timezone }
             );
-            charts[`${tagName}_line`] = chartBuffer;
+            charts[tagName] = chartBuffer;
+          }
+        }
+
+        // Generate Multi-Trend Analysis chart if multiple analog tags exist
+        if (analogDatasets.length > 1) {
+          try {
+            const multiTrendBuffer = await this.generateLineChart(
+              analogDatasets,
+              { title: 'Multi-Trend Analysis', timezone: options.timezone }
+            );
+            charts['Multi-Trend Analysis'] = multiTrendBuffer;
+            reportLogger.info('Generated Multi-Trend Analysis chart for all analog tags');
+          } catch (error) {
+            reportLogger.error('Failed to generate Multi-Trend Analysis chart', { error });
           }
         }
       }
