@@ -11,6 +11,7 @@ import { asyncHandler, createError } from '@/middleware/errorHandler';
 import { authenticateToken, requirePermission } from '@/middleware/auth';
 import { schedulerService, ScheduleConfig } from '@/services/schedulerService';
 import { ReportConfig } from '@/services/reportGeneration';
+import { SpecificationLimits } from '@/types/historian';
 import { userManagementService } from '@/services/userManagementService';
 import fs from 'fs';
 import path from 'path';
@@ -43,7 +44,23 @@ const reportConfigSchema = z.object({
     author: z.string().optional(),
     subject: z.string().optional(),
     keywords: z.array(z.string()).optional()
-  }).optional()
+  }).optional(),
+  // ── Advanced Analytics flags ──────────────────────────────────────────────
+  // These MUST be declared here, otherwise Zod strips them from the config blob
+  // stored in scheduler.db and the PDF generator never sees them.
+  includeStatsSummary: z.boolean().optional(),
+  includeTrendLines: z.boolean().optional(),
+  includeSPCCharts: z.boolean().optional(),
+  includeDataTable: z.boolean().optional(),
+  includeStatistics: z.boolean().optional(),
+  includeTrends: z.boolean().optional(),
+  includeAnomalies: z.boolean().optional(),
+  specificationLimits: z.record(
+    z.string(),
+    z.object({ lsl: z.number().optional(), usl: z.number().optional() })
+  ).optional().transform(val => val as Record<string, SpecificationLimits> | undefined),
+  retrievalMode: z.string().optional(),
+  version: z.number().optional()
 });
 
 const scheduleConfigSchema = z.object({
