@@ -221,10 +221,10 @@ export class StatisticalAnalysisService implements SPCCalculator, TrendLineCalcu
       };
     }
 
-    // Convert timestamps to numeric x values (seconds from start)
+    // Convert timestamps to numeric x values (relative milliseconds from start)
     const startTime = validData[0]!.timestamp.getTime();
     const points = validData.map(d => ({
-      x: (d.timestamp.getTime() - startTime) / 1000, // seconds from start
+      x: d.timestamp.getTime() - startTime, // relative milliseconds
       y: d.value
     }));
 

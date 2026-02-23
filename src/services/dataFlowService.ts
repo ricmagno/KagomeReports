@@ -99,7 +99,8 @@ export class DataFlowService {
           trends,
           config.reportConfig.chartTypes,
           config.reportConfig.timeRange.timezone,
-          config.reportConfig.includeTrendLines
+          config.reportConfig.includeTrendLines,
+          tagInfo
         );
         reportLogger.debug('Generated charts on backend', { count: Object.keys(charts || {}).length });
       } else {
@@ -400,7 +401,8 @@ export class DataFlowService {
     trends?: Record<string, TrendResult>,
     chartTypes: string[] = ['line'],
     timezone?: string,
-    includeTrendLines?: boolean
+    includeTrendLines?: boolean,
+    tagInfo?: Record<string, TagInfo>
   ): Promise<Record<string, Buffer>> {
     reportLogger.info('Generating charts', {
       chartTypes,
@@ -413,7 +415,7 @@ export class DataFlowService {
         statistics,
         trends,
         chartTypes as any[],
-        { timezone, includeTrendLines }
+        { timezone, includeTrendLines, tagInfo }
       );
     } catch (error) {
       reportLogger.error('Failed to generate charts', {

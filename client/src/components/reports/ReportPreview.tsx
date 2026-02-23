@@ -166,10 +166,8 @@ export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewPro
             config.timeRange.startTime,
             config.timeRange.endTime,
             {
-              limit: 500, // Limit for preview
-              retrievalMode: config.retrievalMode || 'Cyclic',
-              // @ts-ignore - wwResolution might not be in the type definition yet
-              wwResolution: 60000
+              limit: 1000, // Safe visual maximum
+              retrievalMode: config.retrievalMode || 'Full'
             }
           );
           return { tagName, data: response.success ? response.data : [] };

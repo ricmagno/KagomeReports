@@ -7,7 +7,7 @@
 import { createCanvas } from 'canvas';
 import { Chart, ChartConfiguration, registerables, _adapters } from 'chart.js';
 import annotationPlugin from 'chartjs-plugin-annotation';
-import { TimeSeriesData, StatisticsResult, TrendResult, SPCMetrics, SpecificationLimits } from '@/types/historian';
+import { TimeSeriesData, StatisticsResult, TrendResult, SPCMetrics, SpecificationLimits, QualityCode, TagInfo } from '@/types/historian';
 import { reportLogger } from '@/utils/logger';
 import { env } from '@/config/environment';
 import { chartBufferValidator } from '@/utils/chartBufferValidator';
@@ -38,13 +38,15 @@ try {
 }
 
 export interface ChartOptions {
-  width?: number;
-  height?: number;
-  title?: string;
-  backgroundColor?: string;
-  colors?: string[];
+  width?: number | undefined;
+  height?: number | undefined;
+  title?: string | undefined;
+  backgroundColor?: string | undefined;
+  colors?: string[] | undefined;
   timezone?: string | undefined;
   includeTrendLines?: boolean | undefined;
+  tags?: string[] | undefined;
+  yUnits?: string | undefined;
 }
 
 export interface LineChartData {
@@ -86,17 +88,44 @@ export class ChartGenerationService {
 
   constructor() {
     this.defaultWidth = (env.CHART_WIDTH as number) || 1200;
-    this.defaultHeight = (env.CHART_HEIGHT as number) || 600;
+    this.defaultHeight = (env.CHART_HEIGHT as number) || 500;
     this.defaultColors = [
-      '#3b82f6', // Blue
-      '#10b981', // Green
-      '#f59e0b', // Yellow
-      '#ef4444', // Red
-      '#8b5cf6', // Purple
-      '#f97316', // Orange
-      '#06b6d4', // Cyan
-      '#84cc16'  // Lime
+      '#3b82f6', // blue
+      '#10b981', // emerald (green)
+      '#f59e0b', // amber (orange)
+      '#f43f5e', // rose
+      '#6366f indigo',
+      '#f97316', // orange-dark
+      '#06b6d4', // cyan
+      '#8b5cf6'  // violet
     ];
+  }
+
+  /**
+   * Assigns a stable color to a tag based on its index in the report configuration.
+   * This matches the frontend getTagColor/getTagIndex logic.
+   */
+  private getStableTagColor(tagName: string, allTags: string[]): string {
+    if (!tagName || !allTags) return this.defaultColors[0]!;
+    const lowerTag = tagName.toLowerCase().trim();
+    const index = allTags.findIndex(t => t && t.toLowerCase().trim() === lowerTag);
+    if (index < 0) return this.defaultColors[0]!;
+    return this.defaultColors[index % this.defaultColors.length]!;
+  }
+
+  /**
+   * Calculate quality color based on percentage
+   * Replicates frontend logic in MiniChart.tsx
+   */
+  private getQualityColor(dataPoints: TimeSeriesData[]): string {
+    if (!dataPoints || dataPoints.length === 0) return '#94a3b8';
+
+    const goodQualityCount = dataPoints.filter(point => point.quality === QualityCode.Good).length;
+    const qualityPercentage = (goodQualityCount / dataPoints.length) * 100;
+
+    if (qualityPercentage >= 90) return '#10b981'; // Green
+    if (qualityPercentage >= 70) return '#f59e0b'; // Yellow
+    return '#ef4444'; // Red
   }
 
   /**
@@ -135,6 +164,10 @@ export class ChartGenerationService {
       const canvas = createCanvas(width, height);
       const ctx = canvas.getContext('2d');
 
+      const allTimestamps = datasets.flatMap(d => d.data.map(p => p.timestamp.getTime()));
+      const minX = Math.min(...allTimestamps);
+      const maxX = Math.max(...allTimestamps);
+
       reportLogger.debug('Canvas created successfully', {
         canvasWidth: canvas.width,
         canvasHeight: canvas.height
@@ -160,22 +193,23 @@ export class ChartGenerationService {
           })),
           borderColor: baseColor,
           backgroundColor: 'transparent',
-          borderWidth: 1,
+          borderWidth: 2, // Increased to match frontend stroke width
           fill: false,
-          tension: 0.1,
-          pointRadius: 2,
-          pointHoverRadius: 4
+          tension: 0.4, // Match frontend "smooth" curve
+          stepped: false, // Ensure no "square" stepped lines
+          spanGaps: true, // Connect gaps for smoother appearance
+          pointRadius: 0,
+          pointHitRadius: 5
         });
 
         // Add trend line if available and explicitly requested (defaulting to true if not specified)
         if (dataset.trendLine && dataset.data.length >= 3 && options.includeTrendLines !== false) {
           const startTime = dataset.data[0]!.timestamp.getTime();
           const endTime = dataset.data[dataset.data.length - 1]!.timestamp.getTime();
-          const timeSpanSeconds = (endTime - startTime) / 1000;
-
-          // Calculate y values at start and end
+          // Correct yEnd calculation: slope is per millisecond, so use full duration in ms
           const yStart = dataset.trendLine.intercept;
-          const yEnd = dataset.trendLine.slope * timeSpanSeconds + dataset.trendLine.intercept;
+          const durationMs = endTime - startTime;
+          const yEnd = dataset.trendLine.slope * durationMs + dataset.trendLine.intercept;
 
           // Determine if trend fit is weak (R² < 0.3)
           const weakFit = dataset.trendLine.rSquared < 0.3;
@@ -205,38 +239,7 @@ export class ChartGenerationService {
       // Prepare annotations for statistics
       const annotations: any = {};
 
-      // Add statistics box if available (only for single dataset)
-      if (datasets.length === 1 && datasets[0]!.statistics) {
-        const stats = datasets[0]!.statistics;
-        annotations.statsBox = {
-          type: 'label',
-          xValue: (ctx: any) => {
-            const xScale = ctx.chart.scales.x;
-            return xScale.max - (xScale.max - xScale.min) * 0.05; // Positioned 5% from edges
-          },
-          yValue: (ctx: any) => {
-            const yScale = ctx.chart.scales.y;
-            return yScale.max - (yScale.max - yScale.min) * 0.05; // Positioned 5% from edges
-          },
-          xAdjust: 0,
-          yAdjust: 0,
-          content: [
-            `Min: ${stats.min.toFixed(2)}`,
-            `Max: ${stats.max.toFixed(2)}`,
-            `Avg: ${stats.mean.toFixed(2)}`,
-            `StdDev: ${stats.stdDev.toFixed(2)}`
-          ],
-          font: {
-            size: 9
-          },
-          color: '#000000',
-          backgroundColor: 'rgba(255, 255, 255, 0.9)',
-          borderColor: '#000000',
-          borderWidth: 1,
-          padding: 6,
-          position: 'end'
-        };
-      }
+      // NOTE: statsBox removed at user request for cleaner look (exists in header already)
 
       const config: ChartConfiguration = {
         type: 'line',
@@ -248,94 +251,123 @@ export class ChartGenerationService {
           animation: false,
           plugins: {
             title: {
-              display: !!options.title,
-              text: options.title || '',
-              font: {
-                size: 16,
-                weight: 'bold'
-              },
-              color: '#000000'
+              display: false // Titles are managed by the PDF report structure, not internally
             },
             legend: {
-              display: true,
-              position: 'top',
-              labels: {
-                color: '#000000',
-                font: {
-                  size: 10
-                },
-                usePointStyle: false,
-                boxWidth: 15,  // Reduced from 20 to save space
-                padding: 8     // Reduced from 10 to save space
-              },
-              maxHeight: 60    // Optimized to save space
+              display: false // Legends are handled by the report's statistics header
             },
             annotation: {
               annotations: annotations
+            },
+            tooltip: {
+              enabled: false // Not needed for PDF
             }
           },
           scales: {
             x: {
               type: 'linear',
+              min: minX,
+              max: maxX,
+              offset: false,
+              bounds: 'ticks',
               title: {
-                display: true,
-                text: 'Time',
-                color: '#000000'
+                display: false
               },
               ticks: {
-                color: '#000000',
+                color: '#94a3b8',
+                font: {
+                  size: 9
+                },
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 6,
+                includeBounds: true,
                 callback: function (value) {
                   const date = new Date(value);
                   return date.toLocaleTimeString('en-US', {
                     hour: '2-digit',
                     minute: '2-digit',
                     hour12: false,
-                    timeZone: options.timezone || env.DEFAULT_TIMEZONE
+                    timeZone: options.timezone || env.DEFAULT_TIMEZONE || 'UTC'
                   });
                 }
               },
               grid: {
-                color: '#e5e7eb'
+                display: true,
+                color: '#f1f5f9',
+                drawTicks: false
+              },
+              border: {
+                display: false
               }
             },
             y: {
+              type: 'linear',
               title: {
-                display: true,
-                text: 'Value',
-                color: '#000000'
+                display: !!options.yUnits,
+                text: options.yUnits || '',
+                color: '#94a3b8',
+                font: {
+                  size: 10
+                }
               },
               ticks: {
-                color: '#000000'
+                color: '#94a3b8',
+                font: {
+                  size: 9
+                },
+                maxTicksLimit: 5,
+                padding: 4
               },
               grid: {
-                color: '#e5e7eb'
+                display: true,
+                color: '#f1f5f9',
+                drawTicks: false
               },
-              beginAtZero: false
+              border: {
+                display: false
+              }
+            }
+          },
+          layout: {
+            padding: {
+              top: 5,
+              bottom: 5,
+              left: 0,
+              right: 0
             }
           },
           elements: {
             point: {
-              radius: 2,
-              hoverRadius: 4
+              radius: 0 // Global fallback to ensure no dots
             }
           }
-        }
+        },
+        plugins: [
+          {
+            id: 'custom_canvas_background',
+            beforeDraw: (chart) => {
+              const ctx = chart.canvas.getContext('2d');
+              if (ctx) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'destination-over';
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, chart.width, chart.height);
+                ctx.restore();
+              }
+            }
+          }
+        ]
       };
 
       // Create chart
       reportLogger.debug('Creating Chart.js instance');
-      const chart = new Chart(ctx, config);
+      const chartInstance = new Chart(ctx, config);
       reportLogger.debug('Chart.js instance created successfully');
 
       // Convert to buffer
       reportLogger.debug('Converting canvas to PNG buffer');
       const buffer = canvas.toBuffer('image/png');
-
-      reportLogger.info('Canvas converted to buffer successfully', {
-        bufferSize: buffer.length,
-        bufferType: typeof buffer,
-        isBuffer: Buffer.isBuffer(buffer)
-      });
 
       // Validate buffer
       const validation = chartBufferValidator.validateBuffer(buffer, 'line_chart');
@@ -349,23 +381,14 @@ export class ChartGenerationService {
         throw new Error(errorMsg);
       }
 
-      if (validation.warnings.length > 0) {
-        reportLogger.warn('Line chart buffer validation warnings', {
-          warnings: validation.warnings,
-          bufferInfo: validation.bufferInfo
-        });
-      }
-
       // Clean up
-      chart.destroy();
+      chartInstance.destroy();
 
       reportLogger.info('Line chart generated and validated successfully', {
         bufferSize: buffer.length,
         format: validation.bufferInfo.format,
         dimensions: validation.bufferInfo.dimensions || { width, height },
-        dataPoints: datasets.reduce((sum, d) => sum + d.data.length, 0),
-        trendLinesAdded: datasets.filter(d => d.trendLine).length,
-        statisticsAdded: datasets.filter(d => d.statistics).length
+        dataPoints: totalDataPoints
       });
 
       return buffer;
@@ -1064,7 +1087,7 @@ export class ChartGenerationService {
     statistics?: Record<string, StatisticsResult>,
     trends?: Record<string, TrendResult>,
     chartTypes: ('line' | 'bar' | 'trend' | 'scatter')[] = ['line'],
-    options: ChartOptions = {}
+    options: ChartOptions & { tagInfo?: Record<string, TagInfo> | undefined } = {}
   ): Promise<Record<string, Buffer>> {
     const charts: Record<string, Buffer> = {};
 
@@ -1088,7 +1111,8 @@ export class ChartGenerationService {
           const classification = classifyTag(tagData);
           const chartData: LineChartData = {
             tagName,
-            data: tagData
+            data: tagData,
+            color: this.getStableTagColor(tagName, options.tags || Object.keys(data))
           };
 
           // Calculate statistics and trends for analog tags to include in charts (only if requested)
@@ -1125,9 +1149,10 @@ export class ChartGenerationService {
           const chartBuffer = await this.generateLineChart(
             [chartData],
             {
-              title: `${tagName} - Time Series`,
               timezone: options.timezone,
-              includeTrendLines: options.includeTrendLines
+              includeTrendLines: options.includeTrendLines,
+              yUnits: options.tagInfo?.[tagName]?.units,
+              tags: options.tags || Object.keys(data)
             }
           );
           charts[tagName] = chartBuffer;
@@ -1206,7 +1231,7 @@ export class ChartGenerationService {
 
     // Generate points for the trend line
     const points = [];
-    const numPoints = Math.min(100, data.length); // Limit to 100 points for performance
+    const numPoints = data.length;
 
     for (let i = 0; i <= numPoints; i++) {
       const x = firstTime + (lastTime - firstTime) * (i / numPoints);

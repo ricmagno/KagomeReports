@@ -47,7 +47,8 @@ const reportConfigBaseSchema = z.object({
   timeRange: z.object({
     startTime: z.string().datetime().transform(str => new Date(str)),
     endTime: z.string().datetime().transform(str => new Date(str)),
-    relativeRange: z.enum(['last1h', 'last2h', 'last6h', 'last12h', 'last24h', 'last7d', 'last30d']).optional()
+    relativeRange: z.enum(['last1h', 'last2h', 'last6h', 'last12h', 'last24h', 'last7d', 'last30d']).optional(),
+    timezone: z.string().optional()
   }),
   chartTypes: z.array(z.enum(['line', 'bar', 'trend', 'scatter'])).default(['line']),
   template: z.string().default('default'),
@@ -58,6 +59,11 @@ const reportConfigBaseSchema = z.object({
     if (val === 'Cyclic') return RetrievalMode.Cyclic;
     if (val === 'AVG' || val === 'Average') return RetrievalMode.Average;
     if (val === 'RoundTrip' || val === 'Full') return RetrievalMode.Full;
+    if (val === 'BestFit') return RetrievalMode.BestFit;
+    if (val === 'Minimum') return RetrievalMode.Minimum;
+    if (val === 'Maximum') return RetrievalMode.Maximum;
+    if (val === 'Interpolated') return RetrievalMode.Interpolated;
+    if (val === 'ValueState') return RetrievalMode.ValueState;
     return val as RetrievalMode; // Pass through if it's already a valid enum value
   }),
   filters: z.object({

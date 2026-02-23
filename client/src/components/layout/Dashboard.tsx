@@ -359,6 +359,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         includeTrendLines: reportConfig.includeTrendLines ?? true,
         includeSPCCharts: reportConfig.includeSPCCharts ?? true,
         includeStatsSummary: reportConfig.includeStatsSummary ?? true,
+        includeDataTable: reportConfig.includeDataTable ?? false,
         specificationLimits: reportConfig.specificationLimits || {},
         version: reportConfig.version,
         retrievalMode: reportConfig.retrievalMode || 'Cyclic',
@@ -915,12 +916,17 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                             onChange={(e) => setReportConfig(prev => ({ ...prev, retrievalMode: e.target.value as any }))}
                           >
                             <option value="Cyclic">Cyclic - Interpolated at intervals (Recommended)</option>
-                            <option value="Delta">Delta - Actual stored values</option>
-                            <option value="Average">Average - Average values</option>
-                            <option value="Full">Full - All values (Full)</option>
+                            <option value="BestFit">Best Fit - Optimized for visual trends</option>
+                            <option value="Delta">Delta - Actual stored values (Changes only)</option>
+                            <option value="Full">Full - All stored values (High detail)</option>
+                            <option value="Average">Average - Time-weighted average</option>
+                            <option value="Minimum">Minimum - Minimum value in period</option>
+                            <option value="Maximum">Maximum - Maximum value in period</option>
+                            <option value="Interpolated">Interpolated - Linear interpolation</option>
+                            <option value="ValueState">Value State - State-based retrieval</option>
                           </select>
-                          <p className="text-xs text-gray-500">
-                            Cyclic mode ensures data points at consistent intervals for accurate reports.
+                          <p className="text-[0.65rem] text-gray-400 mt-1 leading-tight">
+                            Mode defines how Historian samples and returns data points. Cyclic is standard for reports.
                           </p>
                         </div>
 

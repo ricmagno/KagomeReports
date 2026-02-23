@@ -80,13 +80,15 @@ export class DataRetrievalService {
         }
       }
 
-      // Estimate data size and use streaming for large datasets
+      /* 
+      // Optimized: Skip size estimation to avoid redundant query as requested
       const estimatedSize = await this.estimateDataSize(tagName, timeRange);
 
       if (estimatedSize > this.LARGE_DATASET_THRESHOLD) {
         dbLogger.info(`Large dataset detected (${estimatedSize} points), using streaming approach`);
         return this.getTimeSeriesDataStreaming(tagName, timeRange, options, operationId);
       }
+      */
 
       if (operationId) {
         progressTracker.updateProgress(operationId, 'querying', 20, 'Executing optimized query');
@@ -329,9 +331,6 @@ export class DataRetrievalService {
     }
   }
 
-  /**
-   * Build optimized time-series query with indexing hints
-   */
   private buildOptimizedTimeSeriesQuery(
     tagName: string,
     timeRange: TimeRange,
@@ -339,7 +338,7 @@ export class DataRetrievalService {
   ): string {
     const includeQuality = options?.includeQuality !== false;
 
-    const mode = options?.mode || RetrievalMode.Cyclic;
+    const mode = options?.mode || RetrievalMode.Full;
     const isCyclic = mode === RetrievalMode.Cyclic || mode === RetrievalMode.Average;
 
     let query = `
@@ -716,7 +715,7 @@ export class DataRetrievalService {
     timeRange: TimeRange,
     options?: HistorianQueryOptions
   ): Record<string, any> {
-    const mode = options?.mode || RetrievalMode.Cyclic;
+    const mode = options?.mode || RetrievalMode.Full;
     const params: Record<string, any> = {
       tagName,
       startTime: this.formatDateForHistorian(timeRange.startTime),
@@ -730,10 +729,10 @@ export class DataRetrievalService {
     } else if (options?.interval) {
       params.resolution = options.interval * 1000; // Convert seconds to milliseconds
     } else if (mode === RetrievalMode.Cyclic || mode === RetrievalMode.Average) {
-      // Default resolution: Calculate based on time range to get roughly 100 points if not specified
+      // Default to 1000 points for resolution calculation if not specified (safe performance default)
       const durationMs = timeRange.endTime.getTime() - timeRange.startTime.getTime();
-      const defaultPoints = options?.maxPoints || 100;
-      params.resolution = Math.max(1000, Math.floor(durationMs / defaultPoints)); // At least 1 second
+      const defaultPoints = options?.maxPoints || 1000;
+      params.resolution = Math.max(1, Math.floor(durationMs / defaultPoints));
     }
 
     if (options?.maxPoints) {

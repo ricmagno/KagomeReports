@@ -137,7 +137,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
                         color: '#fff',
                         background: l.color,
                     },
-                    text: new Date(l.position).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    text: new Date(l.position).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 }
             }));
 
@@ -192,6 +192,13 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
             type: 'datetime',
             labels: {
                 datetimeUTC: false,
+                datetimeFormatter: {
+                    year: 'yyyy',
+                    month: "MMM 'yy",
+                    day: 'dd MMM',
+                    hour: 'HH:mm',
+                    minute: 'HH:mm'
+                },
                 style: {
                     colors: '#64748b',
                     fontSize: '10px'
@@ -202,6 +209,9 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
             },
             axisTicks: {
                 show: false
+            },
+            tooltip: {
+                enabled: false
             }
         },
         yaxis: [{
@@ -231,7 +241,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
         },
         tooltip: {
             x: {
-                format: 'dd MMM HH:mm:ss'
+                format: 'dd MMM HH:mm'
             },
             theme: 'light',
             shared: true,

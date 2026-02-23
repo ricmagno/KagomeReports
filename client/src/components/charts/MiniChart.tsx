@@ -37,7 +37,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   width = '100%',
   height = 160,
   className = '',
-  showTrend = true,
+  showTrend = false,
   showAxis = false,
   title,
   description,
@@ -183,6 +183,13 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       labels: {
         show: showAxis,
         datetimeUTC: false,
+        datetimeFormatter: {
+          year: 'yyyy',
+          month: "MMM 'yy",
+          day: 'dd MMM',
+          hour: 'HH:mm',
+          minute: 'HH:mm'
+        },
         style: {
           fontSize: '9px',
           colors: '#94a3b8'
@@ -193,6 +200,9 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       },
       axisTicks: {
         show: false
+      },
+      tooltip: {
+        enabled: false
       }
     },
     yaxis: [{
@@ -214,7 +224,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
     }],
     tooltip: {
       x: {
-        format: 'HH:mm:ss'
+        format: 'HH:mm'
       },
       y: {
         formatter: (val, { seriesIndex }) => {
@@ -229,7 +239,11 @@ export const MiniChart: React.FC<MiniChartProps> = ({
     grid: {
       show: showAxis,
       borderColor: '#f1f5f9',
-      strokeDashArray: 2
+      strokeDashArray: 2,
+      padding: {
+        left: 0,
+        right: 0
+      }
     },
     annotations: annotations,
   };

@@ -261,6 +261,7 @@ export class ReportManagementService {
         includeSPCCharts: request.config.includeSPCCharts,
         includeTrendLines: request.config.includeTrendLines,
         includeStatsSummary: request.config.includeStatsSummary,
+        includeDataTable: request.config.includeDataTable,
         retrievalMode: (request.config as any).retrievalMode,
         createdBy: userId,
         createdAt: new Date(),

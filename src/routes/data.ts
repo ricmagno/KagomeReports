@@ -42,12 +42,17 @@ const queryOptionsSchema = z.object({
     if (val === 'Cyclic') return RetrievalMode.Cyclic;
     if (val === 'AVG' || val === 'Average') return RetrievalMode.Average;
     if (val === 'RoundTrip' || val === 'Full') return RetrievalMode.Full;
+    if (val === 'BestFit') return RetrievalMode.BestFit;
+    if (val === 'Minimum') return RetrievalMode.Minimum;
+    if (val === 'Maximum') return RetrievalMode.Maximum;
+    if (val === 'Interpolated') return RetrievalMode.Interpolated;
+    if (val === 'ValueState') return RetrievalMode.ValueState;
     return val as RetrievalMode; // Pass through if it's already a valid enum value
   }),
   interval: z.number().positive().optional(),
   tolerance: z.number().positive().optional(),
-  maxPoints: z.preprocess((val) => val === undefined ? undefined : Number(val), z.number().positive().max(10000).optional()),
-  limit: z.preprocess((val) => val === undefined ? undefined : Number(val), z.number().positive().max(10000).optional()),
+  maxPoints: z.preprocess((val) => val === undefined ? undefined : Number(val), z.number().positive().max(1000000000000).optional()),
+  limit: z.preprocess((val) => val === undefined ? undefined : Number(val), z.number().positive().max(1000000000000).optional()),
   includeQuality: z.preprocess((val) => val === 'false' ? false : true, z.boolean().default(true))
 }).transform(data => {
   // If retrievalMode is provided, use it instead of mode
