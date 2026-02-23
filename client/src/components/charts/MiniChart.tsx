@@ -209,6 +209,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       labels: {
         show: showAxis,
         formatter: (val) => typeof val === 'number' ? formatYValue(val) : (val as any),
+        padding: 0,
         style: {
           fontSize: '9px',
           colors: '#94a3b8'
@@ -241,8 +242,10 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       borderColor: '#f1f5f9',
       strokeDashArray: 2,
       padding: {
-        left: 0,
-        right: 0
+        left: -10,
+        right: 0,
+        top: -10,
+        bottom: 0
       }
     },
     annotations: annotations,

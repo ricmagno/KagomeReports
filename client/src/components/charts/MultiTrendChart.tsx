@@ -217,6 +217,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
         yaxis: [{
             labels: {
                 formatter: (val) => typeof val === 'number' ? formatYValue(val) : (val as any),
+                padding: 0,
                 style: {
                     colors: '#64748b',
                     fontSize: '10px'
@@ -233,6 +234,12 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
         grid: {
             borderColor: '#f1f5f9',
             strokeDashArray: 4,
+            padding: {
+                left: -10,
+                right: 0,
+                top: 0,
+                bottom: 0
+            },
             xaxis: {
                 lines: {
                     show: true

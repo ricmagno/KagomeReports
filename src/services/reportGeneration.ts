@@ -364,7 +364,7 @@ export class ReportGenerationService {
         // Step 4: Create PDF document
         const doc = new PDFDocument({
           size: 'A4',
-          margins: { top: 80, bottom: 60, left: 30, right: 30 },
+          margins: { top: 70, bottom: 50, left: 25, right: 25 },
           bufferPages: true, // Enable page buffering for footer addition
           info: {
             Title: reportData.config.name,
@@ -601,17 +601,18 @@ export class ReportGenerationService {
    */
   private addReportHeader(doc: PDFKit.PDFDocument, config: ReportConfig): void {
     // Company name - Kagome branding or from config
+    const margin = 25;
     const companyName = config.branding?.companyName || 'Kagome';
     doc.fontSize(16)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text(companyName, 40, 25);
+      .text(companyName, margin, 25);
 
     // Subtitle - Historian Reports
     doc.fontSize(11)
       .fillColor('#6b7280')
       .font('Helvetica')
-      .text('Historian Reports', 40, 45);
+      .text('Historian Reports', margin, 45);
 
     // Logo (optional)
     if (config.branding?.logo) {
@@ -626,19 +627,20 @@ export class ReportGenerationService {
     // Horizontal line below header
     doc.strokeColor('#e5e7eb')
       .lineWidth(0.5)
-      .moveTo(40, 70)
-      .lineTo(doc.page.width - 40, 70)
+      .moveTo(margin, 70)
+      .lineTo(doc.page.width - margin, 70)
       .stroke();
 
     doc.moveDown(1);
     doc.fillColor('#111827');
-    doc.x = 40;
+    doc.x = margin;
   }
 
   /**
    * Add report title (name + description).
    */
   private addReportTitle(doc: PDFKit.PDFDocument, config: ReportConfig): void {
+    const margin = 25;
     const title = config.version
       ? `${config.name} (v${config.version})`
       : config.name;
@@ -646,7 +648,7 @@ export class ReportGenerationService {
     doc.fontSize(22)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text(title, 40, doc.y, { align: 'center', width: doc.page.width - 80 });
+      .text(title, margin, doc.y, { align: 'center', width: doc.page.width - (margin * 2) });
 
     doc.moveDown(0.6);
 
@@ -654,19 +656,19 @@ export class ReportGenerationService {
       doc.fontSize(13)
         .fillColor('#6b7280')
         .font('Helvetica')
-        .text(config.description, 40, doc.y, { align: 'center', width: doc.page.width - 80 });
+        .text(config.description, margin, doc.y, { align: 'center', width: doc.page.width - (margin * 2) });
       doc.moveDown(0.5);
     }
 
     doc.strokeColor('#e5e7eb')
       .lineWidth(0.5)
-      .moveTo(40, doc.y)
-      .lineTo(doc.page.width - 40, doc.y)
+      .moveTo(margin, doc.y)
+      .lineTo(doc.page.width - margin, doc.y)
       .stroke();
 
     doc.moveDown(0.8);
     doc.fillColor('#111827');
-    doc.x = 40;
+    doc.x = margin;
   }
 
   /**
@@ -674,6 +676,7 @@ export class ReportGenerationService {
    */
   private addReportMetadata(doc: PDFKit.PDFDocument, reportData: ReportData): void {
     const { config } = reportData;
+    const margin = 25;
     const tz = config.timeRange.timezone || env.DEFAULT_TIMEZONE;
 
     const formatOptions: Intl.DateTimeFormatOptions = {
@@ -685,33 +688,34 @@ export class ReportGenerationService {
     const fmt = (d: Date | unknown) =>
       d instanceof Date ? d.toLocaleString('en-US', formatOptions) : 'Unknown';
 
-    doc.x = 40;
+    doc.x = margin;
     doc.fontSize(10);
     doc.fillColor('#6b7280').font('Helvetica')
-      .text(`Period: ${fmt(config.timeRange.startTime)} — ${fmt(config.timeRange.endTime)}  (${tz})`, 40, doc.y, { width: doc.page.width - 80 });
-    doc.text(`Tags: ${config.tags.join(', ')}`, 40, doc.y, { width: doc.page.width - 80 });
-    doc.text(`Retrieval Mode: ${config.retrievalMode || 'Cyclic'}`, 40, doc.y, { width: doc.page.width - 80 });
-    doc.text(`Generated: ${fmt(reportData.generatedAt)}`, 40, doc.y, { width: doc.page.width - 80 });
+      .text(`Period: ${fmt(config.timeRange.startTime)} — ${fmt(config.timeRange.endTime)}  (${tz})`, margin, doc.y, { width: doc.page.width - (margin * 2) });
+    doc.text(`Tags: ${config.tags.join(', ')}`, margin, doc.y, { width: doc.page.width - (margin * 2) });
+    doc.text(`Retrieval Mode: ${config.retrievalMode || 'Cyclic'}`, margin, doc.y, { width: doc.page.width - (margin * 2) });
+    doc.text(`Generated: ${fmt(reportData.generatedAt)}`, margin, doc.y, { width: doc.page.width - (margin * 2) });
 
     doc.moveDown(1);
-    doc.strokeColor('#e5e7eb').lineWidth(0.5).moveTo(40, doc.y).lineTo(doc.page.width - 40, doc.y).stroke();
+    doc.strokeColor('#e5e7eb').lineWidth(0.5).moveTo(margin, doc.y).lineTo(doc.page.width - margin, doc.y).stroke();
     doc.moveDown(1);
     doc.fillColor('#111827');
-    doc.x = 40;
+    doc.x = margin;
   }
 
   /**
    * Add executive summary paragraph.
    */
   private addExecutiveSummary(doc: PDFKit.PDFDocument, reportData: ReportData): void {
+    const margin = 25;
     const totalTags = reportData.config.tags.length;
     const totalDataPoints = Object.values(reportData.data).reduce((sum, data) => sum + data.length, 0);
 
     const summaryText = `This report analyses ${totalTags} monitoring point(s) over the configured time period, covering ${totalDataPoints.toLocaleString()} data points in total.`;
 
-    doc.fontSize(14).fillColor('#111827').font('Helvetica-Bold').text('Executive Summary', 40);
+    doc.fontSize(14).fillColor('#111827').font('Helvetica-Bold').text('Executive Summary', margin);
     doc.moveDown(0.4);
-    doc.fontSize(11).fillColor('#374151').font('Helvetica').text(summaryText, 40, doc.y, { width: doc.page.width - 80, align: 'justify' });
+    doc.fontSize(11).fillColor('#374151').font('Helvetica').text(summaryText, margin, doc.y, { width: doc.page.width - (margin * 2), align: 'justify' });
     doc.moveDown(1);
   }
 
@@ -719,17 +723,18 @@ export class ReportGenerationService {
    * Add key findings as bullet points.
    */
   private addKeyFindings(doc: PDFKit.PDFDocument, reportData: ReportData): void {
+    const margin = 25;
     const findings: string[] = [
       `Analysed ${reportData.config.tags.length} monitoring point(s).`,
       `Processed ${Object.values(reportData.data).reduce((s, d) => s + d.length, 0).toLocaleString()} data points.`
     ];
 
-    doc.fontSize(14).fillColor('#111827').font('Helvetica-Bold').text('Key Findings', 40, doc.y);
+    doc.fontSize(14).fillColor('#111827').font('Helvetica-Bold').text('Key Findings', margin, doc.y);
     doc.moveDown(0.4);
     doc.fontSize(11).font('Helvetica').fillColor('#374151');
 
     for (const finding of findings) {
-      doc.text(`•  ${finding}`, 50, doc.y, { width: doc.page.width - 90, align: 'left' });
+      doc.text(`•  ${finding}`, margin + 10, doc.y, { width: doc.page.width - (margin * 2 + 10), align: 'left' });
       doc.moveDown(0.3);
     }
     doc.moveDown(0.8);
@@ -765,7 +770,7 @@ export class ReportGenerationService {
         reportLogger.debug('Added new page for charts', { chartCount });
       }
 
-      const chartWidth = 515;
+      const chartWidth = 545;
       const chartHeight = 280;
 
       // Print Title
@@ -808,7 +813,10 @@ export class ReportGenerationService {
           const bufferInfo = chartBufferValidator.getBufferInfo(chartBuffer);
 
           if (bufferInfo.format === 'SVG') {
-            const svgString = chartBuffer.toString('utf8');
+            const rawSvg = chartBuffer.toString('utf8');
+            // Remove fixed width/height so it stretches to fill the container width
+            const svgString = rawSvg.replace(/width="[^"]*"/, '').replace(/height="[^"]*"/, '');
+
             // @ts-ignore - svg-to-pdfkit type definitions might be missing or incomplete
             const SVGtoPDF = require('svg-to-pdfkit');
 
@@ -822,7 +830,7 @@ export class ReportGenerationService {
             SVGtoPDF(doc, svgString, doc.x, doc.y, {
               width: chartWidth,
               height: chartHeight,
-              preserveAspectRatio: 'xMidYMid meet'
+              preserveAspectRatio: 'none'
             });
 
             doc.y += chartHeight + 20;
@@ -855,7 +863,7 @@ export class ReportGenerationService {
       doc.fontSize(11)
         .fillColor('#6b7280')
         .font('Helvetica')
-        .text('No statistical data available for the selected tags.', 40, doc.y);
+        .text('No statistical data available for the selected tags.', 25, doc.y);
       return;
     }
 
@@ -863,7 +871,7 @@ export class ReportGenerationService {
     doc.fontSize(14)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text('Statistical Summary', 40);
+      .text('Statistical Summary', 25);
 
     doc.moveDown(0.4);
 
@@ -872,15 +880,15 @@ export class ReportGenerationService {
       .font('Helvetica')
       .text(
         'The table below shows key statistical metrics computed from the queried time-series data for each monitoring tag.',
-        40, doc.y,
-        { width: doc.page.width - 80, align: 'left' }
+        25, doc.y,
+        { width: doc.page.width - 50, align: 'left' }
       );
 
     doc.moveDown(1);
 
     // ── Table layout ────────────────────────────────────────────────────────
-    const pageWidth = doc.page.width - 80;  // usable width with 40px margins
-    const tableLeft = 40;
+    const pageWidth = doc.page.width - 50;  // usable width with 25px margins
+    const tableLeft = 25;
 
     // Column definitions  [label, relativeWidth]
     const columns: Array<{ label: string; width: number; align: 'left' | 'center' | 'right' }> = [
@@ -1033,13 +1041,13 @@ export class ReportGenerationService {
       .text(
         '* Quality %: proportion of data points with Good quality status (code 192). ' +
         'Std Dev = population standard deviation. Count = number of valid numeric data points.',
-        40, doc.y,
-        { width: doc.page.width - 80 }
+        25, doc.y,
+        { width: doc.page.width - 50 }
       );
 
     doc.moveDown(0.5);
     doc.fillColor('#111827');
-    doc.x = 40;
+    doc.x = 25;
   }
 
   /**
@@ -1078,14 +1086,14 @@ export class ReportGenerationService {
     stats?: StatisticsResult,
     trend?: TrendResult
   ): void {
-    const cardWidth = 515;
+    const cardWidth = 545;
     const cardPadding = 12;
     const headerHeight = 35;
-    const chartHeight = 210;
+    const chartHeight = 230; // Increased from 220 to provide better ratio when stretched
     const footerHeight = trend ? 42 : 0;
     const totalHeight = headerHeight + chartHeight + footerHeight + (cardPadding * 2);
 
-    const startX = 40;
+    const startX = 25;
     const currentY = doc.y;
 
     // Draw Card Border
@@ -1143,15 +1151,18 @@ export class ReportGenerationService {
     try {
       const bufferInfo = chartBufferValidator.getBufferInfo(chartBuffer);
       if (bufferInfo.format === 'SVG') {
-        const svgString = chartBuffer.toString('utf8');
+        const rawSvg = chartBuffer.toString('utf8');
+        // Remove fixed width/height so it stretches to fill the container width
+        const svgString = rawSvg.replace(/width="[^"]*"/, '').replace(/height="[^"]*"/, '');
+
         const SVGtoPDF = require('svg-to-pdfkit');
         SVGtoPDF(doc, svgString, contentX, chartY, {
           width: cardWidth - (cardPadding * 2),
           height: chartHeight,
-          preserveAspectRatio: 'xMidYMid meet'
+          preserveAspectRatio: 'none'
         });
       } else {
-        doc.image(chartBuffer, contentX, chartY, { fit: [cardWidth - (cardPadding * 2), chartHeight], align: 'center' });
+        doc.image(chartBuffer, contentX, chartY, { width: cardWidth - (cardPadding * 2), height: chartHeight });
       }
     } catch (error) {
       reportLogger.error('Failed to embed mini chart', { tagName, error });
@@ -1196,8 +1207,8 @@ export class ReportGenerationService {
 
     // Table configuration
     const tableTop = doc.y;
-    const tableLeft = 40;
-    const pageWidth = doc.page.width - 80; // Account for margins (40 on each side)
+    const tableLeft = 25;
+    const pageWidth = doc.page.width - 50; // Account for margins (25 on each side)
 
     // Column widths (proportional)
     const colWidths = {
@@ -1341,16 +1352,16 @@ export class ReportGenerationService {
             .font('Helvetica')
             .text(
               `${reportData.config.name} - ${periodStr}`,
-              40,
               25,
-              { align: 'right', width: doc.page.width - 80 }
+              25,
+              { align: 'right', width: doc.page.width - 50 }
             );
 
           // Add a subtle line below the repeat header
           doc.strokeColor('#e5e7eb')
             .lineWidth(0.5)
-            .moveTo(40, 38)
-            .lineTo(doc.page.width - 40, 38)
+            .moveTo(25, 38)
+            .lineTo(doc.page.width - 25, 38)
             .stroke();
         }
 
@@ -1365,8 +1376,8 @@ export class ReportGenerationService {
         // Add horizontal separator line above footer
         doc.strokeColor('#cccccc')
           .lineWidth(1)
-          .moveTo(40, footerY)
-          .lineTo(doc.page.width - 40, footerY)
+          .moveTo(25, footerY)
+          .lineTo(doc.page.width - 25, footerY)
           .stroke();
 
         // Add generation timestamp (left side)
@@ -1375,7 +1386,7 @@ export class ReportGenerationService {
           .font('Helvetica')
           .text(
             `Generated by Historian Reports v${packageJson.version} on ${generatedDate}`,
-            40,
+            25,
             footerY + 10,
             { align: 'left', width: doc.page.width - 200 }
           );
@@ -1414,12 +1425,12 @@ export class ReportGenerationService {
     doc.fontSize(14)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text('SPC Metrics Summary', 40); // Explicit x position
+      .text('SPC Metrics Summary', 25); // Explicit x position
 
     doc.moveDown(0.5);
 
     const tableTop = doc.y + 10;
-    const tableLeft = 40;
+    const tableLeft = 25;
     const colWidths: number[] = [100, 50, 50, 50, 50, 45, 45, 45, 45, 50];
     const headers = ['Tag Name', 'Mean', 'StdDev', 'LCL', 'UCL', 'LSL', 'USL', 'Cp', 'Cpk', 'Stat'];
     const rowHeight = 20;
