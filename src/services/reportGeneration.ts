@@ -8,7 +8,7 @@ import PDFDocument from 'pdfkit';
 import Handlebars from 'handlebars';
 import fs from 'fs';
 import path from 'path';
-import { TimeSeriesData, StatisticsResult, TrendResult, SPCMetricsSummary, SpecificationLimits, TagClassification } from '@/types/historian';
+import { TimeSeriesData, StatisticsResult, TrendResult, SPCMetricsSummary, SpecificationLimits, TagClassification, TagInfo } from '@/types/historian';
 import { reportLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
 import { env } from '@/config/environment';
@@ -64,6 +64,7 @@ export interface ReportData {
   statistics?: Record<string, StatisticsResult>;
   trends?: Record<string, TrendResult>;
   charts?: Record<string, Buffer>;
+  tagInfo?: Record<string, TagInfo>;
   generatedAt: Date;
 }
 
@@ -287,7 +288,8 @@ export class ReportGenerationService {
                   title: `${tagName} - Time Series Data`,
                   width: 1200,
                   height: 600,
-                  timezone: reportData.config.timeRange.timezone
+                  timezone: reportData.config.timeRange.timezone,
+                  includeTrendLines: includeTrendLines
                 }
               );
 
@@ -382,28 +384,48 @@ export class ReportGenerationService {
         }
 
         // *** Section Data visualization (ALWAYS DISPLAYED)
-        const multiTrendChart = enhancedCharts.get('Multi-Trend Analysis');
-        const individualCharts = new Map<string, Buffer>();
-        const spcCharts = new Map<string, Buffer>();
+        doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Data Visualization', { align: 'center' });
+        doc.moveDown(1);
 
+        // Separate SPC charts to be used in Section Statistical Process Control Analysis later
+        const spcCharts = new Map<string, Buffer>();
         for (const [chartName, chartBuffer] of enhancedCharts.entries()) {
-          if (chartName === 'Multi-Trend Analysis') {
-            continue;
-          } else if (chartName.includes('SPC Chart')) {
+          if (chartName.includes('SPC Chart')) {
             spcCharts.set(chartName, chartBuffer);
-          } else {
-            individualCharts.set(chartName, chartBuffer);
           }
         }
 
-        doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Data Visualization', { align: 'center' });
-        doc.moveDown(1);
-        if (multiTrendChart) {
-          const chartTitle = reportData.config.name || 'Multi-Trend Analysis';
-          this.addChartsSection(doc, { [chartTitle]: multiTrendChart }, false);
+
+
+        // 2. Individual Tag Charts - Ordered and named exactly as in preview
+        const individualChartsOrder = new Map<string, Buffer>();
+        const individualDescriptions: Record<string, string> = {};
+
+        for (const tagName of reportData.config.tags) {
+          // Priority 1: Check for exact tag name (usually the captured chart from frontend)
+          // Priority 2: Check for generated trend chart (suffix " - Data Trend")
+          let chartBuffer = enhancedCharts.get(tagName);
+          let chartTitle = tagName;
+
+          if (!chartBuffer) {
+            const trendName = `${tagName} - Data Trend`;
+            chartBuffer = enhancedCharts.get(trendName);
+            if (chartBuffer) {
+              chartTitle = trendName;
+            }
+          }
+
+          if (chartBuffer) {
+            individualChartsOrder.set(chartTitle, chartBuffer);
+            const info = reportData.tagInfo?.[tagName];
+            if (info?.description) {
+              individualDescriptions[chartTitle] = info.description;
+            }
+          }
         }
-        if (individualCharts.size > 0) {
-          this.addChartsSection(doc, Object.fromEntries(individualCharts), false);
+
+        if (individualChartsOrder.size > 0) {
+          this.addChartsSection(doc, Object.fromEntries(individualChartsOrder), false, individualDescriptions);
         }
 
         doc.addPage();
@@ -432,7 +454,7 @@ export class ReportGenerationService {
           doc.moveDown(1);
 
           if (spcCharts.size > 0) {
-            this.addChartsSection(doc, Object.fromEntries(spcCharts));
+            this.addChartsSection(doc, Object.fromEntries(spcCharts), false);
           }
 
           if (spcMetricsSummary.length > 0) {
@@ -574,7 +596,7 @@ export class ReportGenerationService {
 
     // Reset position and color
     doc.fillColor('#111827');
-    doc.y = 130;  // Increased from 110 for further improved spacing to avoid overlap
+    doc.y = 90;  // Increased from 75
     doc.x = 40;   // Explicitly reset x to margin
   }
 
@@ -698,7 +720,7 @@ export class ReportGenerationService {
     doc.fontSize(14)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text('Executive Summary', 40, doc.y);
+      .text('Executive Summary', 40);
 
     doc.moveDown(0.4);
 
@@ -803,6 +825,15 @@ export class ReportGenerationService {
       .font('Helvetica-Bold')
       .text(`Tag: ${tagName}`);
 
+    const tagInfo = reportData.tagInfo?.[tagName];
+    if (tagInfo?.description) {
+      doc.fontSize(10)
+        .fillColor('#4b5563')
+        .font('Helvetica-Oblique')
+        .text(tagInfo.description);
+      doc.moveDown(0.2);
+    }
+
     doc.moveDown(0.5);
 
     // Basic information
@@ -881,57 +912,63 @@ export class ReportGenerationService {
   /**
    * Add charts section
    */
-  private addChartsSection(doc: PDFKit.PDFDocument, charts: Record<string, Buffer>, printHeader: boolean = true): void {
+  private addChartsSection(
+    doc: PDFKit.PDFDocument,
+    charts: Record<string, Buffer>,
+    printHeader: boolean = true,
+    descriptions: Record<string, string | undefined> = {}
+  ): void {
     if (printHeader) {
-      doc.fontSize(14)
+      doc.fontSize(16)
         .fillColor('#111827')
         .font('Helvetica-Bold')
-        .text('Data Visualizations');
-      doc.moveDown();
+        .text('Data Visualizations', { align: 'center' });
+      doc.moveDown(1.5);
     }
 
     let chartCount = 0;
-    let successCount = 0;
-    let failureCount = 0;
-    const failures: string[] = [];
 
     reportLogger.info('Adding charts section to PDF', {
       totalCharts: Object.keys(charts).length
     });
 
     for (const [chartName, chartBuffer] of Object.entries(charts)) {
-      // New page every 2 charts to maintain clear layout and professional appearance
+      // Logic for 2 charts per page
       if (chartCount > 0 && chartCount % 2 === 0) {
         doc.addPage();
         reportLogger.debug('Added new page for charts', { chartCount });
       }
 
-      const chartWidth = 535;  // Increased from 515 for wider appearance
-      const chartHeight = 320; // Maximum height to allow exactly 2 charts per page with titles and margins
+      const chartWidth = 515;
+      const chartHeight = 280;
 
-      doc.fontSize(12)
+      // Print Title
+      doc.fontSize(14)
         .fillColor('#111827')
         .font('Helvetica-Bold')
         .text(chartName, { align: 'center' });
 
-      doc.moveDown(0.5);
+      // Print Description if available
+      const description = descriptions[chartName];
+      if (description) {
+        doc.moveDown(0.3);
+        doc.fontSize(10)
+          .fillColor('#4b5563')
+          .font('Helvetica')
+          .text(description, { align: 'center', width: chartWidth });
+      }
+
+      doc.moveDown(0.7);
 
       // Validate buffer before embedding
-      reportLogger.debug('Validating chart buffer before embedding', {
-        chartName,
-        bufferSize: chartBuffer?.length || 0
-      });
-
       const validation = chartBufferValidator.validateBuffer(chartBuffer, chartName);
 
       if (!validation.valid) {
         reportLogger.error('Chart buffer validation failed before embedding', {
           chartName,
-          errors: validation.errors,
-          bufferInfo: validation.bufferInfo
+          errors: validation.errors
         });
 
-        // Add placeholder text
         doc.fontSize(12)
           .font('Helvetica')
           .fillColor('#ef4444')
@@ -940,80 +977,42 @@ export class ReportGenerationService {
             width: chartWidth
           })
           .fillColor('#111827');
-
-        failures.push(chartName);
-        failureCount++;
       } else {
         try {
-          // Log buffer details before embedding
-          reportLogger.info('Embedding chart in PDF', {
-            chartName,
-            bufferSize: validation.bufferInfo.size,
-            format: validation.bufferInfo.format,
-            dimensions: validation.bufferInfo.dimensions,
-            targetSize: { width: chartWidth, height: chartHeight }
-          });
+          const bufferInfo = chartBufferValidator.getBufferInfo(chartBuffer);
 
-          // Add chart image with explicit options
-          doc.image(chartBuffer, {
-            fit: [chartWidth, chartHeight],
-            align: 'center'
-          });
+          if (bufferInfo.format === 'SVG') {
+            const svgString = chartBuffer.toString('utf8');
+            // @ts-ignore - svg-to-pdfkit type definitions might be missing or incomplete
+            const SVGtoPDF = require('svg-to-pdfkit');
 
-          successCount++;
+            reportLogger.debug('Embedding SVG chart', {
+              chartName,
+              svgLength: svgString.length,
+              x: doc.x,
+              y: doc.y
+            });
 
-          reportLogger.info('Chart embedded successfully in PDF', {
-            chartName,
-            bufferSize: validation.bufferInfo.size
-          });
+            SVGtoPDF(doc, svgString, doc.x, doc.y, {
+              width: chartWidth,
+              height: chartHeight,
+              preserveAspectRatio: 'xMidYMid meet'
+            });
 
+            doc.y += chartHeight + 20;
+          } else {
+            doc.image(chartBuffer, doc.x, doc.y, {
+              fit: [chartWidth, chartHeight],
+              align: 'center'
+            });
+            doc.y += chartHeight + 20;
+          }
         } catch (error) {
-          reportLogger.error('Failed to embed chart in PDF', {
-            chartName,
-            error: error instanceof Error ? error.message : 'Unknown error',
-            stack: error instanceof Error ? error.stack : undefined,
-            bufferSize: validation.bufferInfo.size,
-            bufferFormat: validation.bufferInfo.format
-          });
-
-          // Add error placeholder
-          doc.fontSize(12)
-            .font('Helvetica')
-            .fillColor('#ef4444')
-            .text(`Chart embedding failed: ${error instanceof Error ? error.message : 'Unknown error'}`, {
-              align: 'center',
-              width: chartWidth
-            })
-            .fillColor('#111827');
-
-          failures.push(chartName);
-          failureCount++;
+          reportLogger.error('Failed to embed chart image', { chartName, error });
         }
       }
 
-      doc.moveDown(1.5);
       chartCount++;
-    }
-
-    // Log summary
-    reportLogger.info('Chart embedding summary', {
-      total: chartCount,
-      successful: successCount,
-      failed: failureCount,
-      failures: failures,
-      successRate: chartCount > 0 ? ((successCount / chartCount) * 100).toFixed(1) + '%' : '0%'
-    });
-
-    // Add summary note if there were failures
-    if (failureCount > 0) {
-      doc.moveDown();
-      doc.fontSize(10)
-        .font('Helvetica')
-        .fillColor('#666666')
-        .text(`Note: ${failureCount} of ${chartCount} chart(s) could not be displayed. See logs for details.`, {
-          align: 'center'
-        })
-        .fillColor('#111827');
     }
   }
 
@@ -1038,7 +1037,7 @@ export class ReportGenerationService {
     doc.fontSize(14)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text('Statistical Summary', 40, doc.y);
+      .text('Statistical Summary', 40);
 
     doc.moveDown(0.4);
 
@@ -1454,7 +1453,7 @@ export class ReportGenerationService {
     const tableTop = doc.y + 10;
     const tableLeft = 40;
     const colWidths: number[] = [100, 50, 50, 50, 50, 45, 45, 45, 45, 50];
-    const headers = ['Tag Name', 'Average', 'Std Dev', 'LCL', 'UCL', 'LSL', 'USL', 'Cp', 'Cpk', 'Stat'];
+    const headers = ['Tag Name', 'Mean', 'StdDev', 'LCL', 'UCL', 'LSL', 'USL', 'Cp', 'Cpk', 'Stat'];
     const rowHeight = 20;
     const headerHeight = 25;
 

@@ -108,33 +108,38 @@ export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewPro
       try {
         if ((window as any).ApexCharts) {
           // Add small delay to ensure rendering is complete
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 800));
 
-          if (config.tags && config.tags.length > 1) {
-            try {
-              const multiTrendDataURI = await (window as any).ApexCharts.exec('multi-trend-chart', 'dataURI');
-              if (multiTrendDataURI && multiTrendDataURI.imgURI) {
-                charts['Multi-Trend Analysis'] = multiTrendDataURI.imgURI;
-              }
-            } catch (e) {
-              console.warn('Could not capture multi-trend chart', e);
+          const captureSvg = (id: string) => {
+            const container = document.getElementById(id);
+            const chartElement = container?.querySelector('.apexcharts-svg');
+            if (chartElement) {
+              // Extract SVG XML
+              const svgData = new XMLSerializer().serializeToString(chartElement);
+              // Clean up potentially problematic attributes or prefixes if necessary
+              // For now, simple base64 encoding should work
+              return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svgData)))}`;
             }
-          }
+            return null;
+          };
+
+          /* Removed Multi-Trend capture as per user request to replace with MiniCharts */
+
 
           for (const tag of (config.tags || [])) {
             const chartId = `mini-chart-${tag}`;
             try {
-              const dataURI = await (window as any).ApexCharts.exec(chartId, 'dataURI');
-              if (dataURI && dataURI.imgURI) {
-                charts[tag] = dataURI.imgURI;
+              const svgDataUri = captureSvg(chartId);
+              if (svgDataUri) {
+                charts[tag] = svgDataUri;
               }
             } catch (e) {
-              console.warn(`Could not capture chart ${chartId}`, e);
+              console.warn(`Could not capture chart ${chartId} as SVG`, e);
             }
           }
         }
       } catch (e) {
-        console.error('Error capturing charts:', e);
+        console.error('Error capturing charts as SVG:', e);
       }
       return charts;
     }
@@ -726,27 +731,8 @@ export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewPro
               Trends
             </h4>
             <div className="grid grid-cols-1 gap-6 sm:gap-8">
-              {/* Combined Multi-Trend View (only if multiple tags selected) */}
-              {Object.keys(dataPoints).filter(tag => dataPoints[tag].length > 0).length > 1 && (
-                <InteractiveChart
-                  dataPoints={dataPoints}
-                  tagDescriptions={tagDescriptions}
-                  tags={config.tags}
-                  title={config.name}
-                  description={config.description}
-                  width="100%"
-                  height={320}
-                  className="mb-4"
-                  enableGuideLines={false}
-                  displayMode="multi"
-                  type={config.chartTypes[0] as any || 'line'}
-                  includeTrendLines={config.includeTrendLines}
-                />
-              )}
-
               {config.tags
                 .filter(tagName => dataPoints[tagName]?.length > 0)
-                .slice(0, 4) // Show top 4 tags in large format
                 .map((tagName) => {
                   const data = dataPoints[tagName];
 
@@ -772,11 +758,7 @@ export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewPro
                   );
                 })}
             </div>
-            {Object.keys(dataPoints).length > 6 && (
-              <p className="text-xs text-gray-500 mt-2 text-center">
-                +{Object.keys(dataPoints).length - 6} more charts will be included in the report
-              </p>
-            )}
+
 
             {/* Data Preview Table */}
             <div className="mt-8">

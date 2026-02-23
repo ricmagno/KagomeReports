@@ -235,7 +235,10 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   };
 
   return (
-    <div className={`relative bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow ${className}`}>
+    <div
+      id={`mini-chart-${tagName}`}
+      className={`relative bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow ${className}`}
+    >
       <div className="mb-2 flex items-start justify-between border-b border-gray-100 pb-2">
         <div className="flex flex-col min-w-0 flex-1">
           <span className="text-sm font-bold text-gray-800 truncate" title={title || tagName}>

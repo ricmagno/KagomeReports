@@ -44,6 +44,7 @@ export interface ChartOptions {
   backgroundColor?: string;
   colors?: string[];
   timezone?: string | undefined;
+  includeTrendLines?: boolean | undefined;
 }
 
 export interface LineChartData {
@@ -84,8 +85,8 @@ export class ChartGenerationService {
   private defaultColors: string[];
 
   constructor() {
-    this.defaultWidth = (env.CHART_WIDTH as number) || 2400;  // Increased to 2400 for high resolution
-    this.defaultHeight = (env.CHART_HEIGHT as number) || 1200; // Increased to 1200 for high resolution
+    this.defaultWidth = (env.CHART_WIDTH as number) || 1200;
+    this.defaultHeight = (env.CHART_HEIGHT as number) || 600;
     this.defaultColors = [
       '#3b82f6', // Blue
       '#10b981', // Green
@@ -166,8 +167,8 @@ export class ChartGenerationService {
           pointHoverRadius: 4
         });
 
-        // Add trend line if available
-        if (dataset.trendLine && dataset.data.length >= 3) {
+        // Add trend line if available and explicitly requested (defaulting to true if not specified)
+        if (dataset.trendLine && dataset.data.length >= 3 && options.includeTrendLines !== false) {
           const startTime = dataset.data[0]!.timestamp.getTime();
           const endTime = dataset.data[dataset.data.length - 1]!.timestamp.getTime();
           const timeSpanSeconds = (endTime - startTime) / 1000;
@@ -211,11 +212,11 @@ export class ChartGenerationService {
           type: 'label',
           xValue: (ctx: any) => {
             const xScale = ctx.chart.scales.x;
-            return xScale.max - (xScale.max - xScale.min) * 0.15; // Moved further from right edge (15%)
+            return xScale.max - (xScale.max - xScale.min) * 0.05; // Positioned 5% from edges
           },
           yValue: (ctx: any) => {
             const yScale = ctx.chart.scales.y;
-            return yScale.max - (yScale.max - yScale.min) * 0.15; // Moved further from top (15%)
+            return yScale.max - (yScale.max - yScale.min) * 0.05; // Positioned 5% from edges
           },
           xAdjust: 0,
           yAdjust: 0,
@@ -267,7 +268,7 @@ export class ChartGenerationService {
                 boxWidth: 15,  // Reduced from 20 to save space
                 padding: 8     // Reduced from 10 to save space
               },
-              maxHeight: 100   // Increased from 60 to prevent legend cutoff
+              maxHeight: 60    // Optimized to save space
             },
             annotation: {
               annotations: annotations
@@ -1079,71 +1080,81 @@ export class ChartGenerationService {
       const { statisticalAnalysisService } = await import('./statisticalAnalysis');
       const { classifyTag } = await import('./tagClassificationService');
 
-      // Generate line charts
-      if (chartTypes.includes('line')) {
-        const analogDatasets: LineChartData[] = [];
+      // Primary Data Visualizations (Multi-Trend and Individual Tag Charts)
+      const analogDatasets: LineChartData[] = [];
 
-        for (const [tagName, tagData] of Object.entries(data)) {
-          if (tagData.length > 0) {
-            const classification = classifyTag(tagData);
-            const chartData: LineChartData = {
-              tagName,
-              data: tagData
-            };
+      for (const [tagName, tagData] of Object.entries(data)) {
+        if (tagData.length > 0) {
+          const classification = classifyTag(tagData);
+          const chartData: LineChartData = {
+            tagName,
+            data: tagData
+          };
 
-            // Calculate statistics and trends for analog tags
-            if (classification.type === 'analog') {
-              if (tagData.length >= 3) {
-                try {
-                  chartData.trendLine = statisticalAnalysisService.calculateAdvancedTrendLine(tagData);
-                } catch (e) {
-                  reportLogger.warn(`Trend calc failed for ${tagName}`, { error: e instanceof Error ? e.message : String(e) });
-                }
+          // Calculate statistics and trends for analog tags to include in charts (only if requested)
+          if (classification.type === 'analog') {
+            if (options.includeTrendLines && tagData.length >= 3) {
+              try {
+                chartData.trendLine = statisticalAnalysisService.calculateAdvancedTrendLine(tagData);
+              } catch (e) {
+                reportLogger.warn(`Trend calc failed for ${tagName}`, { error: e instanceof Error ? e.message : String(e) });
               }
-
-              if (statistics && statistics[tagName]) {
-                chartData.statistics = {
-                  min: statistics[tagName]!.min,
-                  max: statistics[tagName]!.max,
-                  mean: statistics[tagName]!.average,
-                  stdDev: statistics[tagName]!.standardDeviation
-                };
-              } else {
-                try {
-                  const stats = statisticalAnalysisService.calculateStatisticsSync(tagData);
-                  chartData.statistics = {
-                    min: stats.min, max: stats.max, mean: stats.average, stdDev: stats.standardDeviation
-                  };
-                } catch (e) {
-                  reportLogger.warn(`Stats calc failed for ${tagName}`, { error: e instanceof Error ? e.message : String(e) });
-                }
-              }
-              analogDatasets.push(chartData);
             }
 
-            // Generate individual chart for EACH tag (like frontend mini-charts)
-            // Use standard key (tag name) to match frontend expectation
-            const chartBuffer = await this.generateLineChart(
-              [chartData],
-              { title: `${tagName} - Time Series`, timezone: options.timezone }
-            );
-            charts[tagName] = chartBuffer;
+            if (statistics && statistics[tagName]) {
+              chartData.statistics = {
+                min: statistics[tagName]!.min,
+                max: statistics[tagName]!.max,
+                mean: statistics[tagName]!.average,
+                stdDev: statistics[tagName]!.standardDeviation
+              };
+            } else {
+              try {
+                const stats = statisticalAnalysisService.calculateStatisticsSync(tagData);
+                chartData.statistics = {
+                  min: stats.min, max: stats.max, mean: stats.average, stdDev: stats.standardDeviation
+                };
+              } catch (e) {
+                reportLogger.warn(`Stats calc failed for ${tagName}`, { error: e instanceof Error ? e.message : String(e) });
+              }
+            }
+            analogDatasets.push(chartData);
           }
-        }
 
-        // Generate Multi-Trend Analysis chart if multiple analog tags exist
-        if (analogDatasets.length > 1) {
-          try {
-            const multiTrendBuffer = await this.generateLineChart(
-              analogDatasets,
-              { title: 'Multi-Trend Analysis', timezone: options.timezone }
-            );
-            charts['Multi-Trend Analysis'] = multiTrendBuffer;
-            reportLogger.info('Generated Multi-Trend Analysis chart for all analog tags');
-          } catch (error) {
-            reportLogger.error('Failed to generate Multi-Trend Analysis chart', { error });
-          }
+          // ALWAYS generate individual chart for EACH tag (Baseline visualization)
+          const chartBuffer = await this.generateLineChart(
+            [chartData],
+            {
+              title: `${tagName} - Time Series`,
+              timezone: options.timezone,
+              includeTrendLines: options.includeTrendLines
+            }
+          );
+          charts[tagName] = chartBuffer;
         }
+      }
+
+      // ALWAYS generate Multi-Trend Analysis chart if multiple analog tags exist (Baseline visualization)
+      if (analogDatasets.length > 1) {
+        try {
+          const multiTrendBuffer = await this.generateLineChart(
+            analogDatasets,
+            {
+              title: 'Multi-Trend Analysis',
+              timezone: options.timezone,
+              includeTrendLines: options.includeTrendLines
+            }
+          );
+          charts['Multi-Trend Analysis'] = multiTrendBuffer;
+          reportLogger.info('Generated Multi-Trend Analysis chart for all analog tags');
+        } catch (error) {
+          reportLogger.error('Failed to generate Multi-Trend Analysis chart', { error });
+        }
+      }
+
+      // Generate additional specific chart types if requested in chartTypes
+      if (chartTypes.includes('scatter')) {
+        // Scatter chart logic could be added here if needed in the future
       }
 
       // Generate trend charts if trend data is available

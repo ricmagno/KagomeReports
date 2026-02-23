@@ -267,7 +267,10 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
     };
 
     return (
-        <div className={cn("bg-white border border-gray-200 rounded-lg p-6 shadow-sm flex flex-col h-full", className)}>
+        <div
+            id="multi-trend-chart"
+            className={cn("bg-white border border-gray-200 rounded-lg p-6 shadow-sm flex flex-col h-full", className)}
+        >
             {(title || description) && (
                 <div className="mb-4 border-b border-gray-100 pb-2">
                     <div className="flex items-center justify-between">

@@ -9,7 +9,7 @@ import { dataRetrievalService } from './dataRetrieval';
 import { statisticalAnalysisService } from './statisticalAnalysis';
 import { reportGenerationService, ReportConfig, ReportData, ReportResult } from './reportGeneration';
 import { chartGenerationService } from './chartGeneration';
-import { TimeSeriesData, StatisticsResult, TrendResult, QualityCode } from '@/types/historian';
+import { TimeSeriesData, StatisticsResult, TrendResult, QualityCode, TagInfo } from '@/types/historian';
 import { createError } from '@/middleware/errorHandler';
 
 export interface DataFlowConfig {
@@ -84,13 +84,23 @@ export class DataFlowService {
         anomalies = await this.detectAnomalies(data);
       }
 
+      // Step 4.5: Retrieve tag metadata for descriptions
+      const tagInfo = await this.performTagMetadataLookup(config.reportConfig.tags);
+
       // Step 5: Merge with real-time data if provided
       const finalData = this.mergeRealTimeData(data, config.realTimeData);
 
       // Step 6: Generate charts
       let charts = config.preGeneratedCharts;
       if (!charts || Object.keys(charts).length === 0) {
-        charts = await this.generateCharts(finalData, statistics, trends, config.reportConfig.chartTypes, config.reportConfig.timeRange.timezone);
+        charts = await this.generateCharts(
+          finalData,
+          statistics,
+          trends,
+          config.reportConfig.chartTypes,
+          config.reportConfig.timeRange.timezone,
+          config.reportConfig.includeTrendLines
+        );
         reportLogger.debug('Generated charts on backend', { count: Object.keys(charts || {}).length });
       } else {
         reportLogger.debug('Using pre-generated frontend charts', { count: Object.keys(charts).length });
@@ -103,6 +113,7 @@ export class DataFlowService {
         statistics: statistics || {},
         trends: trends || {},
         charts,
+        tagInfo,
         generatedAt: new Date(),
         ...(anomalies && { anomalies })
       };
@@ -302,6 +313,34 @@ export class DataFlowService {
   }
 
   /**
+   * Perform tag metadata lookup
+   */
+  private async performTagMetadataLookup(tagNames: string[]): Promise<Record<string, TagInfo>> {
+    const tagInfo: Record<string, TagInfo> = {};
+
+    reportLogger.info('Retrieving tag metadata', { count: tagNames.length });
+
+    const infoPromises = tagNames.map(async (tagName) => {
+      try {
+        const info = await dataRetrievalService.getTagInfo(tagName);
+        return { tagName, info };
+      } catch (error) {
+        reportLogger.warn(`Failed to retrieve metadata for tag ${tagName}`, {
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        return { tagName, info: null };
+      }
+    });
+
+    const results = await Promise.all(infoPromises);
+    results.forEach(({ tagName, info }) => {
+      if (info) tagInfo[tagName] = info;
+    });
+
+    return tagInfo;
+  }
+
+  /**
    * Merge real-time data with historical data
    */
   private mergeRealTimeData(
@@ -360,7 +399,8 @@ export class DataFlowService {
     statistics?: Record<string, StatisticsResult>,
     trends?: Record<string, TrendResult>,
     chartTypes: string[] = ['line'],
-    timezone?: string
+    timezone?: string,
+    includeTrendLines?: boolean
   ): Promise<Record<string, Buffer>> {
     reportLogger.info('Generating charts', {
       chartTypes,
@@ -373,7 +413,7 @@ export class DataFlowService {
         statistics,
         trends,
         chartTypes as any[],
-        { timezone }
+        { timezone, includeTrendLines }
       );
     } catch (error) {
       reportLogger.error('Failed to generate charts', {
