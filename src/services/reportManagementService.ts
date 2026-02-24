@@ -260,6 +260,7 @@ export class ReportManagementService {
         specificationLimits: request.config.specificationLimits,
         includeSPCCharts: request.config.includeSPCCharts,
         includeTrendLines: request.config.includeTrendLines,
+        includeMultiTrend: (request.config as any).includeMultiTrend,
         includeStatsSummary: request.config.includeStatsSummary,
         includeDataTable: request.config.includeDataTable,
         retrievalMode: (request.config as any).retrievalMode,

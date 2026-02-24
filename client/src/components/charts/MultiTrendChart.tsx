@@ -268,6 +268,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
             }
         },
         legend: {
+            show: true,
             position: 'bottom',
             horizontalAlign: 'center',
             fontSize: '12px',

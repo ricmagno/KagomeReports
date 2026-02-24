@@ -53,6 +53,7 @@ export interface ReportConfig {
   specificationLimits?: Record<string, SpecificationLimits>; // Map of tag name to spec limits
   includeSPCCharts?: boolean;      // Include Statistical Process Control charts
   includeTrendLines?: boolean;     // Include trend lines on standard charts
+  includeMultiTrend?: boolean;     // Include Combined Process Trends chart
   includeStatsSummary?: boolean;   // Include statistical summaries on charts
   includeDataTable?: boolean;      // Include data tables in the report
 

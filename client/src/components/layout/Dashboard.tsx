@@ -74,10 +74,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     },
     chartTypes: ['line'],
     template: 'default',
-    retrievalMode: 'Cyclic',
+    retrievalMode: 'Delta',
     version: undefined, // Track version number
     // Advanced analytics options (default to true)
     includeTrendLines: true,
+    includeMultiTrend: true,
     includeSPCCharts: true,
     includeStatsSummary: true,
     includeDataTable: false,
@@ -95,6 +96,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     if (reportConfig.description !== savedConfig.description) return true;
     if (reportConfig.template !== savedConfig.template) return true;
     if (reportConfig.includeTrendLines !== savedConfig.includeTrendLines) return true;
+    if (reportConfig.includeMultiTrend !== savedConfig.includeMultiTrend) return true;
     if (reportConfig.includeSPCCharts !== savedConfig.includeSPCCharts) return true;
     if (reportConfig.includeStatsSummary !== savedConfig.includeStatsSummary) return true;
 
@@ -357,12 +359,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         includeAnomalies: false,
         // Advanced analytics options
         includeTrendLines: reportConfig.includeTrendLines ?? true,
+        includeMultiTrend: reportConfig.includeMultiTrend ?? true,
         includeSPCCharts: reportConfig.includeSPCCharts ?? true,
         includeStatsSummary: reportConfig.includeStatsSummary ?? true,
         includeDataTable: reportConfig.includeDataTable ?? false,
         specificationLimits: reportConfig.specificationLimits || {},
         version: reportConfig.version,
-        retrievalMode: reportConfig.retrievalMode || 'Cyclic',
+        retrievalMode: reportConfig.retrievalMode || 'Delta',
         charts: Object.keys(capturedCharts).length > 0 ? capturedCharts : undefined
       };
 
@@ -427,11 +430,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           template: reportConfig.template || 'default',
           // Advanced analytics options
           includeTrendLines: reportConfig.includeTrendLines ?? true,
+          includeMultiTrend: reportConfig.includeMultiTrend ?? true,
           includeSPCCharts: reportConfig.includeSPCCharts ?? true,
           includeStatsSummary: reportConfig.includeStatsSummary ?? true,
           includeDataTable: reportConfig.includeDataTable ?? false,
           specificationLimits: reportConfig.specificationLimits || {},
-          retrievalMode: reportConfig.retrievalMode || 'Cyclic'
+          retrievalMode: reportConfig.retrievalMode || 'Delta'
         }
       };
 
@@ -496,6 +500,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           version: loadedReport.version, // Set the version number
           // Advanced analytics options
           includeTrendLines: loadedReport.config.includeTrendLines ?? true,
+          includeMultiTrend: loadedReport.config.includeMultiTrend ?? true,
           includeSPCCharts: loadedReport.config.includeSPCCharts ?? true,
           includeStatsSummary: loadedReport.config.includeStatsSummary ?? true,
           specificationLimits: loadedReport.config.specificationLimits || {}
@@ -531,6 +536,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       version: versionInfo.version, // Set the version number
       // Advanced analytics options
       includeTrendLines: versionInfo.config.includeTrendLines ?? true,
+      includeMultiTrend: versionInfo.config.includeMultiTrend ?? true,
       includeSPCCharts: versionInfo.config.includeSPCCharts ?? true,
       includeStatsSummary: versionInfo.config.includeStatsSummary ?? true,
       specificationLimits: versionInfo.config.specificationLimits || {}
@@ -561,6 +567,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       version: undefined, // Clear version since this is an imported config (not saved yet)
       // Advanced analytics options
       includeTrendLines: importedConfig.includeTrendLines ?? true,
+      includeMultiTrend: importedConfig.includeMultiTrend ?? true,
       includeSPCCharts: importedConfig.includeSPCCharts ?? true,
       includeStatsSummary: importedConfig.includeStatsSummary ?? true,
       specificationLimits: importedConfig.specificationLimits || {},
@@ -912,12 +919,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           </label>
                           <select
                             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                            value={reportConfig.retrievalMode || 'Cyclic'}
+                            value={reportConfig.retrievalMode || 'Delta'}
                             onChange={(e) => setReportConfig(prev => ({ ...prev, retrievalMode: e.target.value as any }))}
                           >
-                            <option value="Cyclic">Cyclic - Interpolated at intervals (Recommended)</option>
+                            <option value="Delta">Delta - Actual stored values (Changes only - Recommended)</option>
+                            <option value="Cyclic">Cyclic - Interpolated at intervals</option>
                             <option value="BestFit">Best Fit - Optimized for visual trends</option>
-                            <option value="Delta">Delta - Actual stored values (Changes only)</option>
                             <option value="Full">Full - All stored values (High detail)</option>
                             <option value="Average">Average - Time-weighted average</option>
                             <option value="Minimum">Minimum - Minimum value in period</option>
@@ -926,7 +933,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                             <option value="ValueState">Value State - State-based retrieval</option>
                           </select>
                           <p className="text-[0.65rem] text-gray-400 mt-1 leading-tight">
-                            Mode defines how Historian samples and returns data points. Cyclic is standard for reports.
+                            Mode defines how Historian samples and returns data points. Delta is recommended for precise reports.
                           </p>
                         </div>
 
@@ -1024,11 +1031,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                     <div className="space-y-4">
                       <AnalyticsOptions
                         includeTrendLines={reportConfig.includeTrendLines}
+                        includeMultiTrend={reportConfig.includeMultiTrend}
                         includeSPCCharts={reportConfig.includeSPCCharts}
                         includeStatsSummary={reportConfig.includeStatsSummary}
                         includeDataTable={reportConfig.includeDataTable}
                         onIncludeTrendLinesChange={(value) =>
                           setReportConfig(prev => ({ ...prev, includeTrendLines: value }))
+                        }
+                        onIncludeMultiTrendChange={(value) =>
+                          setReportConfig(prev => ({ ...prev, includeMultiTrend: value }))
                         }
                         onIncludeSPCChartsChange={(value) =>
                           setReportConfig(prev => ({ ...prev, includeSPCCharts: value }))
@@ -1127,6 +1138,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           template: reportConfig.template || 'default',
                           retrievalMode: reportConfig.retrievalMode || 'Delta',
                           includeTrendLines: reportConfig.includeTrendLines,
+                          includeMultiTrend: reportConfig.includeMultiTrend,
                           includeSPCCharts: reportConfig.includeSPCCharts,
                           includeStatsSummary: reportConfig.includeStatsSummary,
                           includeDataTable: reportConfig.includeDataTable,

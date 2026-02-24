@@ -47,6 +47,7 @@ export interface ChartOptions {
   includeTrendLines?: boolean | undefined;
   tags?: string[] | undefined;
   yUnits?: string | undefined;
+  showLegend?: boolean | undefined;
 }
 
 export interface LineChartData {
@@ -94,7 +95,7 @@ export class ChartGenerationService {
       '#10b981', // emerald (green)
       '#f59e0b', // amber (orange)
       '#f43f5e', // rose
-      '#6366f indigo',
+      '#6366f1', // indigo
       '#f97316', // orange-dark
       '#06b6d4', // cyan
       '#8b5cf6'  // violet
@@ -105,7 +106,7 @@ export class ChartGenerationService {
    * Assigns a stable color to a tag based on its index in the report configuration.
    * This matches the frontend getTagColor/getTagIndex logic.
    */
-  private getStableTagColor(tagName: string, allTags: string[]): string {
+  public getStableTagColor(tagName: string, allTags: string[]): string {
     if (!tagName || !allTags) return this.defaultColors[0]!;
     const lowerTag = tagName.toLowerCase().trim();
     const index = allTags.findIndex(t => t && t.toLowerCase().trim() === lowerTag);
@@ -183,7 +184,7 @@ export class ChartGenerationService {
 
       // Add main data series
       datasets.forEach((dataset, index) => {
-        const baseColor = grayscale ? '#000000' : (dataset.color || this.defaultColors[index % this.defaultColors.length]);
+        const baseColor = grayscale ? '#000000' : (dataset.color || this.getStableTagColor(dataset.tagName, options.tags || []));
 
         chartDatasets.push({
           label: dataset.tagName,
@@ -254,7 +255,20 @@ export class ChartGenerationService {
               display: false // Titles are managed by the PDF report structure, not internally
             },
             legend: {
-              display: false // Legends are handled by the report's statistics header
+              display: options.showLegend ?? false,
+              position: 'bottom',
+              align: 'center',
+              labels: {
+                boxWidth: 12,
+                usePointStyle: true,
+                pointStyle: 'circle',
+                padding: 15,
+                color: '#475569',
+                font: {
+                  size: 10,
+                  weight: 'bold'
+                }
+              }
             },
             annotation: {
               annotations: annotations
@@ -1167,11 +1181,13 @@ export class ChartGenerationService {
             {
               title: 'Multi-Trend Analysis',
               timezone: options.timezone,
-              includeTrendLines: options.includeTrendLines
+              includeTrendLines: options.includeTrendLines,
+              tags: options.tags || Object.keys(data),
+              showLegend: true
             }
           );
-          charts['Multi-Trend Analysis'] = multiTrendBuffer;
-          reportLogger.info('Generated Multi-Trend Analysis chart for all analog tags');
+          charts['Multi-Trend Chart'] = multiTrendBuffer;
+          reportLogger.info('Generated Multi-Trend Chart for all analog tags');
         } catch (error) {
           reportLogger.error('Failed to generate Multi-Trend Analysis chart', { error });
         }

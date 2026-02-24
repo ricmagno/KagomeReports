@@ -123,8 +123,16 @@ export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewPro
             return null;
           };
 
-          /* Removed Multi-Trend capture as per user request to replace with MiniCharts */
-
+          /* Capture Multi-Trend Chart */
+          const multiTrendId = 'multi-trend-chart';
+          try {
+            const svgDataUri = captureSvg(multiTrendId);
+            if (svgDataUri) {
+              charts['Multi-Trend Chart'] = svgDataUri;
+            }
+          } catch (e) {
+            console.warn('Could not capture multi-trend chart as SVG', e);
+          }
 
           for (const tag of (config.tags || [])) {
             const chartId = `mini-chart-${tag}`;
@@ -167,7 +175,7 @@ export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewPro
             config.timeRange.endTime,
             {
               limit: 1000, // Safe visual maximum
-              retrievalMode: config.retrievalMode || 'Full'
+              retrievalMode: config.retrievalMode || 'Delta'
             }
           );
           return { tagName, data: response.success ? response.data : [] };
@@ -729,6 +737,25 @@ export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewPro
               Trends
             </h4>
             <div className="grid grid-cols-1 gap-6 sm:gap-8">
+              {/* Multi-Trend Overview Chart (First Position) */}
+              {(config.includeMultiTrend ?? true) && config.tags.length > 1 && (
+                <InteractiveChart
+                  dataPoints={dataPoints}
+                  tagDescriptions={tagDescriptions}
+                  tags={config.tags}
+                  width="100%"
+                  height={380}
+                  title="Combined Process Trends"
+                  description={`Comparative view of ${config.tags.length} selected tags`}
+                  className="shadow-md border-blue-200 bg-blue-50/10"
+                  chartClassName="border-blue-100"
+                  enableGuideLines={true}
+                  displayMode="multi"
+                  type={config.chartTypes[0] as any || 'line'}
+                  includeTrendLines={config.includeTrendLines}
+                />
+              )}
+
               {config.tags
                 .filter(tagName => dataPoints[tagName]?.length > 0)
                 .map((tagName) => {

@@ -34,7 +34,7 @@ const dataFilterSchema = z.object({
 });
 
 const queryOptionsSchema = z.object({
-  mode: z.nativeEnum(RetrievalMode).default(RetrievalMode.Cyclic),
+  mode: z.nativeEnum(RetrievalMode).default(RetrievalMode.Delta),
   retrievalMode: z.string().optional().transform(val => {
     if (!val) return undefined;
     // Map frontend values to backend RetrievalMode enum values

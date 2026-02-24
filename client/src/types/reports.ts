@@ -2,14 +2,14 @@
  * Type definitions for report management and configuration
  */
 
-import { 
-  TimeRange, 
-  DataFilter, 
-  TimeSeriesData, 
-  SpecificationLimits, 
-  TrendLineResult, 
-  SPCMetrics, 
-  SPCMetricsSummary 
+import {
+  TimeRange,
+  DataFilter,
+  TimeSeriesData,
+  SpecificationLimits,
+  TrendLineResult,
+  SPCMetrics,
+  SPCMetricsSummary
 } from './historian';
 
 // Chart types supported in reports
@@ -47,13 +47,14 @@ export interface ReportConfig {
   updatedAt?: Date;
   version?: number;
   parentId?: string; // For version tracking
-  
+
   // Advanced Chart Analytics fields
   specificationLimits?: Record<string, SpecificationLimits>; // Map of tag name to spec limits
   includeSPCCharts?: boolean;      // Include Statistical Process Control charts
   includeTrendLines?: boolean;     // Include trend lines on standard charts
+  includeMultiTrend?: boolean;     // Include Combined Process Trends chart
   includeStatsSummary?: boolean;   // Include statistical summaries on charts
-  
+
   // Import tracking metadata (for configurations loaded from export files)
   importMetadata?: {
     importedFrom?: string;     // Original filename

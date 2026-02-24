@@ -515,7 +515,7 @@ export const apiService = {
           tagNames: params.tagNames
         },
         options: {
-          retrievalMode: params.mode || 'Cyclic',
+          retrievalMode: params.mode || 'Delta',
           interval: params.interval
         }
       })

@@ -4,10 +4,12 @@ import { cn } from '../../utils/cn';
 
 interface AnalyticsOptionsProps {
   includeTrendLines?: boolean;
+  includeMultiTrend?: boolean;
   includeSPCCharts?: boolean;
   includeStatsSummary?: boolean;
   includeDataTable?: boolean;
   onIncludeTrendLinesChange: (value: boolean) => void;
+  onIncludeMultiTrendChange?: (value: boolean) => void;
   onIncludeSPCChartsChange: (value: boolean) => void;
   onIncludeStatsSummaryChange: (value: boolean) => void;
   onIncludeDataTableChange?: (value: boolean) => void;
@@ -17,10 +19,12 @@ interface AnalyticsOptionsProps {
 
 export const AnalyticsOptions: React.FC<AnalyticsOptionsProps> = ({
   includeTrendLines = false,
+  includeMultiTrend = true,
   includeSPCCharts = false,
   includeStatsSummary = false,
   includeDataTable = false,
   onIncludeTrendLinesChange,
+  onIncludeMultiTrendChange,
   onIncludeSPCChartsChange,
   onIncludeStatsSummaryChange,
   onIncludeDataTableChange,
@@ -49,6 +53,7 @@ export const AnalyticsOptions: React.FC<AnalyticsOptionsProps> = ({
 
   const activeCount = [
     includeTrendLines,
+    includeMultiTrend,
     includeSPCCharts,
     includeStatsSummary,
     includeDataTable
@@ -124,6 +129,28 @@ export const AnalyticsOptions: React.FC<AnalyticsOptionsProps> = ({
                   <span className={cn("text-xs font-bold", includeStatsSummary ? "text-primary-900" : "text-gray-700")}>Include Statistics Summary</span>
                 </div>
                 <p className="mt-1 text-[0.65rem] text-gray-500 leading-relaxed">Comprehensive statistical analysis including mean, median, min, max, standard deviation, count, and data quality metrics</p>
+              </div>
+            </label>
+
+            {/* Multi-Trend Option — Section III (Combined Trends) */}
+            <label className={cn(
+              "flex items-start p-3 rounded-lg cursor-pointer transition-all border group",
+              includeMultiTrend ? "bg-primary-50/50 border-primary-200" : "hover:bg-gray-50 border-transparent"
+            )}>
+              <div className="flex items-center h-5">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                  checked={includeMultiTrend}
+                  onChange={(e) => onIncludeMultiTrendChange && onIncludeMultiTrendChange(e.target.checked)}
+                />
+              </div>
+              <div className="ml-3 flex-1">
+                <div className="flex items-center">
+                  <TrendingUp className={cn("w-3.5 h-3.5 mr-2", includeMultiTrend ? "text-primary-600" : "text-gray-400")} />
+                  <span className={cn("text-xs font-bold", includeMultiTrend ? "text-primary-900" : "text-gray-700")}>Include Combined Trends</span>
+                </div>
+                <p className="mt-1 text-[0.65rem] text-gray-500 leading-relaxed">Comparative multi-trend overview chart for all selected analog tags</p>
               </div>
             </label>
 

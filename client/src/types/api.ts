@@ -41,6 +41,7 @@ export interface ReportConfig {
   // Advanced Chart Analytics options
   specificationLimits?: Record<string, SpecificationLimits>;
   includeTrendLines?: boolean;
+  includeMultiTrend?: boolean;
   includeSPCCharts?: boolean;
   includeStatsSummary?: boolean;
   includeDataTable?: boolean;

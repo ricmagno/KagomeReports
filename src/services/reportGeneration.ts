@@ -52,6 +52,7 @@ export interface ReportConfig {
   specificationLimits?: Record<string, SpecificationLimits> | undefined;
   includeSPCCharts?: boolean | undefined;
   includeTrendLines?: boolean | undefined;
+  includeMultiTrend?: boolean | undefined;
   includeStatsSummary?: boolean | undefined;
   includeDataTable?: boolean | undefined;
   version?: number | undefined;
@@ -256,6 +257,50 @@ export class ReportGenerationService {
           }
         }
 
+        // ALWAYS generate the Multi-Trend Chart in the backend if missing or to ensure legend presence
+        const shouldIncludeMultiTrend = reportData.config.includeMultiTrend !== false;
+        if (shouldIncludeMultiTrend && (!enhancedCharts.has('Multi-Trend Chart') || true)) { // Force backend generation for legendary reliability
+          const analogDatasets: any[] = [];
+          for (const [tagName, data] of Object.entries(reportData.data)) {
+            const classification = tagClassifications.get(tagName);
+            if (classification?.type === 'analog' && data.length > 0) {
+              analogDatasets.push({
+                tagName,
+                data,
+                trendLine: trendLines.get(tagName),
+                statistics: reportData.statistics?.[tagName] ? {
+                  min: reportData.statistics[tagName].min,
+                  max: reportData.statistics[tagName].max,
+                  mean: reportData.statistics[tagName].average,
+                  stdDev: reportData.statistics[tagName].standardDeviation
+                } : undefined,
+                color: chartGenerationService.getStableTagColor(tagName, reportData.config.tags)
+              });
+            }
+          }
+
+          if (analogDatasets.length > 0) {
+            try {
+              const multiTrendBuffer = await chartGenerationService.generateLineChart(
+                analogDatasets,
+                {
+                  title: 'Combined Process Trends',
+                  width: 1200,
+                  height: 600,
+                  timezone: reportData.config.timeRange.timezone,
+                  includeTrendLines: includeTrendLines,
+                  tags: reportData.config.tags,
+                  showLegend: true
+                }
+              );
+              enhancedCharts.set('Multi-Trend Chart', multiTrendBuffer);
+              reportLogger.info('Generated Multi-Trend Chart in backend');
+            } catch (error) {
+              reportLogger.error('Failed to generate multi-trend chart in backend', { error });
+            }
+          }
+        }
+
         for (const [tagName, data] of Object.entries(reportData.data)) {
           if (data.length === 0) continue;
 
@@ -314,7 +359,8 @@ export class ReportGenerationService {
                   width: 1200,
                   height: 600,
                   timezone: reportData.config.timeRange.timezone,
-                  includeTrendLines: includeTrendLines
+                  includeTrendLines: includeTrendLines,
+                  tags: reportData.config.tags
                 }
               );
 
@@ -420,6 +466,39 @@ export class ReportGenerationService {
           }
         }
 
+        // 1. Multi-Trend Overview Chart (Requirement: provide comparative view first)
+        const includeMultiTrendFlag = reportData.config.includeMultiTrend ?? true;
+        const multiTrendBuffer = includeMultiTrendFlag ? enhancedCharts.get('Multi-Trend Chart') : undefined;
+
+        if (multiTrendBuffer) {
+          doc.fontSize(14).fillColor('#4b5563').font('Helvetica-Bold').text('Combined Process Trends', 25);
+          doc.moveDown(0.5);
+
+          const fullChartWidth = 545;
+          const fullChartHeight = 320;
+
+          try {
+            const bufferInfo = chartBufferValidator.getBufferInfo(multiTrendBuffer);
+            if (bufferInfo.format === 'SVG') {
+              const rawSvg = multiTrendBuffer.toString('utf8');
+              const svgString = rawSvg.replace(/width="[^"]*"/, '').replace(/height="[^"]*"/, '');
+              const SVGtoPDF = require('svg-to-pdfkit');
+              SVGtoPDF(doc, svgString, 25, doc.y, {
+                width: fullChartWidth,
+                height: fullChartHeight,
+                preserveAspectRatio: 'none'
+              });
+            } else {
+              doc.image(multiTrendBuffer, 25, doc.y, { width: fullChartWidth, height: fullChartHeight });
+            }
+            doc.y += fullChartHeight + 40;
+          } catch (error) {
+            reportLogger.error('Failed to embed multi-trend overview chart', { error });
+          }
+
+          // Move to new page for individual tag breakdown
+          doc.addPage();
+        }
 
         // 2. Individual Tag Charts - Replicates the MiniChart view from Report Preview
         let chartCount = 0;
@@ -470,7 +549,12 @@ export class ReportGenerationService {
               trendLineCharts.set(chartName, chartBuffer);
             }
           }
-          this.addChartsSection(doc, Object.fromEntries(trendLineCharts), false);
+
+          if (trendLineCharts.size > 0) {
+            this.addChartsSection(doc, Object.fromEntries(trendLineCharts), false);
+          } else {
+            doc.fontSize(10).fillColor('#6b7280').text('No trend analysis data available for the selected tags.', { align: 'center' });
+          }
           doc.addPage();
         }
 
@@ -693,7 +777,7 @@ export class ReportGenerationService {
     doc.fillColor('#6b7280').font('Helvetica')
       .text(`Period: ${fmt(config.timeRange.startTime)} — ${fmt(config.timeRange.endTime)}  (${tz})`, margin, doc.y, { width: doc.page.width - (margin * 2) });
     doc.text(`Tags: ${config.tags.join(', ')}`, margin, doc.y, { width: doc.page.width - (margin * 2) });
-    doc.text(`Retrieval Mode: ${config.retrievalMode || 'Cyclic'}`, margin, doc.y, { width: doc.page.width - (margin * 2) });
+    doc.text(`Retrieval Mode: ${config.retrievalMode || 'Delta'}`, margin, doc.y, { width: doc.page.width - (margin * 2) });
     doc.text(`Generated: ${fmt(reportData.generatedAt)}`, margin, doc.y, { width: doc.page.width - (margin * 2) });
 
     doc.moveDown(1);
@@ -1090,7 +1174,7 @@ export class ReportGenerationService {
     const cardPadding = 12;
     const headerHeight = 35;
     const chartHeight = 230; // Increased from 220 to provide better ratio when stretched
-    const footerHeight = trend ? 42 : 0;
+    const footerHeight = trend ? 48 : 0;
     const totalHeight = headerHeight + chartHeight + footerHeight + (cardPadding * 2);
 
     const startX = 25;
@@ -1170,9 +1254,12 @@ export class ReportGenerationService {
 
     // 3. Regression
     if (trend) {
+      const footerPadding = 8;
+      const rowHeight = 12;
       const tableY = chartY + chartHeight + 10;
       const tableWidth = cardWidth - (cardPadding * 2);
 
+      // Background for regression info
       doc.roundedRect(contentX, tableY, tableWidth, footerHeight - 10, 3).fill('#f9fafb');
       doc.roundedRect(contentX, tableY, tableWidth, footerHeight - 10, 3).lineWidth(0.3).strokeColor('#f3f4f6').stroke();
 
@@ -1180,16 +1267,25 @@ export class ReportGenerationService {
 
       // Calculate Rate of Change per minute to match frontend parity
       const slopePerMin = trend.slope * 60000;
-      const rateStr = `${slopePerMin >= 0 ? '+' : ''}${slopePerMin.toFixed(4)} /min`;
+      // Use 'Delta' instead of 'Δ' to avoid encoding issues (renders as 9C in some PDF readers)
+      const rateStr = `Delta: ${slopePerMin >= 0 ? '+' : ''}${slopePerMin.toFixed(4)} /min`;
 
-      doc.fillColor('#94a3b8').text('Δ:', contentX + 10, tableY + 7, { continued: true })
+      const col1X = contentX + 10;
+      const col2X = contentX + (tableWidth * 0.5);
+
+      // Row 1: Equation and R²
+      doc.fillColor('#94a3b8').text('Equation:', col1X, tableY + footerPadding, { continued: true })
         .fillColor('#2563eb').font('Helvetica-Bold').text(' ' + rateStr);
-      doc.fillColor('#94a3b8').font('Helvetica').text('R²:', contentX + (tableWidth * 0.5), tableY + 7, { continued: true })
-        .fillColor('#d97706').font('Helvetica-Bold').text(' ' + trend.correlation.toFixed(3));
-      doc.fillColor('#94a3b8').font('Helvetica').text('SD:', contentX + 10, tableY + 19, { continued: true })
-        .fillColor('#374151').font('Helvetica-Bold').text(' ' + this.formatValue(stats?.standardDeviation, 2));
-      doc.fillColor('#94a3b8').font('Helvetica').text('VAR:', contentX + (tableWidth * 0.5), tableY + 19, { continued: true })
-        .fillColor('#374151').font('Helvetica-Bold').text(' ' + (stats?.standardDeviation ? this.formatValue(Math.pow(stats.standardDeviation, 2), 2) : 'N/A'));
+
+      doc.fillColor('#94a3b8').font('Helvetica').text('R²:', col2X, tableY + footerPadding, { continued: true })
+        .fillColor('#d97706').font('Helvetica-Bold').text(' ' + trend.confidence.toFixed(4));
+
+      // Row 2: Std Dev and Variance
+      doc.fillColor('#94a3b8').font('Helvetica').text('Std Dev:', col1X, tableY + footerPadding + rowHeight, { continued: true })
+        .fillColor('#374151').font('Helvetica-Bold').text(' ' + this.formatValue(stats?.standardDeviation, 3));
+
+      doc.fillColor('#94a3b8').font('Helvetica').text('Variance:', col2X, tableY + footerPadding + rowHeight, { continued: true })
+        .fillColor('#374151').font('Helvetica-Bold').text(' ' + (stats?.standardDeviation ? this.formatValue(Math.pow(stats.standardDeviation, 2), 3) : 'N/A'));
     }
 
     doc.y = currentY + totalHeight + 15;

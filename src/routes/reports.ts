@@ -97,6 +97,7 @@ const reportConfigBaseSchema = z.object({
   })).optional().transform(val => val as Record<string, SpecificationLimits> | undefined),
   includeSPCCharts: z.boolean().default(false),
   includeTrendLines: z.boolean().default(true),
+  includeMultiTrend: z.boolean().default(true),
   includeStatsSummary: z.boolean().default(true),
   includeDataTable: z.boolean().default(false),
   version: z.number().int().positive().optional()
@@ -178,6 +179,7 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
     // Advanced Analytics flags — conditional section rendering
     includeStatsSummary: config.includeStatsSummary,
     includeTrendLines: config.includeTrendLines,
+    includeMultiTrend: config.includeMultiTrend,
     includeSPCCharts: config.includeSPCCharts,
     specificationLimits: config.specificationLimits,
     includeStatistics: config.includeStatistics,

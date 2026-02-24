@@ -283,10 +283,10 @@ export class StatisticalAnalysisService implements SPCCalculator, TrendLineCalcu
     return {
       slope: Number(slope.toFixed(6)),
       intercept: Number(intercept.toFixed(4)),
-      rSquared: Number(rSquared.toFixed(3)),
+      rSquared: Number(rSquared.toFixed(6)),
       equation: this.formatTrendEquation(slope, intercept),
-      correlation: Number((Math.sqrt(rSquared) * (slope >= 0 ? 1 : -1)).toFixed(3)),
-      confidence: Number(rSquared.toFixed(3))
+      correlation: Number((Math.sqrt(rSquared) * (slope >= 0 ? 1 : -1)).toFixed(6)),
+      confidence: Number(rSquared.toFixed(6))
     };
   }
 
