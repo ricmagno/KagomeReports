@@ -8,14 +8,22 @@ interface RadarChartProps {
     title?: string;
     height?: number | string;
     className?: string;
+    status?: 'good' | 'bad' | 'uncertain';
 }
 
 export const RadarChart: React.FC<RadarChartProps> = ({
     data,
     title,
     height = 350,
-    className = ''
+    className = '',
+    status = 'good'
 }) => {
+    const statusIcons = {
+        good: 'bg-green-500',
+        bad: 'bg-red-500',
+        uncertain: 'bg-amber-500'
+    };
+
     const categories = Object.keys(data);
     const series = [{
         name: 'Value',
@@ -76,7 +84,13 @@ export const RadarChart: React.FC<RadarChartProps> = ({
     };
 
     return (
-        <div className={cn("bg-white p-2 h-full w-full", className)}>
+        <div className={cn("bg-white p-2 h-full w-full relative", className)}>
+            {/* Status indicator */}
+            <div className={cn(
+                "absolute top-3 right-3 rounded-full border-2 border-white shadow-sm z-10 w-3 h-3",
+                statusIcons[status]
+            )} />
+
             <Chart
                 options={options}
                 series={series}

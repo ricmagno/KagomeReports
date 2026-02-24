@@ -30,7 +30,7 @@ export interface ReportConfig {
   chartTypes: ChartType[];
   template: string;
   format?: 'pdf' | 'docx';
-  retrievalMode?: 'Delta' | 'Cyclic' | 'Full' | 'BestFit' | 'Average' | 'Minimum' | 'Maximum' | 'Interpolated' | 'ValueState' | 'AVG' | 'RoundTrip';
+  retrievalMode?: 'Delta' | 'Cyclic' | 'Full' | 'BestFit' | 'Average' | 'Minimum' | 'Maximum' | 'Interpolated' | 'ValueState' | 'AVG' | 'RoundTrip' | 'Live';
   filters?: DataFilter[];
   createdBy?: string;
   createdAt?: Date;

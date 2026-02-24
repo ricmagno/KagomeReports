@@ -503,6 +503,7 @@ export const apiService = {
     endTime: string;
     mode?: string;
     interval?: number;
+    limit?: number;
   }): Promise<ApiResponse<any[]>> {
     return fetchWithRetry(`/data/query`, {
       method: 'POST',
@@ -516,7 +517,8 @@ export const apiService = {
         },
         options: {
           retrievalMode: params.mode || 'Delta',
-          interval: params.interval
+          interval: params.interval,
+          limit: params.limit
         }
       })
     });

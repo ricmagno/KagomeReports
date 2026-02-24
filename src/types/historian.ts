@@ -146,6 +146,7 @@ export enum RetrievalMode {
   Maximum = 'Maximum',     // Maximum value in period
   Interpolated = 'Interpolated', // Linear interpolation
   ValueState = 'ValueState', // State-based retrieval
+  Live = 'Live',           // Real-time live data (most recent value only)
 }
 
 // Query options for AVEVA Historian
@@ -156,6 +157,7 @@ export interface HistorianQueryOptions {
   tolerance?: number | undefined;       // For Delta mode (percentage)
   maxPoints?: number | undefined;       // Maximum points to return (maps to wwCycleCount)
   includeQuality?: boolean | undefined; // Include quality information
+  limit?: number | undefined;           // Maximum number of rows to return (maps to TOP/wwRowCount)
 }
 
 // Specification limits for SPC analysis

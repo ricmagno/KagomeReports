@@ -73,8 +73,8 @@ export const ValueBlock: React.FC<ValueBlockProps> = ({
                 </div>
 
                 <span className={cn(
-                    "font-black text-gray-400 uppercase tracking-widest truncate max-w-full px-2",
-                    isMaximized ? "text-2xl" : "text-[11px]"
+                    "font-semibold text-gray-400 truncate max-w-full px-2",
+                    isMaximized ? "text-xl" : "text-[10px]"
                 )} title={tagName}>
                     {tagName}
                 </span>
@@ -87,7 +87,7 @@ export const ValueBlock: React.FC<ValueBlockProps> = ({
                     isMaximized ? "bottom-8" : "bottom-4"
                 )}>
                     <span className={cn(
-                        "text-gray-400 font-medium truncate block opacity-70 italic",
+                        "text-gray-400 font-normal truncate block opacity-70",
                         isMaximized ? "text-lg" : "text-[10px]"
                     )}>
                         {description}

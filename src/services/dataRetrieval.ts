@@ -337,12 +337,24 @@ export class DataRetrievalService {
     options?: HistorianQueryOptions
   ): string {
     const includeQuality = options?.includeQuality !== false;
-
     const mode = options?.mode || RetrievalMode.Full;
+
+    if (mode === RetrievalMode.Live) {
+      return `
+        SELECT 
+          DateTime as timestamp,
+          TagName as tagName,
+          Value as value,
+          ${includeQuality ? 'Quality as quality' : 'NULL as quality'}
+        FROM Live
+        WHERE TagName = @tagName
+      `;
+    }
+
     const isCyclic = mode === RetrievalMode.Cyclic || mode === RetrievalMode.Average;
 
     let query = `
-      SELECT 
+      SELECT ${options?.limit ? `TOP ${options.limit}` : ''}
         DateTime as timestamp,
         TagName as tagName,
         Value as value,
@@ -716,6 +728,11 @@ export class DataRetrievalService {
     options?: HistorianQueryOptions
   ): Record<string, any> {
     const mode = options?.mode || RetrievalMode.Full;
+
+    if (mode === RetrievalMode.Live) {
+      return { tagName };
+    }
+
     const params: Record<string, any> = {
       tagName,
       startTime: this.formatDateForHistorian(timeRange.startTime),

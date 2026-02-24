@@ -45,11 +45,15 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle, globalTim
         }
     };
 
-    const fetchData = async () => {
+    const isLiveWidget = widget.type === 'radial-gauge' || widget.type === 'value-block' || widget.type === 'radar';
+
+    const fetchData = async (silent = false) => {
         if (widget.tags.length === 0) return;
 
         try {
-            setLoading(true);
+            if (!silent) {
+                setLoading(true);
+            }
             setErrorStatus(null);
 
             // Calculate time range based on widget config or global dashboard config
@@ -63,16 +67,56 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle, globalTim
                 startTime = new Date(globalTimeRange.startTime);
             }
 
+            // Determine retrieval mode based on widget type
+            const mode = isLiveWidget ? 'Live' : 'Delta';
+
             const response = await apiService.getHistorianData({
                 tagNames: widget.tags,
                 startTime: startTime.toISOString(),
                 endTime: endTime.toISOString(),
-                mode: 'Cyclic',
-                interval: 10 // More responsive 10s interval for dashboards
+                mode: mode as any,
+                // For Live mode we only want the latest value (limit: 1)
+                // For Delta mode we want high resolution data
+                limit: isLiveWidget ? 1 : 1000000000000,
+                // interval is only for Cyclic mode, which we're moving away from for these widgets
             });
 
             if (response.success && response.data) {
-                setData(response.data);
+                if (isLiveWidget) {
+                    // For live widgets, merge with previous state to preserve values if record expires
+                    setData(prevData => {
+                        const newDataMap = new Map((response.data as any[]).map(d => [d.tagName, d]));
+                        const mergedData = [...prevData];
+
+                        widget.tags.forEach(tagName => {
+                            const newPoint = newDataMap.get(tagName);
+                            const existingIdx = mergedData.findIndex(d => d.tagName === tagName);
+
+                            if (newPoint && newPoint.value !== null && newPoint.value !== undefined) {
+                                if (existingIdx > -1) {
+                                    mergedData[existingIdx] = newPoint;
+                                } else {
+                                    mergedData.push(newPoint);
+                                }
+                            } else {
+                                // Record expired or value is null, keep last value but mark quality as Bad (0)
+                                if (existingIdx > -1) {
+                                    mergedData[existingIdx] = {
+                                        ...mergedData[existingIdx],
+                                        quality: 0, // Mark as bad/expired
+                                        timestamp: new Date() // Still update timestamp
+                                    };
+                                } else if (newPoint) {
+                                    // First time seeing this tag but it's null
+                                    mergedData.push({ ...newPoint, quality: 0 });
+                                }
+                            }
+                        });
+                        return mergedData;
+                    });
+                } else {
+                    setData(response.data);
+                }
                 setLastUpdated(new Date());
 
                 // Fetch tag info for metadata (min/max/units) if we don't have it
@@ -100,13 +144,26 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle, globalTim
             console.error('Widget data fetch error:', err);
             setErrorStatus('Connection error');
         } finally {
-            setLoading(false);
+            if (!silent) {
+                setLoading(false);
+            }
         }
     };
 
     useEffect(() => {
         fetchData();
     }, [widget.tags, refreshToggle, globalTimeRange]);
+
+    // Set up auto-refresh for live widgets (1 second)
+    useEffect(() => {
+        if (!isLiveWidget) return;
+
+        const intervalId = setInterval(() => {
+            fetchData(true); // silent refresh
+        }, 1000);
+
+        return () => clearInterval(intervalId);
+    }, [isLiveWidget, widget.tags]);
 
     // Group and format data points for InteractiveChart
     const dataPoints = useMemo(() => {
@@ -158,7 +215,7 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle, globalTim
                 <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-red-500 text-center p-4">
                     <AlertCircle className="h-8 w-8 mb-2" />
                     <p className="text-sm font-medium">{errorStatus}</p>
-                    <Button variant="ghost" size="sm" onClick={fetchData} className="mt-2">
+                    <Button variant="ghost" size="sm" onClick={() => fetchData()} className="mt-2">
                         <RefreshCw className="h-3 w-3 mr-1" /> Retry
                     </Button>
                 </div>
@@ -187,6 +244,8 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle, globalTim
                         max={tagInfo?.maxValue || 100}
                         tagName={tagName}
                         unit={tagInfo?.units || ''}
+                        description={tagInfo?.description}
+                        status={lastPoint?.quality === 'Good' || lastPoint?.quality === 192 ? 'good' : 'bad'}
                         isMaximized={isMaximized}
                     />
                 );
@@ -209,14 +268,25 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle, globalTim
 
         if (widget.type === 'radar') {
             const radarData: Record<string, number> = {};
+            let isAnyBad = false;
+
             widget.tags.forEach(tag => {
                 const tagData = dataPoints[tag] || [];
-                radarData[tag] = tagData[tagData.length - 1]?.value || 0;
+                const lastPoint = tagData[tagData.length - 1];
+                radarData[tag] = lastPoint?.value || 0;
+
+                if (lastPoint && lastPoint.quality !== 'Good' && lastPoint.quality !== 192) {
+                    isAnyBad = true;
+                }
             });
 
             return (
                 <div className="h-full w-full">
-                    <RadarChart data={radarData} title={widget.title} />
+                    <RadarChart
+                        data={radarData}
+                        title={widget.title}
+                        status={isAnyBad ? 'bad' : 'good'}
+                    />
                 </div>
             );
         }
@@ -278,7 +348,7 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle, globalTim
                         )}
                     </div>
                     <div className="flex items-center space-x-1">
-                        <button onClick={fetchData} title="Refresh data" className="p-1 hover:bg-gray-200 rounded transition-colors text-gray-400">
+                        <button onClick={() => fetchData()} title="Refresh data" className="p-1 hover:bg-gray-200 rounded transition-colors text-gray-400">
                             <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
                         </button>
                         <button

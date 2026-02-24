@@ -11,7 +11,7 @@ import { dataFilteringService } from '@/services/dataFiltering';
 import { progressMiddleware } from '@/middleware/progressTracker';
 import { apiLogger } from '@/utils/logger';
 import { asyncHandler, createError } from '@/middleware/errorHandler';
-import { TimeRange, DataFilter, HistorianQueryOptions, RetrievalMode } from '@/types/historian';
+import { TimeRange, DataFilter, HistorianQueryOptions, RetrievalMode, TimeSeriesData } from '@/types/historian';
 
 const router = Router();
 
@@ -47,6 +47,7 @@ const queryOptionsSchema = z.object({
     if (val === 'Maximum') return RetrievalMode.Maximum;
     if (val === 'Interpolated') return RetrievalMode.Interpolated;
     if (val === 'ValueState') return RetrievalMode.ValueState;
+    if (val === 'Live') return RetrievalMode.Live;
     return val as RetrievalMode; // Pass through if it's already a valid enum value
   }),
   interval: z.number().positive().optional(),
@@ -223,15 +224,42 @@ router.post('/query', asyncHandler(async (req: Request, res: Response) => {
 
   apiLogger.info('Executing custom data query', { timeRange, filter, options, pagination });
 
-  // Execute filtered data query
+  // Execute data query
   const dataRetrievalService = cacheManager.getDataRetrievalService();
   const statisticalAnalysisService = cacheManager.getStatisticalAnalysisService();
-  const result = await dataRetrievalService.getFilteredData(
-    timeRange,
-    filter,
-    pagination?.pageSize || 100,
-    pagination?.cursor
-  );
+
+  let result;
+  if (options && filter.tagNames && filter.tagNames.length > 0) {
+    // If specific options (like mode or limit) are provided, use the optimized multi-tag retriever
+    const rawDataMap = await dataRetrievalService.getMultipleTimeSeriesData(
+      filter.tagNames,
+      timeRange,
+      options
+    );
+
+    // Flatten results to match the expected format (flat array of TimeSeriesData)
+    const flattenedData: TimeSeriesData[] = [];
+    Object.values(rawDataMap).forEach(tagData => {
+      flattenedData.push(...tagData);
+    });
+
+    // Sort by timestamp to ensure consistent display in charts
+    flattenedData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+    result = {
+      data: flattenedData,
+      totalCount: flattenedData.length,
+      hasMore: false
+    };
+  } else {
+    // Default to the standard filtered query
+    result = await dataRetrievalService.getFilteredData(
+      timeRange,
+      filter,
+      pagination?.pageSize || 100,
+      pagination?.cursor
+    );
+  }
 
   // Apply additional filtering if needed
   let processedData = result.data;
