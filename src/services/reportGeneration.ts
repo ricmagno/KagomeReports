@@ -355,9 +355,9 @@ export class ReportGenerationService {
               const chartBuffer = await chartGenerationService.generateLineChart(
                 [lineChartData],
                 {
-                  // Removed internal title to match frontend "captured" SVG look
+                  // Used 1200x530 to match the 2.26 aspect ratio of the PDF slots (521x230)
                   width: 1200,
-                  height: 600,
+                  height: 530,
                   timezone: reportData.config.timeRange.timezone,
                   includeTrendLines: includeTrendLines,
                   tags: reportData.config.tags
@@ -390,7 +390,7 @@ export class ReportGenerationService {
                   {
                     title: `${tagName} - SPC Chart`,
                     width: 1200,
-                    height: 600,
+                    height: 530, // Match 2.26 aspect ratio
                     timezone: reportData.config.timeRange.timezone
                   }
                 );
@@ -486,10 +486,14 @@ export class ReportGenerationService {
               SVGtoPDF(doc, svgString, 25, doc.y, {
                 width: fullChartWidth,
                 height: fullChartHeight,
-                preserveAspectRatio: 'none'
+                preserveAspectRatio: 'xMidYMid meet'
               });
             } else {
-              doc.image(multiTrendBuffer, 25, doc.y, { width: fullChartWidth, height: fullChartHeight });
+              doc.image(multiTrendBuffer, 25, doc.y, {
+                fit: [fullChartWidth, fullChartHeight],
+                align: 'center',
+                valign: 'center'
+              });
             }
             doc.y += fullChartHeight + 40;
           } catch (error) {
@@ -536,35 +540,30 @@ export class ReportGenerationService {
 
         doc.addPage();
 
-        // *** Trend Analysis (only displayed if Include Trend Lines option is selected)
+        // Trend lines are now overlaid directly on charts in the Data Visualization section, 
+        // so a separate Trend Analysis section is no longer needed.
 
-        if (includeTrendLines) {
-          doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Trend Analysis', { align: 'center' });
-          doc.moveDown(1);
 
-          // Display the generated line charts (which include trend lines)
-          const trendLineCharts = new Map<string, Buffer>();
-          for (const [chartName, chartBuffer] of enhancedCharts.entries()) {
-            if (chartName.includes('Data Trend')) {
-              trendLineCharts.set(chartName, chartBuffer);
-            }
-          }
-
-          if (trendLineCharts.size > 0) {
-            this.addChartsSection(doc, Object.fromEntries(trendLineCharts), false);
-          } else {
-            doc.fontSize(10).fillColor('#6b7280').text('No trend analysis data available for the selected tags.', { align: 'center' });
-          }
-          doc.addPage();
-        }
-
-        // *** Section Statistical Process Control Analysis (only displayed if SPC charts option is selected)
+        // *** Section Statistical Process Control Analysis (Section IV)
         if (includeSPCCharts && (spcCharts.size > 0 || spcMetricsSummary.length > 0)) {
           doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Statistical Process Control Analysis', { align: 'center' });
           doc.moveDown(1);
 
-          if (spcCharts.size > 0) {
-            this.addChartsSection(doc, Object.fromEntries(spcCharts), false);
+          // 2 charts per page logic for SPC charts
+          let spcChartIdx = 0;
+          for (const tagName of reportData.config.tags) {
+            const chartBuffer = enhancedCharts.get(`${tagName} - SPC Chart`);
+            if (chartBuffer) {
+              if (spcChartIdx > 0 && spcChartIdx % 2 === 0) {
+                doc.addPage();
+              }
+
+              const metrics = spcMetrics.get(tagName);
+              const specLimits = reportData.config.specificationLimits?.[tagName];
+
+              this.addSPCChart(doc, tagName, chartBuffer, metrics, specLimits);
+              spcChartIdx++;
+            }
           }
 
           if (spcMetricsSummary.length > 0) {
@@ -1243,10 +1242,14 @@ export class ReportGenerationService {
         SVGtoPDF(doc, svgString, contentX, chartY, {
           width: cardWidth - (cardPadding * 2),
           height: chartHeight,
-          preserveAspectRatio: 'none'
+          preserveAspectRatio: 'xMidYMid meet'
         });
       } else {
-        doc.image(chartBuffer, contentX, chartY, { width: cardWidth - (cardPadding * 2), height: chartHeight });
+        doc.image(chartBuffer, contentX, chartY, {
+          fit: [cardWidth - (cardPadding * 2), chartHeight],
+          align: 'center',
+          valign: 'center'
+        });
       }
     } catch (error) {
       reportLogger.error('Failed to embed mini chart', { tagName, error });
@@ -1289,6 +1292,119 @@ export class ReportGenerationService {
     }
 
     doc.y = currentY + totalHeight + 15;
+  }
+
+  /**
+   * Add SPC chart as a professional card with metrics
+   */
+  private addSPCChart(
+    doc: PDFKit.PDFDocument,
+    tagName: string,
+    chartBuffer: Buffer,
+    metrics?: any,
+    specLimits?: SpecificationLimits
+  ): void {
+    const cardWidth = 545;
+    const cardPadding = 12;
+    const headerHeight = 35;
+    const chartHeight = 230; // Unified with addMiniChart height (2.26 aspect ratio)
+    const footerHeight = (metrics || specLimits) ? 50 : 0;
+    const totalHeight = headerHeight + chartHeight + footerHeight + (cardPadding * 2);
+
+    const startX = 25;
+
+    // Check if we need a new page before drawing this card (safety check)
+    if (doc.y > doc.page.height - totalHeight - 50) {
+      doc.addPage();
+    }
+
+    const drawY = doc.y;
+
+    // Draw Card Border
+    doc.roundedRect(startX, drawY, cardWidth, totalHeight, 6)
+      .lineWidth(0.5)
+      .strokeColor('#e5e7eb')
+      .stroke();
+
+    // 1. Header Area
+    const contentX = startX + cardPadding;
+    const contentY = drawY + cardPadding;
+
+    doc.fontSize(10).fillColor('#1f2937').font('Helvetica-Bold').text(`${tagName} - SPC Analysis`, contentX, contentY, { width: cardWidth - 50 });
+
+    // 2. Chart
+    const chartY = drawY + cardPadding + headerHeight;
+    try {
+      const bufferInfo = chartBufferValidator.getBufferInfo(chartBuffer);
+      if (bufferInfo.format === 'SVG') {
+        const rawSvg = chartBuffer.toString('utf8');
+        const svgString = rawSvg.replace(/width="[^"]*"/, '').replace(/height="[^"]*"/, '');
+        // @ts-ignore
+        const SVGtoPDF = require('svg-to-pdfkit');
+        SVGtoPDF(doc, svgString, contentX, chartY, {
+          width: cardWidth - (cardPadding * 2),
+          height: chartHeight,
+          preserveAspectRatio: 'xMidYMid meet'
+        });
+      } else {
+        doc.image(chartBuffer, contentX, chartY, {
+          fit: [cardWidth - (cardPadding * 2), chartHeight],
+          align: 'center',
+          valign: 'center'
+        });
+      }
+    } catch (error) {
+      reportLogger.error('Failed to embed SPC chart', { tagName, error });
+    }
+
+    // 3. SPC Metrics Footer
+    if (metrics || specLimits) {
+      const footerPadding = 8;
+      const tableY = chartY + chartHeight + 10;
+      const tableWidth = cardWidth - (cardPadding * 2);
+
+      // Background for SPC info
+      doc.roundedRect(contentX, tableY, tableWidth, footerHeight - 10, 3).fill('#f8fafc');
+      doc.roundedRect(contentX, tableY, tableWidth, footerHeight - 10, 3).lineWidth(0.3).strokeColor('#e2e8f0').stroke();
+
+      doc.fontSize(8.5).font('Helvetica').fillColor('#64748b');
+
+      const col1X = contentX + 15;
+      const col2X = contentX + (tableWidth * 0.33);
+      const col3X = contentX + (tableWidth * 0.66);
+
+      // Row 1: Mean, UCL, LCL
+      if (metrics) {
+        doc.text('Mean:', col1X, tableY + footerPadding, { continued: true })
+          .fillColor('#0f172a').font('Helvetica-Bold').text(' ' + this.formatValue(metrics.mean));
+
+        doc.fillColor('#64748b').font('Helvetica').text('UCL:', col2X, tableY + footerPadding, { continued: true })
+          .fillColor('#ef4444').font('Helvetica-Bold').text(' ' + this.formatValue(metrics.ucl));
+
+        doc.fillColor('#64748b').font('Helvetica').text('LCL:', col3X, tableY + footerPadding, { continued: true })
+          .fillColor('#ef4444').font('Helvetica-Bold').text(' ' + this.formatValue(metrics.lcl));
+      }
+
+      // Row 2: Cp, Cpk, and Spec Limits
+      const row2Y = tableY + footerPadding + 18;
+      if (metrics) {
+        const cpColor = metrics.cp >= 1.33 ? '#16a34a' : (metrics.cp >= 1.0 ? '#d97706' : '#dc2626');
+        const cpkColor = metrics.cpk >= 1.33 ? '#16a34a' : (metrics.cpk >= 1.0 ? '#d97706' : '#dc2626');
+
+        doc.fillColor('#64748b').font('Helvetica').text('Cp:', col1X, row2Y, { continued: true })
+          .fillColor(cpColor).font('Helvetica-Bold').text(' ' + (metrics.cp?.toFixed(3) || 'N/A'));
+
+        doc.fillColor('#64748b').font('Helvetica').text('Cpk:', col2X, row2Y, { continued: true })
+          .fillColor(cpkColor).font('Helvetica-Bold').text(' ' + (metrics.cpk?.toFixed(3) || 'N/A'));
+      }
+
+      if (specLimits) {
+        doc.fillColor('#64748b').font('Helvetica').text('Specs:', col3X, row2Y, { continued: true })
+          .fillColor('#334155').font('Helvetica-Bold').text(` [${specLimits.lsl ?? '-∞'}, ${specLimits.usl ?? '∞'}]`);
+      }
+    }
+
+    doc.y = drawY + totalHeight + 15;
   }
 
   /**

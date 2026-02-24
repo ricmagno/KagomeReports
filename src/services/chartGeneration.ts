@@ -86,6 +86,11 @@ export class ChartGenerationService {
   private defaultWidth: number;
   private defaultHeight: number;
   private defaultColors: string[];
+  private readonly CHART_FONT_FAMILY = "'Inter', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif";
+  private readonly CHART_LABEL_COLOR = '#475569'; // Slate 600
+  private readonly CHART_TICK_COLOR = '#94a3b8';  // Slate 400
+  private readonly CHART_GRID_COLOR = '#f1f5f9';  // Slate 100
+
 
   constructor() {
     this.defaultWidth = (env.CHART_WIDTH as number) || 1200;
@@ -263,8 +268,9 @@ export class ChartGenerationService {
                 usePointStyle: true,
                 pointStyle: 'circle',
                 padding: 15,
-                color: '#475569',
+                color: this.CHART_LABEL_COLOR,
                 font: {
+                  family: this.CHART_FONT_FAMILY,
                   size: 10,
                   weight: 'bold'
                 }
@@ -288,8 +294,9 @@ export class ChartGenerationService {
                 display: false
               },
               ticks: {
-                color: '#94a3b8',
+                color: this.CHART_TICK_COLOR,
                 font: {
+                  family: this.CHART_FONT_FAMILY,
                   size: 9
                 },
                 maxRotation: 0,
@@ -308,7 +315,7 @@ export class ChartGenerationService {
               },
               grid: {
                 display: true,
-                color: '#f1f5f9',
+                color: this.CHART_GRID_COLOR,
                 drawTicks: false
               },
               border: {
@@ -320,14 +327,16 @@ export class ChartGenerationService {
               title: {
                 display: !!options.yUnits,
                 text: options.yUnits || '',
-                color: '#94a3b8',
+                color: this.CHART_LABEL_COLOR,
                 font: {
+                  family: this.CHART_FONT_FAMILY,
                   size: 10
                 }
               },
               ticks: {
-                color: '#94a3b8',
+                color: this.CHART_TICK_COLOR,
                 font: {
+                  family: this.CHART_FONT_FAMILY,
                   size: 9
                 },
                 maxTicksLimit: 5,
@@ -335,7 +344,7 @@ export class ChartGenerationService {
               },
               grid: {
                 display: true,
-                color: '#f1f5f9',
+                color: this.CHART_GRID_COLOR,
                 drawTicks: false
               },
               border: {
@@ -765,7 +774,7 @@ export class ChartGenerationService {
   ): Promise<Buffer> {
     const width = options.width || this.defaultWidth;
     const height = options.height || this.defaultHeight;
-    const grayscale = true; // Always use grayscale for printing
+    const grayscale = false; // PRESERVE COLORS - SPC standards use specific colors for limits
 
     try {
       reportLogger.info('Generating SPC chart', {
@@ -791,13 +800,9 @@ export class ChartGenerationService {
         y: point.value
       }));
 
-      // Determine point colors based on control status
       const pointColors = data.map((_, index) => {
         const isOutOfControl = spcMetrics.outOfControlPoints.includes(index);
-        if (grayscale) {
-          return isOutOfControl ? '#000000' : '#666666';
-        }
-        return isOutOfControl ? '#ef4444' : '#3b82f6';
+        return isOutOfControl ? '#ef4444' : '#000000';
       });
 
       // Prepare annotations for control limits and center line
@@ -806,16 +811,18 @@ export class ChartGenerationService {
           type: 'line',
           yMin: spcMetrics.mean,
           yMax: spcMetrics.mean,
-          borderColor: grayscale ? '#000000' : '#10b981',
+          borderColor: '#000000',
           borderWidth: 2,
           label: {
             display: true,
             content: `Mean = ${spcMetrics.mean.toFixed(2)}`,
             position: 'end',
             backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            color: '#000000',
+            color: this.CHART_LABEL_COLOR,
             font: {
-              size: 9
+              family: this.CHART_FONT_FAMILY,
+              size: 9,
+              weight: 'bold'
             }
           }
         },
@@ -831,9 +838,11 @@ export class ChartGenerationService {
             content: `UCL = ${spcMetrics.ucl.toFixed(2)}`,
             position: 'end',
             backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            color: '#000000',
+            color: this.CHART_LABEL_COLOR,
             font: {
-              size: 9
+              family: this.CHART_FONT_FAMILY,
+              size: 9,
+              weight: 'bold'
             }
           }
         },
@@ -849,9 +858,11 @@ export class ChartGenerationService {
             content: `LCL = ${spcMetrics.lcl.toFixed(2)}`,
             position: 'end',
             backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            color: '#000000',
+            color: this.CHART_LABEL_COLOR,
             font: {
-              size: 9
+              family: this.CHART_FONT_FAMILY,
+              size: 9,
+              weight: 'bold'
             }
           }
         }
@@ -863,17 +874,19 @@ export class ChartGenerationService {
           type: 'line',
           yMin: specLimits.usl,
           yMax: specLimits.usl,
-          borderColor: grayscale ? '#333333' : '#f59e0b',
+          borderColor: grayscale ? '#333333' : '#8b5cf6', // Standard Blue/Purple for Specs
           borderDash: [10, 5],
-          borderWidth: 1,
+          borderWidth: 1.5,
           label: {
             display: true,
             content: `USL = ${specLimits.usl.toFixed(2)}`,
             position: 'start',
             backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            color: '#000000',
+            color: this.CHART_LABEL_COLOR,
             font: {
-              size: 9
+              family: this.CHART_FONT_FAMILY,
+              size: 9,
+              weight: 'bold'
             }
           }
         };
@@ -884,17 +897,19 @@ export class ChartGenerationService {
           type: 'line',
           yMin: specLimits.lsl,
           yMax: specLimits.lsl,
-          borderColor: grayscale ? '#333333' : '#f59e0b',
+          borderColor: grayscale ? '#333333' : '#8b5cf6', // Standard Blue/Purple for Specs
           borderDash: [10, 5],
-          borderWidth: 1,
+          borderWidth: 1.5,
           label: {
             display: true,
             content: `LSL = ${specLimits.lsl.toFixed(2)}`,
             position: 'start',
             backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            color: '#000000',
+            color: this.CHART_LABEL_COLOR,
             font: {
-              size: 9
+              family: this.CHART_FONT_FAMILY,
+              size: 9,
+              weight: 'bold'
             }
           }
         };
@@ -912,7 +927,7 @@ export class ChartGenerationService {
           datasets: [{
             label: 'Process Data',
             data: chartData,
-            borderColor: grayscale ? '#000000' : '#3b82f6',
+            borderColor: '#000000',
             backgroundColor: 'transparent',
             pointRadius: 4,
             pointBackgroundColor: pointColors,
@@ -934,10 +949,11 @@ export class ChartGenerationService {
                 `σ = ${spcMetrics.stdDev.toFixed(2)}${capabilityInfo}`
               ],
               font: {
+                family: this.CHART_FONT_FAMILY,
                 size: 14,
                 weight: 'bold'
               },
-              color: '#000000',
+              color: this.CHART_LABEL_COLOR,
               padding: {
                 top: 10,
                 bottom: 10
@@ -947,8 +963,9 @@ export class ChartGenerationService {
               display: true,
               position: 'top',
               labels: {
-                color: '#000000',
+                color: this.CHART_LABEL_COLOR,
                 font: {
+                  family: this.CHART_FONT_FAMILY,
                   size: 10
                 },
                 generateLabels: (chart) => {
@@ -956,9 +973,10 @@ export class ChartGenerationService {
                   const labels = [
                     {
                       text: `Process Data (${data.length} points)`,
-                      fillStyle: grayscale ? '#666666' : '#3b82f6',
-                      strokeStyle: grayscale ? '#666666' : '#3b82f6',
-                      lineWidth: 2
+                      fillStyle: '#000000',
+                      strokeStyle: '#000000',
+                      lineWidth: 2,
+                      fontColor: this.CHART_LABEL_COLOR
                     }
                   ];
 
@@ -967,11 +985,12 @@ export class ChartGenerationService {
                       text: `Out of Control (${outOfControlCount} points)`,
                       fillStyle: grayscale ? '#000000' : '#ef4444',
                       strokeStyle: grayscale ? '#000000' : '#ef4444',
-                      lineWidth: 2
+                      lineWidth: 2,
+                      fontColor: this.CHART_LABEL_COLOR
                     });
                   }
 
-                  return labels;
+                  return labels as any[];
                 }
               }
             },
@@ -985,13 +1004,19 @@ export class ChartGenerationService {
               title: {
                 display: true,
                 text: 'Time',
-                color: '#000000',
+                color: this.CHART_LABEL_COLOR,
                 font: {
-                  size: 12
+                  family: this.CHART_FONT_FAMILY,
+                  size: 12,
+                  weight: 'bold'
                 }
               },
               ticks: {
-                color: '#000000',
+                color: this.CHART_TICK_COLOR,
+                font: {
+                  family: this.CHART_FONT_FAMILY,
+                  size: 9
+                },
                 callback: function (value) {
                   const date = new Date(value);
                   return date.toLocaleTimeString('en-US', {
@@ -1003,23 +1028,37 @@ export class ChartGenerationService {
                 }
               },
               grid: {
-                color: '#e5e7eb'
+                color: this.CHART_GRID_COLOR,
+                drawTicks: false
+              },
+              border: {
+                display: false
               }
             },
             y: {
               title: {
                 display: true,
-                text: 'Value',
-                color: '#000000',
+                text: options.yUnits || 'Value',
+                color: this.CHART_LABEL_COLOR,
                 font: {
-                  size: 12
+                  family: this.CHART_FONT_FAMILY,
+                  size: 12,
+                  weight: 'bold'
                 }
               },
               ticks: {
-                color: '#000000'
+                color: this.CHART_TICK_COLOR,
+                font: {
+                  family: this.CHART_FONT_FAMILY,
+                  size: 9
+                }
               },
               grid: {
-                color: '#e5e7eb'
+                color: this.CHART_GRID_COLOR,
+                drawTicks: false
+              },
+              border: {
+                display: false
               },
               beginAtZero: false
             }
