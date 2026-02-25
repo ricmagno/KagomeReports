@@ -4,6 +4,7 @@ export interface TimeSeriesData {
   value: number;
   quality: 'Good' | 'Bad' | 'Uncertain' | number;
   tagName: string;
+  description?: string;
 }
 
 export interface TagInfo {

@@ -8,6 +8,7 @@ export interface TimeSeriesData {
   value: number;
   quality: QualityCode;
   tagName: string;
+  description?: string | undefined;
   dataSource?: 'historian' | 'opcua';
 }
 

@@ -595,15 +595,47 @@ export class DataRetrievalService {
    */
   async getTagInfo(tagName: string): Promise<TagInfo | null> {
     if (tagName.startsWith('opcua:')) {
-      return {
-        name: tagName,
-        description: 'OPC UA Tag',
-        units: '',
-        dataType: 'analog',
-        lastUpdate: new Date(),
-        minValue: 0,
-        maxValue: 100
-      };
+      try {
+        const nodeId = tagName.replace('opcua:', '');
+        const data = await opcuaService.readVariable(nodeId);
+        let description = data.description;
+        let units = '';
+
+        // Fallback to Historian if description or units are empty
+        const fallback = await this.getHistorianMetadataFallback(nodeId);
+        if (fallback) {
+          if (!description || description.trim() === '') {
+            description = fallback.description;
+          }
+          if (fallback.units) {
+            units = fallback.units;
+          }
+        }
+
+        return {
+          name: tagName,
+          description: description || data.displayName || '',
+          units: units,
+          dataType: 'analog',
+          lastUpdate: new Date(),
+          minValue: 0,
+          maxValue: 100,
+          dataSource: 'opcua',
+          opcuaNodeId: nodeId
+        };
+      } catch (error) {
+        dbLogger.warn('Failed to fetch OPC UA tag info', { tagName, error: error instanceof Error ? error.message : 'Unknown error' });
+        return {
+          name: tagName,
+          description: '',
+          units: '',
+          dataType: 'analog',
+          lastUpdate: new Date(),
+          minValue: 0,
+          maxValue: 100,
+          dataSource: 'opcua'
+        };
+      }
     }
     try {
       dbLogger.info('Retrieving info for tag', { tagName });
@@ -708,6 +740,52 @@ export class DataRetrievalService {
   }
 
   /**
+   * Helper to retrieve Historian metadata fallback (Description, Units) for an OPC UA tag
+   */
+  private async getHistorianMetadataFallback(nodeId: string): Promise<{ description?: string; units?: string } | null> {
+    try {
+      // Extract base name after the last dot
+      const lastDotIndex = nodeId.lastIndexOf('.');
+      const baseName = lastDotIndex !== -1 ? nodeId.substring(lastDotIndex + 1) : nodeId;
+
+      if (!baseName || baseName.trim() === '') return null;
+
+      dbLogger.debug(`Searching Historian fallback for base name: ${baseName}`);
+
+      // We search for tags ending with the same base name
+      // Join with EngineeringUnit via AnalogTag to get units
+      const query = `
+        SELECT TOP 1 t.Description, eu.Unit
+        FROM Tag t
+        LEFT JOIN AnalogTag at ON t.TagName = at.TagName
+        LEFT JOIN EngineeringUnit eu ON at.EUKey = eu.EUKey
+        WHERE (t.TagName LIKE @pattern1 OR t.TagName = @pattern2)
+        AND (t.Description IS NOT NULL AND t.Description <> '' OR eu.Unit IS NOT NULL AND eu.Unit <> '')
+      `;
+
+      const result = await this.getConnection().executeQuery<any>(query, {
+        pattern1: `%.${baseName}`,
+        pattern2: baseName
+      });
+
+      if (result.recordset && result.recordset.length > 0) {
+        return {
+          description: result.recordset[0].Description || undefined,
+          units: result.recordset[0].Unit || undefined
+        };
+      }
+
+      return null;
+    } catch (error) {
+      dbLogger.warn('Failed to fetch Historian metadata fallback', {
+        nodeId,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      return null;
+    }
+  }
+
+  /**
    * Helper to retrieve OPC UA data for time-series format
    */
   private async getOpcuaTimeSeriesData(
@@ -730,6 +808,16 @@ export class DataRetrievalService {
         value = rawValue ? 1 : 0;
       }
 
+      let description = currentData.description;
+
+      // Fallback to Historian if description is empty
+      if (!description || description.trim() === '') {
+        const fallback = await this.getHistorianMetadataFallback(nodeId);
+        if (fallback && fallback.description) {
+          description = fallback.description;
+        }
+      }
+
       // Stage 1: Only current value is supported for OPC UA
       // We return it as a single point at the current time
       return [{
@@ -737,6 +825,7 @@ export class DataRetrievalService {
         value: value as any, // Cast to any because TimeSeriesData expects number but we support strings in ValueBlocks
         quality: currentData.quality === 'Good' ? QualityCode.Good : QualityCode.Bad,
         tagName: tagName,
+        description: description || currentData.displayName || '',
         dataSource: 'opcua'
       }];
     } catch (error) {

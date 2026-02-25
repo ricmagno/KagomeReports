@@ -92,19 +92,36 @@ export class OpcuaService {
         }
     }
 
-    async readVariable(nodeId: string): Promise<{ value: any; quality: string }> {
+    async readVariable(nodeId: string): Promise<{ value: any; quality: string; description?: string; displayName?: string }> {
         if (!this.session) {
             throw createError('No active OPC UA session', 500);
         }
 
         try {
-            const dataValue = await this.session.read({
-                nodeId,
-                attributeId: AttributeIds.Value,
-            });
+            const dataValues = await this.session.read([
+                {
+                    nodeId,
+                    attributeId: AttributeIds.Value,
+                },
+                {
+                    nodeId,
+                    attributeId: AttributeIds.Description,
+                },
+                {
+                    nodeId,
+                    attributeId: AttributeIds.DisplayName,
+                }
+            ]);
+
+            const valueData = dataValues[0];
+            const descriptionData = dataValues[1];
+            const displayNameData = dataValues[2];
+
             return {
-                value: dataValue.value.value,
-                quality: dataValue.statusCode.toString() === 'Good' ? 'Good' : 'Bad'
+                value: valueData?.value?.value,
+                quality: valueData?.statusCode?.name === 'Good' ? 'Good' : 'Bad',
+                description: descriptionData?.value?.value?.text?.toString() || '',
+                displayName: displayNameData?.value?.value?.text?.toString() || ''
             };
         } catch (error) {
             logger.error(`Error reading OPC UA variable ${nodeId}:`, error);

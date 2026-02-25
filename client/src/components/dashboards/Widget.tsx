@@ -196,10 +196,10 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle, globalTim
     const tagDescriptions = useMemo(() => {
         const descs: Record<string, string> = {};
         widget.tags.forEach(tag => {
-            descs[tag] = tag; // Use tag name as description if not available
+            descs[tag] = tagInfoMap[tag]?.description || tag;
         });
         return descs;
-    }, [widget.tags]);
+    }, [widget.tags, tagInfoMap]);
 
     const renderContent = () => {
         if (loading && data.length === 0) {
@@ -244,7 +244,7 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle, globalTim
                         max={tagInfo?.maxValue || 100}
                         tagName={tagName}
                         unit={tagInfo?.units || ''}
-                        description={tagInfo?.description}
+                        description={lastPoint?.description || tagInfo?.description}
                         status={lastPoint?.quality === 'Good' || lastPoint?.quality === 192 ? 'good' : 'bad'}
                         isMaximized={isMaximized}
                     />
@@ -257,7 +257,7 @@ export const Widget: React.FC<WidgetProps> = ({ widget, refreshToggle, globalTim
                         tagName={tagName}
                         value={lastPoint?.value ?? 'N/A'}
                         unit={tagInfo?.units}
-                        description={tagInfo?.description}
+                        description={lastPoint?.description || tagInfo?.description}
                         status={lastPoint?.quality === 'Good' || lastPoint?.quality === 192 ? 'good' : 'bad'}
                         className="rounded-none border-0 shadow-none bg-transparent"
                         isMaximized={isMaximized}

@@ -37,12 +37,15 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
   const [opcuaSearchTerm, setOpcuaSearchTerm] = useState('');
   const [showSystemNodes, setShowSystemNodes] = useState(false);
 
+  // OPC UA allowed widget types
+  const isLiveWidget = widgetType === 'value-block' || widgetType === 'radial-gauge' || widgetType === 'radar';
+
   // Switch to historian tab if widgetType changes and opcua is not allowed
   useEffect(() => {
-    if (widgetType !== 'value-block' && tagSourceTab === 'opcua') {
+    if (!isLiveWidget && tagSourceTab === 'opcua') {
       setTagSourceTab('historian');
     }
-  }, [widgetType, tagSourceTab]);
+  }, [isLiveWidget, tagSourceTab]);
 
   // Load available tags (Historian)
   useEffect(() => {
@@ -73,7 +76,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
 
   // Fetch OPC UA tags when path changes
   useEffect(() => {
-    if (tagSourceTab === 'opcua' && widgetType === 'value-block') {
+    if (tagSourceTab === 'opcua' && isLiveWidget) {
       const fetchOpcua = async () => {
         try {
           setIsBrowsingOpcua(true);
@@ -142,8 +145,8 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
   const handleAddTag = (tagName: string) => {
     // Check if it's an OPC UA tag
     if (tagName.startsWith('opcua:')) {
-      if (widgetType !== 'value-block') {
-        setError('OPC UA tags are restricted to Value Block widgets.');
+      if (!isLiveWidget) {
+        setError('OPC UA tags are restricted to live data widgets (Value Block, Radial Gauge, Radar Chart).');
         return;
       }
     }
@@ -190,7 +193,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Source Tabs */}
-        {widgetType === 'value-block' && (
+        {isLiveWidget && (
           <div className="flex space-x-4 border-b border-gray-100 mb-2">
             <button
               onClick={() => setTagSourceTab('historian')}
