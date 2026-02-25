@@ -40,6 +40,7 @@ import { AboutSection } from '../about/AboutSection';
 import { DashboardList } from '../dashboards/DashboardList';
 import { DashboardView } from '../dashboards/DashboardView';
 import { DashboardEditor } from '../dashboards/DashboardEditor';
+import { TagSelector } from '../forms/TagSelector';
 import { apiService } from '../../services/api';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
@@ -228,30 +229,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const [selectedReportForHistory, setSelectedReportForHistory] = useState<{ id: string; name: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [realTimeEnabled, setRealTimeEnabled] = useState(false);
-  const [tagSearchTerm, setTagSearchTerm] = useState('');
-  const [availableTags, setAvailableTags] = useState<TagInfo[]>([]);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [exportingReport, setExportingReport] = useState<any>(null);
 
-  // Fetch tags from API when search term changes
-  useEffect(() => {
-    const fetchTags = async () => {
-      try {
-        const response = await apiService.getTags(tagSearchTerm);
-        if (response.success && response.data) {
-          setAvailableTags(response.data);
-        }
-      } catch (error) {
-        console.error('Failed to fetch tags:', error);
-      }
-    };
-
-    const debounceTimer = setTimeout(() => {
-      fetchTags();
-    }, 300);
-
-    return () => clearTimeout(debounceTimer);
-  }, [tagSearchTerm]);
   const [realTimeData, setRealTimeData] = useState({
     connected: false,
     loading: false,
@@ -937,81 +917,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           </p>
                         </div>
 
-                        {/* Search Tags */}
-                        <div className="space-y-2">
-                          <Input
-                            placeholder="Search tags..."
-                            value={tagSearchTerm}
-                            onChange={(e) => setTagSearchTerm(e.target.value)}
-                          />
-                        </div>
-
-                        {/* Available Tags */}
-                        <div className="space-y-2">
-                          <h4 className="text-sm font-medium text-gray-700">Available Tags:</h4>
-                          <div className="space-y-1 max-h-40 overflow-y-auto">
-                            {availableTags
-                              .filter(tag => tag.name.toLowerCase().includes(tagSearchTerm.toLowerCase()) ||
-                                (tag.description || '').toLowerCase().includes(tagSearchTerm.toLowerCase()))
-                              .map((tag) => (
-                                <button
-                                  key={tag.name}
-                                  onClick={() => handleTagsChange([...(reportConfig.tags || []), tag.name])}
-                                  disabled={reportConfig.tags?.includes(tag.name)}
-                                  className={cn(
-                                    'w-full text-left px-3 py-2 text-sm rounded-md transition-colors',
-                                    reportConfig.tags?.includes(tag.name)
-                                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                      : 'hover:bg-gray-50 text-gray-700'
-                                  )}
-                                >
-                                  <div className="flex flex-col">
-                                    <span className="font-medium">{tag.name}</span>
-                                    {tag.description && (
-                                      <span className="text-xs text-gray-500 truncate">{tag.description}</span>
-                                    )}
-                                  </div>
-                                </button>
-                              ))}
-                            {availableTags.filter(tag => tag.name.toLowerCase().includes(tagSearchTerm.toLowerCase()) ||
-                              tag.description.toLowerCase().includes(tagSearchTerm.toLowerCase())).length === 0 && (
-                                <div className="px-3 py-2 text-sm text-gray-500 italic">No tags found</div>
-                              )}
-                          </div>
-                        </div>
-
-                        {/* Selected Tags */}
-                        {reportConfig.tags && reportConfig.tags.length > 0 && (
-                          <div className="space-y-2">
-                            <h4 className="text-sm font-medium text-gray-700">Selected Tags:</h4>
-                            <div className="flex flex-wrap gap-2">
-                              {reportConfig.tags.map((tagName) => (
-                                <div
-                                  key={tagName}
-                                  className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-primary-100 text-primary-800 border border-primary-200"
-                                >
-                                  <span className="mr-2">{tagName}</span>
-                                  <button
-                                    onClick={() => handleTagsChange(reportConfig.tags?.filter(tag => tag !== tagName) || [])}
-                                    className="ml-1 hover:text-primary-900 focus:outline-none"
-                                    aria-label={`Remove ${tagName}`}
-                                  >
-                                    ×
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Empty state */}
-                        {(!reportConfig.tags || reportConfig.tags.length === 0) && (
-                          <div className="text-center py-8 text-gray-500">
-                            <Tag className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                            <p>No tags selected</p>
-                            <p className="text-sm">Select tags from the list above</p>
-                          </div>
-                        )}
+                        {/* Tag Selection Component */}
+                        <TagSelector
+                          selectedTags={reportConfig.tags || []}
+                          onChange={handleTagsChange}
+                          maxTags={10}
+                          widgetType="report"
+                          className="border-none shadow-none p-0"
+                        />
                       </CardContent>
                     </Card>
 

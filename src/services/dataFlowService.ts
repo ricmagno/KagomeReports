@@ -11,6 +11,7 @@ import { reportGenerationService, ReportConfig, ReportData, ReportResult } from 
 import { chartGenerationService } from './chartGeneration';
 import { TimeSeriesData, StatisticsResult, TrendResult, QualityCode, TagInfo } from '@/types/historian';
 import { createError } from '@/middleware/errorHandler';
+import { opcuaService } from './opcuaService';
 
 export interface DataFlowConfig {
   reportConfig: ReportConfig;
@@ -51,8 +52,8 @@ export class DataFlowService {
         timeRange: config.reportConfig.timeRange
       });
 
-      // Step 1: Retrieve data from AVEVA Historian
-      const data = await this.retrieveHistorianData(config.reportConfig);
+      // Step 1: Retrieve data from multiple sources
+      const data = await this.retrieveMultiSourceData(config.reportConfig);
 
       // Count data points and calculate quality metrics
       for (const [tagName, tagData] of Object.entries(data)) {
@@ -170,18 +171,21 @@ export class DataFlowService {
   }
 
   /**
-   * Retrieve data from AVEVA Historian for all tags
+   * Retrieve data from Historian and OPC UA sources
    */
-  private async retrieveHistorianData(reportConfig: ReportConfig): Promise<Record<string, TimeSeriesData[]>> {
+  private async retrieveMultiSourceData(reportConfig: ReportConfig): Promise<Record<string, TimeSeriesData[]>> {
     const data: Record<string, TimeSeriesData[]> = {};
+    const historianTags = reportConfig.tags.filter(t => !t.startsWith('opcua:'));
+    const opcuaTags = reportConfig.tags.filter(t => t.startsWith('opcua:'));
 
-    reportLogger.info('Retrieving data from AVEVA Historian', {
-      tags: reportConfig.tags,
+    reportLogger.info('Retrieving data from multiple sources', {
+      historianCount: historianTags.length,
+      opcuaCount: opcuaTags.length,
       timeRange: reportConfig.timeRange
     });
 
-    // Retrieve data for each tag in parallel
-    const dataPromises = reportConfig.tags.map(async (tagName) => {
+    // 1. Retrieve Historian data (Parallel)
+    const historianPromises = historianTags.map(async (tagName) => {
       try {
         const tagData = await dataRetrievalService.getTimeSeriesData(
           tagName,
@@ -190,27 +194,39 @@ export class DataFlowService {
             mode: (reportConfig.retrievalMode as any) || undefined
           }
         );
-
-        reportLogger.debug('Retrieved data for tag', {
-          tagName,
-          dataPoints: tagData.length,
-          timeRange: reportConfig.timeRange
-        });
-
         return { tagName, data: tagData };
       } catch (error) {
-        reportLogger.warn('Failed to retrieve data for tag', {
-          tagName,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        });
+        reportLogger.warn('Failed to retrieve Historian data for tag', { tagName, error: error instanceof Error ? error.message : 'Unknown error' });
         return { tagName, data: [] };
       }
     });
 
-    const results = await Promise.all(dataPromises);
+    // 2. Retrieve OPC UA data (Parallel) - Stage 1: Current value only
+    const opcuaPromises = opcuaTags.map(async (tagName) => {
+      try {
+        const nodeId = tagName.replace('opcua:', '');
+        const currentData = await opcuaService.readVariable(nodeId);
 
-    // Organize results by tag name
-    results.forEach(({ tagName, data: tagData }) => {
+        return {
+          tagName,
+          data: [{
+            timestamp: new Date(),
+            value: Number(currentData.value),
+            quality: currentData.quality === 'Good' ? QualityCode.Good : QualityCode.Bad,
+            tagName: tagName
+          }]
+        };
+      } catch (error) {
+        reportLogger.warn('Failed to read OPC UA value for tag', { tagName, error: error instanceof Error ? error.message : 'Unknown error' });
+        return { tagName, data: [] };
+      }
+    });
+
+    const historianResults = await Promise.all(historianPromises);
+    const opcuaResults = await Promise.all(opcuaPromises);
+
+    // Combine results
+    [...historianResults, ...opcuaResults].forEach(({ tagName, data: tagData }) => {
       data[tagName] = tagData;
     });
 
@@ -314,15 +330,29 @@ export class DataFlowService {
   }
 
   /**
-   * Perform tag metadata lookup
+   * Perform tag metadata lookup for multiple sources
    */
   private async performTagMetadataLookup(tagNames: string[]): Promise<Record<string, TagInfo>> {
     const tagInfo: Record<string, TagInfo> = {};
 
-    reportLogger.info('Retrieving tag metadata', { count: tagNames.length });
+    reportLogger.info('Retrieving tag metadata from multiple sources', { count: tagNames.length });
 
     const infoPromises = tagNames.map(async (tagName) => {
       try {
+        if (tagName.startsWith('opcua:')) {
+          // Minimal metadata for OPC UA for now
+          return {
+            tagName,
+            info: {
+              name: tagName,
+              description: `OPC UA Node: ${tagName.replace('opcua:', '')}`,
+              units: '',
+              dataType: 'analog',
+              dataSource: 'opcua',
+              opcuaNodeId: tagName.replace('opcua:', '')
+            } as any
+          };
+        }
         const info = await dataRetrievalService.getTagInfo(tagName);
         return { tagName, info };
       } catch (error) {

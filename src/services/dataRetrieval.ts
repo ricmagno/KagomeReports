@@ -22,6 +22,7 @@ import {
   QualityCode,
   StatisticsResult
 } from '@/types/historian';
+import { opcuaService } from './opcuaService';
 
 export class DataRetrievalService {
   private cacheService: CacheService | undefined;
@@ -50,6 +51,11 @@ export class DataRetrievalService {
     options?: HistorianQueryOptions,
     operationId?: string
   ): Promise<TimeSeriesData[]> {
+    // 1. Check for OPC UA tags
+    if (tagName.startsWith('opcua:')) {
+      return this.getOpcuaTimeSeriesData(tagName, timeRange, options);
+    }
+
     try {
       dbLogger.info('Retrieving time-series data', { tagName, timeRange, options });
 
@@ -444,66 +450,53 @@ export class DataRetrievalService {
     try {
       dbLogger.info('Retrieving multiple time-series data', { tagNames, timeRange });
 
-      // Validate inputs
-      this.validateTimeRange(timeRange);
-      if (tagNames.length === 0) {
-        throw createError('At least one tag name is required', 400);
-      }
+      // Split Historian and OPC UA tags
+      const historianTags = tagNames.filter(t => !t.startsWith('opcua:'));
+      const opcuaTags = tagNames.filter(t => t.startsWith('opcua:'));
 
-      if (operationId) {
-        progressTracker.updateProgress(operationId, 'preparation', 5, `Preparing to query ${tagNames.length} tags`);
-      }
+      const results: Record<string, TimeSeriesData[]> = {};
 
-      // Execute queries with progress tracking
-      const promises = tagNames.map((tagName, index) =>
-        this.getTimeSeriesData(tagName, timeRange, options)
-          .then(data => {
-            if (operationId) {
-              const progress = 10 + ((index + 1) / tagNames.length) * 80;
-              progressTracker.updateProgress(
-                operationId,
-                'querying',
-                progress,
-                `Completed ${index + 1}/${tagNames.length} tags`
-              );
-            }
-            return { tagName, data };
-          })
-          .catch(error => ({ tagName, error }))
-      );
-
-      const results = await Promise.all(promises);
-
-      if (operationId) {
-        progressTracker.updateProgress(operationId, 'processing', 95, 'Finalizing results');
-      }
-
-      // Process results and handle errors
-      const successfulResults: Record<string, TimeSeriesData[]> = {};
-      const errors: string[] = [];
-
-      results.forEach(result => {
-        if ('error' in result) {
-          errors.push(`${result.tagName}: ${result.error.message}`);
-        } else {
-          successfulResults[result.tagName] = result.data;
-        }
-      });
-
-      if (errors.length > 0) {
-        dbLogger.warn('Some tag queries failed:', errors);
-      }
-
-      if (operationId) {
-        const successCount = Object.keys(successfulResults).length;
-        progressTracker.completeOperation(
-          operationId,
-          `Retrieved data for ${successCount}/${tagNames.length} tags`
+      // Handle Historian tags if any
+      if (historianTags.length > 0) {
+        const historianPromises = historianTags.map((tagName, index) =>
+          this.getTimeSeriesData(tagName, timeRange, options)
+            .then(data => ({ tagName, data }))
+            .catch(error => ({ tagName, error }))
         );
+
+        const historianResults = await Promise.all(historianPromises);
+        historianResults.forEach(result => {
+          if ('error' in result) {
+            dbLogger.warn(`Historian tag query failed: ${result.tagName}`, { error: result.error });
+          } else {
+            results[result.tagName] = result.data;
+          }
+        });
       }
 
-      return successfulResults;
+      // Handle OPC UA tags if any
+      if (opcuaTags.length > 0) {
+        const opcuaPromises = opcuaTags.map(async (tagName) => {
+          try {
+            const data = await this.getOpcuaTimeSeriesData(tagName, timeRange, options);
+            return { tagName, data };
+          } catch (error) {
+            dbLogger.warn(`OPC UA tag query failed: ${tagName}`, { error });
+            return { tagName, data: [] };
+          }
+        });
 
+        const opcuaResults = await Promise.all(opcuaPromises);
+        opcuaResults.forEach(result => {
+          results[result.tagName] = result.data;
+        });
+      }
+
+      if (operationId) {
+        progressTracker.completeOperation(operationId, `Retrieved data for ${Object.keys(results).length}/${tagNames.length} tags`);
+      }
+
+      return results;
     } catch (error) {
       if (operationId) {
         progressTracker.failOperation(operationId, error instanceof Error ? error.message : 'Unknown error');
@@ -601,6 +594,17 @@ export class DataRetrievalService {
    * Get metadata for a specific tag
    */
   async getTagInfo(tagName: string): Promise<TagInfo | null> {
+    if (tagName.startsWith('opcua:')) {
+      return {
+        name: tagName,
+        description: 'OPC UA Tag',
+        units: '',
+        dataType: 'analog',
+        lastUpdate: new Date(),
+        minValue: 0,
+        maxValue: 100
+      };
+    }
     try {
       dbLogger.info('Retrieving info for tag', { tagName });
 
@@ -701,6 +705,44 @@ export class DataRetrievalService {
     options?: HistorianQueryOptions
   ): string {
     return this.buildOptimizedTimeSeriesQuery(tagName, timeRange, options);
+  }
+
+  /**
+   * Helper to retrieve OPC UA data for time-series format
+   */
+  private async getOpcuaTimeSeriesData(
+    tagName: string,
+    timeRange: TimeRange,
+    options?: HistorianQueryOptions
+  ): Promise<TimeSeriesData[]> {
+    try {
+      const nodeId = tagName.replace('opcua:', '');
+      const currentData = await opcuaService.readVariable(nodeId);
+
+      const timestamp = new Date();
+      const rawValue = currentData.value;
+
+      // Try to parse as number if it's numeric, otherwise keep as is
+      let value = rawValue;
+      if (typeof rawValue === 'string' && !isNaN(Number(rawValue))) {
+        value = Number(rawValue);
+      } else if (typeof rawValue === 'boolean') {
+        value = rawValue ? 1 : 0;
+      }
+
+      // Stage 1: Only current value is supported for OPC UA
+      // We return it as a single point at the current time
+      return [{
+        timestamp,
+        value: value as any, // Cast to any because TimeSeriesData expects number but we support strings in ValueBlocks
+        quality: currentData.quality === 'Good' ? QualityCode.Good : QualityCode.Bad,
+        tagName: tagName,
+        dataSource: 'opcua'
+      }];
+    } catch (error) {
+      dbLogger.warn('Failed to read OPC UA value', { tagName, error: error instanceof Error ? error.message : 'Unknown error' });
+      return [];
+    }
   }
 
   /**

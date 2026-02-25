@@ -107,3 +107,6 @@ build.zip
 dockerimages/
 *.tar
 *.zip
+
+# Local data
+data/*.json

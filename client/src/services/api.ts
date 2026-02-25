@@ -12,6 +12,11 @@ import {
   ImportResult
 } from '../types/api';
 import {
+  OpcuaConfig,
+  OpcuaConfiguration,
+  OpcuaTagInfo
+} from '../types/opcuaConfig';
+import {
   DatabaseConfig,
   DatabaseConfigSummary,
   ConnectionTestResult
@@ -922,6 +927,42 @@ export const apiService = {
     params.append('path', path);
     params.append('baseType', baseType);
     return fetchWithRetry(`/filesystem/validate-path?${params.toString()}`);
+  },
+
+  // OPC UA Configuration endpoints
+  async getOpcuaConfigs(): Promise<ApiResponse<OpcuaConfiguration[]>> {
+    return fetchWithRetry('/opcua/configs');
+  },
+
+  async saveOpcuaConfig(config: OpcuaConfig): Promise<ApiResponse<{ id: string }>> {
+    return fetchWithRetry('/opcua/configs', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  },
+
+  async testOpcuaConnection(config: OpcuaConfig): Promise<ApiResponse<{ success: boolean; message: string }>> {
+    return fetchWithRetry('/opcua/test-connection', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  },
+
+  async browseOpcuaTags(nodeId?: string): Promise<ApiResponse<OpcuaTagInfo[]>> {
+    const params = nodeId ? `?nodeId=${encodeURIComponent(nodeId)}` : '';
+    return fetchWithRetry(`/opcua/browse${params}`);
+  },
+
+  async activateOpcuaConfig(configId: string): Promise<ApiResponse<void>> {
+    return fetchWithRetry(`/opcua/activate/${encodeURIComponent(configId)}`, {
+      method: 'POST',
+    });
+  },
+
+  async deleteOpcuaConfig(configId: string): Promise<ApiResponse<void>> {
+    return fetchWithRetry(`/opcua/configs/${encodeURIComponent(configId)}`, {
+      method: 'DELETE',
+    });
   },
 };
 

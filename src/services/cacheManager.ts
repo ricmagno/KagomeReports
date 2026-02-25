@@ -9,11 +9,15 @@ import { DataRetrievalService } from './dataRetrieval';
 import { StatisticalAnalysisService } from './statisticalAnalysis';
 import { env } from '../config/environment';
 import { logger } from '../utils/logger';
+import { opcuaService, OpcuaService } from './opcuaService';
+import { opcuaConfigService, OpcuaConfigService } from './opcuaConfigService';
 
 export class CacheManager {
   private cacheService?: CacheService;
   private dataRetrievalService?: DataRetrievalService;
   private statisticalAnalysisService?: StatisticalAnalysisService;
+  private opcuaService: OpcuaService = opcuaService;
+  private opcuaConfigService: OpcuaConfigService = opcuaConfigService;
   private cacheLogger = logger.child({ service: 'CacheManager' });
   private isInitialized = false;
 
@@ -111,6 +115,14 @@ export class CacheManager {
     return this.cacheService;
   }
 
+  getOpcuaService(): OpcuaService {
+    return this.opcuaService;
+  }
+
+  getOpcuaConfigService(): OpcuaConfigService {
+    return this.opcuaConfigService;
+  }
+
   // Cache management methods
   async invalidateAllCache(): Promise<void> {
     if (this.cacheService) {
@@ -170,7 +182,7 @@ export class CacheManager {
     servicesInitialized: boolean;
   }> {
     const cacheHealthy = this.cacheService ? await this.cacheService.healthCheck() : true;
-    
+
     return {
       cacheEnabled: !!this.cacheService,
       cacheHealthy,
@@ -193,7 +205,7 @@ export class CacheManager {
       this.cacheLogger.debug('Tag list cache warmed');
 
       // You can add more cache warming logic here for frequently accessed data
-      
+
       this.cacheLogger.info('Cache warming completed');
     } catch (error) {
       this.cacheLogger.error('Cache warming failed:', error);

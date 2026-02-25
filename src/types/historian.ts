@@ -8,6 +8,7 @@ export interface TimeSeriesData {
   value: number;
   quality: QualityCode;
   tagName: string;
+  dataSource?: 'historian' | 'opcua';
 }
 
 // AVEVA Historian quality codes
@@ -35,6 +36,8 @@ export interface TagInfo {
   minValue?: number;
   maxValue?: number;
   engineeringUnits?: string;
+  dataSource?: 'historian' | 'opcua';
+  opcuaNodeId?: string; // Specific to OPC UA tags
 }
 
 // Time range for data queries

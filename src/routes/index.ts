@@ -14,6 +14,7 @@ import cacheRoutes from './cache';
 import progressRoutes from './progress';
 import autoUpdateRoutes from './autoUpdate';
 import databaseConfigRoutes from './databaseConfig';
+import opcuaConfigRoutes from './opcuaConfig';
 import statusRoutes from './status';
 import filesystemRoutes from './filesystem';
 import usersRoutes from './users';
@@ -37,6 +38,7 @@ router.use('/cache', cacheRoutes);
 router.use('/progress', progressRoutes);
 router.use('/auto-update', autoUpdateRoutes);
 router.use('/database', databaseConfigRoutes);
+router.use('/opcua', opcuaConfigRoutes);
 router.use('/status', statusRoutes);
 router.use('/filesystem', filesystemRoutes);
 router.use('/users', usersRoutes);
@@ -65,6 +67,7 @@ router.get('/', async (_req, res) => {
       progress: '/api/progress',
       autoUpdate: '/api/auto-update',
       database: '/api/database',
+      opcua: '/api/opcua',
       status: '/api/status',
       filesystem: '/api/filesystem',
       users: '/api/users',

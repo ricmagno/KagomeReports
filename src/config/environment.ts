@@ -71,6 +71,10 @@ const envSchema = z.object({
 
   // Timezone Configuration
   DEFAULT_TIMEZONE: z.string().default('Australia/Sydney'),
+
+  // Notification Configuration
+  SWAGGER_API_TOKEN: z.string().optional(),
+  NOTIFICATIONS_API_URL: z.string().url('Valid notification API URL is required').default('https://notifications.kagome.com.au/api/publish/sms'),
 });
 
 // Validate and export environment configuration

@@ -342,6 +342,26 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
     logger.warn('⚠ Update checker initialization failed:', error);
   }
 
+  // 8. OPC UA Integration Initialization
+  try {
+    const { setupOpcuaConfigIntegration } = await import('@/services/opcuaConfigService');
+    setupOpcuaConfigIntegration();
+    components.push({
+      name: 'OPC UA Integration',
+      status: 'healthy',
+      required: false
+    });
+    logger.info('✓ OPC UA integration initialized');
+  } catch (error) {
+    components.push({
+      name: 'OPC UA Integration',
+      status: 'degraded',
+      required: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+    logger.warn('⚠ OPC UA integration initialization failed:', error);
+  }
+
   // Determine overall system health
   const requiredComponents = components.filter(c => c.required);
   const requiredHealthy = requiredComponents.every(c => c.status === 'healthy');

@@ -14,6 +14,8 @@ export interface TagInfo {
   lastUpdate: Date;
   minValue?: number;
   maxValue?: number;
+  dataSource?: 'historian' | 'opcua';
+  opcuaNodeId?: string;
 }
 
 export interface SpecificationLimits {
