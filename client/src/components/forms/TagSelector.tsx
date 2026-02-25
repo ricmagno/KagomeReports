@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Tag, X, Plus, RefreshCw, Server, Activity, Database } from 'lucide-react';
+import { Search, Tag, X, Plus, RefreshCw, Server, Activity } from 'lucide-react';
 import { TagInfo } from '../../types/api';
 import { OpcuaTagInfo } from '../../types/opcuaConfig';
 import { apiService } from '../../services/api';
@@ -35,6 +35,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
   const [isBrowsingOpcua, setIsBrowsingOpcua] = useState(false);
   const [tagSourceTab, setTagSourceTab] = useState<'historian' | 'opcua'>('historian');
   const [opcuaSearchTerm, setOpcuaSearchTerm] = useState('');
+  const [showSystemNodes, setShowSystemNodes] = useState(false);
 
   // Switch to historian tab if widgetType changes and opcua is not allowed
   useEffect(() => {
@@ -116,14 +117,22 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
 
   // Filter OPC UA tags based on search term
   const filteredOpcuaTags = useMemo(() => {
-    if (!opcuaSearchTerm) return opcuaTags;
+    let filtered = opcuaTags;
+
+    // Hide system nodes if toggle is off
+    if (!showSystemNodes) {
+      filtered = filtered.filter(node => !node.displayName.startsWith('_'));
+    }
+
+    if (!opcuaSearchTerm) return filtered;
+
     const term = opcuaSearchTerm.toLowerCase();
-    return opcuaTags.filter(node =>
+    return filtered.filter(node =>
       node.nodeClass !== 'Variable' || // Always show folders/objects to allow navigation
       node.displayName.toLowerCase().includes(term) ||
       node.nodeId.toLowerCase().includes(term)
     );
-  }, [opcuaTags, opcuaSearchTerm]);
+  }, [opcuaTags, opcuaSearchTerm, showSystemNodes]);
 
   // Available tags that aren't already selected
   const unselectedTags = useMemo(() => {
@@ -273,16 +282,31 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
         ) : (
           /* OPC UA Discovery UI */
           <div className="space-y-4 border rounded-md p-3 bg-gray-50/30 shadow-sm transition-all">
-            {/* OPC UA Search */}
-            <div className="relative">
-              <Input
-                type="text"
-                placeholder="Search OPC UA nodes..."
-                value={opcuaSearchTerm}
-                onChange={(e) => setOpcuaSearchTerm(e.target.value)}
-                className="pr-10 h-9 text-sm"
-              />
-              <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            {/* OPC UA Search & Filter */}
+            <div className="flex flex-col space-y-2">
+              <div className="relative">
+                <Input
+                  type="text"
+                  placeholder="Search OPC UA nodes..."
+                  value={opcuaSearchTerm}
+                  onChange={(e) => setOpcuaSearchTerm(e.target.value)}
+                  className="pr-10 h-9 text-sm"
+                />
+                <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              </div>
+
+              <div className="flex items-center space-x-2 px-1">
+                <input
+                  type="checkbox"
+                  id="show-system-nodes"
+                  checked={showSystemNodes}
+                  onChange={(e) => setShowSystemNodes(e.target.checked)}
+                  className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 h-3.5 w-3.5"
+                />
+                <label htmlFor="show-system-nodes" className="text-xs text-gray-500 cursor-pointer select-none">
+                  Show system nodes (e.g. starting with _)
+                </label>
+              </div>
             </div>
 
             {/* Navigation breadcrumbs */}
