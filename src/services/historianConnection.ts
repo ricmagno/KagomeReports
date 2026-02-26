@@ -290,8 +290,6 @@ export class HistorianConnection {
 
         // Sense connection drops to force re-activation on next attempt
         const msg = error.message.toLowerCase();
-        // Sense connection drops to force re-activation on next attempt
-        const msg = error.message.toLowerCase();
         // Only reset for actual connection errors, not simple timing/logic ones
         if ((msg.includes('connection') || msg.includes('closed') || msg.includes('broken') || msg.includes('reset')) && !msg.includes('timeout')) {
           dbLogger.warn('Connection drop sensed in executeQuery, resetting state', { message: error.message });
