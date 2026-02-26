@@ -101,7 +101,7 @@ ENV NODE_ENV=production \
 # Labels for metadata
 LABEL maintainer="Historian Reports Team" \
     description="Professional reporting application for AVEVA Historian database" \
-    version="1.2.10"
+    version="1.2.11"
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

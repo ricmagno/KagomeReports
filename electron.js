@@ -1,1 +1,1 @@
-require('./dist/electron/main.js')
+require('./dist/electron/main.js');

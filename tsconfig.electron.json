@@ -1,13 +1,21 @@
 {
-  "extends": "./tsconfig.json",
-  "compilerOptions": {
-    "outDir": "./dist/electron",
-    "rootDir": "./src/electron"
-  },
-  "include": [
-    "src/electron/**/*"
-  ],
-  "exclude": [
-    "node_modules"
-  ]
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "outDir": "./dist/electron",
+        "rootDir": "./src/electron",
+        "target": "ES2022",
+        "module": "commonjs",
+        "types": [
+            "node",
+            "electron"
+        ]
+    },
+    "include": [
+        "src/electron/**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist",
+        "client"
+    ]
 }

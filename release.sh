@@ -32,7 +32,7 @@ sed -i '' "s/[[:space:]]*version=\".*\"/    version=\"$VERSION\"/" Dockerfile
 
 echo "📝 Updating version in Kubernetes manifest..."
 # Updated path to match current structure
-MANIFEST="Kubernets/historian-reports-deployment.yaml"
+MANIFEST="Kubernetes/historian-reports-deployment.yaml"
 if [ -f "$MANIFEST" ]; then
     sed -i '' "s|image: ghcr.io/ricmagno/kagomereports:.*|image: ghcr.io/ricmagno/kagomereports:$VERSION|" "$MANIFEST"
 else
@@ -68,8 +68,10 @@ gh release create "v$VERSION" --title "Release v$VERSION" --notes "Automated rel
 
 echo "----------------------------------------------------------------------"
 echo "✅ Step 1/2 Complete: Code is pushed and Tag is created."
-echo "⌛ GitHub Actions is now building the Docker image for $VERSION."
-echo "   This usually takes 2-4 minutes."
+echo "⌛ GitHub Actions is now building in parallel:"
+echo "   - Docker image: Building linux/amd64 and linux/arm64..."
+echo "   - Electron app: Building for Windows (.exe) and macOS (.dmg/.zip)..."
+echo "   This usually takes 3-5 minutes."
 echo "----------------------------------------------------------------------"
 
 echo "----------------------------------------------------------------------"

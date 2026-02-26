@@ -1,8 +1,8 @@
 {
   "name": "historian-reports",
-  "version": "1.2.10",
+  "version": "1.2.11",
   "description": "Professional reporting application for AVEVA Historian database",
-  "main": "dist/server.js",
+  "main": "electron.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "dev:mock": "tsx watch src/dev-server.ts",
@@ -119,12 +119,12 @@
       "output": "dist/electron"
     },
     "files": [
-      "!dist/electron/**/*",
       "dist/**/*",
       "client/build/**/*",
       "data/**/*",
       "templates/**/*",
-      "package.json"
+      "package.json",
+      "electron.js"
     ],
     "win": {
       "target": [
