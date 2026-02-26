@@ -95,9 +95,9 @@ export class HistorianConnection {
           },
           RetryHandler.createDatabaseRetryOptions({
             maxAttempts: Number.MAX_SAFE_INTEGER, // Default to unlimited unless overridden
-            baseDelay: 5000, // Reduced from 30s for better responsiveness
+            baseDelay: 2000, // Reduced from 5s for even better responsiveness
             maxDelay: 30000,
-            backoffFactor: 2, // Use exponential backoff instead of constant
+            backoffFactor: 2, // Use exponential backoff
             logCountdown: true,
             onRetry: (attempt, delay) => {
               this.connectionAttempts = attempt;
@@ -231,6 +231,16 @@ export class HistorianConnection {
 
         dbLogger.debug('Executing query:', { query: this.sanitizeQueryForLogging(query), params });
 
+        // Log pool status before request
+        if (this.pool) {
+          dbLogger.debug('Pool status before query', {
+            pending: (this.pool as any).pool?.pending?.length ?? 0,
+            used: (this.pool as any).pool?.used?.length ?? 0,
+            size: (this.pool as any).pool?.size ?? 0,
+            max: (this.pool as any).pool?.max ?? 0
+          });
+        }
+
         const request = this.pool.request();
         // Add parameters if provided
         if (params) {
@@ -280,8 +290,11 @@ export class HistorianConnection {
 
         // Sense connection drops to force re-activation on next attempt
         const msg = error.message.toLowerCase();
-        if (msg.includes('connection') || msg.includes('closed') || msg.includes('broken') || msg.includes('reset')) {
-          dbLogger.warn('Connection drop sensed in executeQuery, resetting state');
+        // Sense connection drops to force re-activation on next attempt
+        const msg = error.message.toLowerCase();
+        // Only reset for actual connection errors, not simple timing/logic ones
+        if ((msg.includes('connection') || msg.includes('closed') || msg.includes('broken') || msg.includes('reset')) && !msg.includes('timeout')) {
+          dbLogger.warn('Connection drop sensed in executeQuery, resetting state', { message: error.message });
           this.isConnected = false;
           throw createError('Database connection lost', 503);
         }
