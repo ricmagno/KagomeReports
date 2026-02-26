@@ -45,10 +45,14 @@ jobs:
       - name: Build Electron (Windows)
         if: runner.os == 'Windows'
         run: npm run electron:build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build Electron (macOS)
         if: runner.os == 'macOS'
         run: npm run electron:build:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload artifacts (Windows)
         if: runner.os == 'Windows'
