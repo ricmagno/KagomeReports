@@ -290,7 +290,7 @@ export class DatabaseConfigService {
             testedAt: new Date()
           };
         },
-        RetryHandler.createDatabaseRetryOptions({ maxAttempts: 2 }),
+        RetryHandler.createDatabaseRetryOptions({ maxAttempts: 3 }),
         'database-connection-test'
       );
 

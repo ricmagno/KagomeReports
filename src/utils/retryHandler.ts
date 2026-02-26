@@ -239,7 +239,12 @@ export class RetryHandler {
         'econnrefused',
         'enotfound',
         'read econnreset',
-        'timed out'
+        'timed out',
+        'the connection is closed',
+        'invalid state',
+        'broken pipe',
+        'reset by peer',
+        'server is not responding'
       ]),
       ...overrides
     };
