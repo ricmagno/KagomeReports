@@ -254,17 +254,34 @@ export class HistorianConnection {
 
         return result;
       },
-      RetryHandler.createDatabaseRetryOptions({ maxAttempts: 3 }),
+      RetryHandler.createDatabaseRetryOptions({ maxAttempts: 5 }),
       'database-query'
     ).catch(error => {
-      dbLogger.error('Query execution failed:', { query: this.sanitizeQueryForLogging(query), error });
+      // Deeper diagnostic logging
+      dbLogger.error('Query execution failed after retries:', {
+        query: this.sanitizeQueryForLogging(query),
+        error: error instanceof Error ? {
+          message: error.message,
+          stack: error.stack,
+          // @ts-ignore - capture SQL specific properties if they exist
+          code: error.code,
+          // @ts-ignore
+          number: error.number,
+          // @ts-ignore
+          state: error.state
+        } : error
+      });
 
       // Handle specific database errors
       if (error instanceof Error) {
         if (error.message.includes('timeout')) {
           throw createError('Database query timeout', 408);
         }
-        if (error.message.includes('connection')) {
+
+        // Sense connection drops to force re-activation on next attempt
+        const msg = error.message.toLowerCase();
+        if (msg.includes('connection') || msg.includes('closed') || msg.includes('broken') || msg.includes('reset')) {
+          dbLogger.warn('Connection drop sensed in executeQuery, resetting state');
           this.isConnected = false;
           throw createError('Database connection lost', 503);
         }
