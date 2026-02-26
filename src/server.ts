@@ -11,7 +11,7 @@ if (env.DEFAULT_TIMEZONE) {
   process.env.TZ = env.DEFAULT_TIMEZONE;
 }
 
-import { initializeDatabase, closeDatabase, testDatabaseConnection } from '@/config/database';
+
 import { logger } from '@/utils/logger';
 import { errorHandler } from '@/middleware/errorHandler';
 import { requestLogger } from '@/middleware/requestLogger';
@@ -256,35 +256,7 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
     logger.warn('⚠ Cache system initialization failed, continuing without cache:', error);
   }
 
-  // 3. Database Connection Validation
-  let dbStart = Date.now();
-  try {
-    dbStart = Date.now();
-    await initializeDatabase();
-    const dbHealthy = await testDatabaseConnection();
-
-    components.push({
-      name: 'Application Database',
-      status: dbHealthy ? 'healthy' : 'unhealthy',
-      required: true,
-      duration: Date.now() - dbStart
-    });
-
-    if (dbHealthy) {
-      logger.info('✓ Application database connection established and validated');
-    } else {
-      logger.error('✗ Application database connection validation failed');
-    }
-  } catch (error) {
-    components.push({
-      name: 'Application Database',
-      status: 'unhealthy',
-      required: true,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      duration: Date.now() - dbStart
-    });
-    logger.error('✗ Application database initialization failed:', error);
-  }
+  // Application database initialization is handled by individual services (Auth, Scheduler, etc.)
 
   // 4. Historian Database Connection Validation
   let historianStart = Date.now();
@@ -531,26 +503,7 @@ async function performGracefulShutdown(signal: string): Promise<void> {
     logger.error('✗ Historian database shutdown failed:', error);
   }
 
-  // 5. Close application database connections
-  let dbStart = Date.now();
-  try {
-    dbStart = Date.now();
-    await closeDatabase();
-    shutdownSteps.push({
-      name: 'Application Database',
-      success: true,
-      duration: Date.now() - dbStart
-    });
-    logger.info('✓ Application database connections closed');
-  } catch (error) {
-    shutdownSteps.push({
-      name: 'Application Database',
-      success: false,
-      duration: Date.now() - dbStart,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-    logger.error('✗ Application database shutdown failed:', error);
-  }
+  // Application database shutdown is handled by individual services
 
   // 6. Stop User Management Service
   try {
