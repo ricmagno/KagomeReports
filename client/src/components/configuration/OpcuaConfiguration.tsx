@@ -85,7 +85,8 @@ export const OpcuaConfiguration: React.FC = () => {
                     securityPolicy: 'None',
                     authenticationMode: 'Anonymous'
                 });
-                loadConfigs();
+                // Add a small delay to ensure backend state has settled
+                setTimeout(() => loadConfigs(), 300);
             }
         } catch (err: any) {
             toastError('Failed to save configuration', err.message);
@@ -99,7 +100,8 @@ export const OpcuaConfiguration: React.FC = () => {
             const response = await apiService.activateOpcuaConfig(id);
             if (response.success) {
                 success('Configuration Activated');
-                loadConfigs();
+                // Add a small delay to ensure backend state has settled
+                setTimeout(() => loadConfigs(), 300);
             }
         } catch (err: any) {
             toastError('Activation Failed', err.message);
@@ -112,7 +114,8 @@ export const OpcuaConfiguration: React.FC = () => {
             const response = await apiService.deleteOpcuaConfig(id);
             if (response.success) {
                 success('Configuration Deleted');
-                loadConfigs();
+                // Add a small delay to ensure backend state has settled
+                setTimeout(() => loadConfigs(), 300);
             }
         } catch (err: any) {
             toastError('Delete Failed', err.message);

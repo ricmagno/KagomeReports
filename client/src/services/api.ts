@@ -66,7 +66,11 @@ export function getAuthToken(): string | null {
 
 // Enhanced fetch with retry logic and better error handling
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
+  // Add cache-busting for GET requests to prevent stale data
+  const isGet = !options?.method || options.method === 'GET';
+  const url = isGet
+    ? `${API_BASE_URL}${endpoint}${endpoint.includes('?') ? '&' : '?'}_t=${Date.now()}`
+    : `${API_BASE_URL}${endpoint}`;
 
   const defaultHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
