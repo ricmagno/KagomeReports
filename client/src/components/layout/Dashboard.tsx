@@ -44,7 +44,6 @@ import { TagSelector } from '../forms/TagSelector';
 import { apiService } from '../../services/api';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
-import { ToastContainer } from '../ui/ToastContainer';
 import { cn } from '../../utils/cn';
 
 interface DashboardProps {
@@ -62,7 +61,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const [serverTime, setServerTime] = useState<{ local: string, timezone: string } | null>(null);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginLoading, setLoginLoading] = useState(false);
-  const { toasts, removeToast, success, error: toastError, warning, info } = useToast();
+  const { success, error: toastError, warning, info } = useToast();
   const [reportConfig, setReportConfig] = useState<Partial<ReportConfig>>({
     name: '',
     description: '',
@@ -1315,7 +1314,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           </>
         )}
       </main>
-      <ToastContainer toasts={toasts} onClose={id => removeToast(id)} />
 
       {/* Format Selection Dialog for Saved Reports */}
       <FormatSelectionDialog

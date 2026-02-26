@@ -6,8 +6,8 @@ import {
     OpcuaConfig,
 } from '@/types/opcuaConfig';
 import { encryptionService } from '@/services/encryptionService';
-import { apiLogger } from '@/utils/logger';
-import { env } from '@/config/environment';
+import { apiLogger, logger } from '@/utils/logger';
+import { env, getDatabasePath } from '@/config/environment';
 import { createError } from '@/middleware/errorHandler';
 
 export class OpcuaConfigService {
@@ -109,7 +109,7 @@ export class OpcuaConfigService {
     }
 
     private async loadConfigurations(): Promise<void> {
-        const configFile = path.join(env.DATA_DIR, this.configFileName);
+        const configFile = getDatabasePath(this.configFileName);
         try {
             const data = await fs.readFile(configFile, 'utf-8');
             const parsed = JSON.parse(data);
@@ -129,13 +129,39 @@ export class OpcuaConfigService {
     }
 
     private async persistConfigurations(): Promise<void> {
-        const configFile = path.join(env.DATA_DIR, this.configFileName);
-        const data = {
-            configurations: Array.from(this.configurations.values()),
-            activeConfigId: this.activeConfigId,
-            lastUpdated: new Date().toISOString()
-        };
-        await fs.writeFile(configFile, JSON.stringify(data, null, 2));
+        const configFile = getDatabasePath(this.configFileName);
+        try {
+            // Ensure data directory exists
+            if (!this.isInitialized) {
+                const dataDir = path.dirname(configFile);
+                try {
+                    const { fs: fsSync } = require('fs');
+                    if (!fsSync.existsSync(dataDir)) {
+                        apiLogger.info(`Creating missing directory for OPC UA configs: ${dataDir}`);
+                        fsSync.mkdirSync(dataDir, { recursive: true });
+                    }
+                } catch (e) {
+                    apiLogger.warn('Sync directory check failed in ConfigService', e);
+                }
+            }
+
+            const data = {
+                configurations: Array.from(this.configurations.values()),
+                activeConfigId: this.activeConfigId,
+                lastUpdated: new Date().toISOString()
+            };
+
+            await fs.writeFile(configFile, JSON.stringify(data, null, 2));
+            apiLogger.debug(`OPC UA configurations persisted to ${configFile}`);
+        } catch (error: any) {
+            apiLogger.error('Failed to persist OPC UA configurations', {
+                error: error.message,
+                code: error.code,
+                errno: error.errno,
+                path: configFile
+            });
+            throw createError('Failed to save configurations to disk', 500);
+        }
     }
 
     async initializeActiveConnection(): Promise<void> {

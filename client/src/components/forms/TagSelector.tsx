@@ -93,7 +93,7 @@ export const TagSelector: React.FC<TagSelectorProps> = ({
       };
       fetchOpcua();
     }
-  }, [opcuaPath, tagSourceTab, widgetType]);
+  }, [opcuaPath, tagSourceTab, widgetType, isLiveWidget]);
 
   // Click outside handler
   useEffect(() => {

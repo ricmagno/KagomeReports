@@ -119,6 +119,23 @@ interface SystemHealth {
 }
 
 /**
+ * Helper to check if a directory is writable by creating and deleting a temp file
+ */
+function checkDirectoryWritability(dirPath: string): { writable: boolean; error?: string } {
+  try {
+    const tempFile = path.join(dirPath, `.write_test_${Date.now()}`);
+    fs.writeFileSync(tempFile, 'test');
+    fs.unlinkSync(tempFile);
+    return { writable: true };
+  } catch (error) {
+    return {
+      writable: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+/**
  * Validate all system dependencies during startup
  */
 async function validateStartupDependencies(): Promise<SystemHealth> {
@@ -130,6 +147,49 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
   // Setup database configuration integration
   setupDatabaseConfigIntegration();
   logger.info('✓ Database configuration integration setup completed');
+
+  // 0. Directory existence validation
+  const directoriesStart = Date.now();
+  try {
+    const requiredDirs = [
+      { path: env.DATA_DIR, name: 'Data Directory' },
+      { path: env.REPORTS_DIR, name: 'Reports Directory' },
+      { path: env.TEMP_DIR, name: 'Temporary Directory' }
+    ];
+
+    for (const dir of requiredDirs) {
+      const absolutePath = path.resolve(dir.path);
+      if (!fs.existsSync(absolutePath)) {
+        logger.info(`Creating missing directory: ${dir.name} (${absolutePath})`);
+        fs.mkdirSync(absolutePath, { recursive: true });
+      } else {
+        logger.info(`Validating existing directory: ${dir.name} (${absolutePath})`);
+      }
+
+      // Perform writability check
+      const writeTest = checkDirectoryWritability(absolutePath);
+      if (!writeTest.writable) {
+        throw new Error(`Directory ${dir.name} (${absolutePath}) is NOT WRITABLE: ${writeTest.error}`);
+      }
+    }
+
+    components.push({
+      name: 'FileSystem Directories',
+      status: 'healthy',
+      required: true,
+      duration: Date.now() - directoriesStart
+    });
+    logger.info('✓ Required file system directories validated/created');
+  } catch (error) {
+    components.push({
+      name: 'FileSystem Directories',
+      status: 'unhealthy',
+      required: true,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      duration: Date.now() - directoriesStart
+    });
+    logger.error('✗ File system directory validation failed:', error);
+  }
 
   // Seed initial users
   try {

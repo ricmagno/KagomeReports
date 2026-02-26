@@ -30,7 +30,8 @@ router.post('/configs', [
     return res.status(201).json({ success: true, data: { id: configId } });
 }));
 
-router.post('/test', asyncHandler(async (req: Request, res: Response) => {
+router.post('/test-connection', asyncHandler(async (req: Request, res: Response) => {
+    apiLogger.info('Testing OPC UA connection...', { endpoint: req.body.endpointUrl });
     try {
         await opcuaService.connect(req.body);
         await opcuaService.disconnect();
@@ -52,6 +53,18 @@ router.post('/activate/:id', requireRole('admin'), asyncHandler(async (req: Requ
     const config = await opcuaConfigService.loadConfiguration(id);
     await opcuaService.connect(config);
     return res.json({ success: true, message: 'Configuration activated' });
+}));
+
+router.delete('/configs/:id', requireRole('admin'), asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const id = req.params.id as string;
+        apiLogger.info(`Deleting OPC UA configuration: ${id}`);
+        await opcuaConfigService.deleteConfiguration(id);
+        res.json({ success: true, message: 'Configuration deleted' });
+    } catch (error: any) {
+        apiLogger.error(`Failed to delete OPC UA configuration: ${req.params.id}`, error);
+        res.status(error.statusCode || 500).json({ success: false, message: error.message });
+    }
 }));
 
 export default router;

@@ -942,7 +942,7 @@ export const apiService = {
   },
 
   async testOpcuaConnection(config: OpcuaConfig): Promise<ApiResponse<{ success: boolean; message: string }>> {
-    return fetchWithRetry('/opcua/test-connection', {
+    return fetchApi('/opcua/test-connection', {
       method: 'POST',
       body: JSON.stringify(config),
     });
