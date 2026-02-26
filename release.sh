@@ -42,7 +42,7 @@ fi
 # 3. Commit and Tag
 echo "💾 Committing version changes..."
 git add package.json Dockerfile "$MANIFEST" 2>/dev/null || git add package.json Dockerfile
-git commit -m "Chore: Release version $VERSION"
+git commit -m "Chore: Release version $VERSION" --allow-empty
 
 echo "🏷️ Creating git tag $VERSION..."
 git tag -d "v$VERSION" 2>/dev/null || true
