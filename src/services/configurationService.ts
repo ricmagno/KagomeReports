@@ -31,64 +31,6 @@ const SENSITIVE_PATTERNS = [
  * Defines all known configurations with descriptions, categories, and constraints
  */
 const CONFIGURATION_METADATA: Record<string, ConfigurationMetadata> = {
-  // Database Configuration
-  DB_HOST: {
-    name: 'Database Host',
-    description: 'Hostname or IP address of the AVEVA Historian database server',
-    category: ConfigurationCategory.Database,
-    dataType: 'string',
-    isSensitive: false,
-    environmentVariable: 'DB_HOST'
-  },
-  DB_PORT: {
-    name: 'Database Port',
-    description: 'Port number for the database server connection',
-    category: ConfigurationCategory.Database,
-    dataType: 'number',
-    isSensitive: false,
-    constraints: 'Valid port number (1-65535)',
-    environmentVariable: 'DB_PORT'
-  },
-  DB_NAME: {
-    name: 'Database Name',
-    description: 'Name of the AVEVA Historian database',
-    category: ConfigurationCategory.Database,
-    dataType: 'string',
-    isSensitive: false,
-    environmentVariable: 'DB_NAME'
-  },
-  DB_USER: {
-    name: 'Database User',
-    description: 'Username for database authentication',
-    category: ConfigurationCategory.Database,
-    dataType: 'string',
-    isSensitive: false,
-    environmentVariable: 'DB_USER'
-  },
-  DB_PASSWORD: {
-    name: 'Database Password',
-    description: 'Password for database user authentication',
-    category: ConfigurationCategory.Database,
-    dataType: 'string',
-    isSensitive: true,
-    environmentVariable: 'DB_PASSWORD'
-  },
-  DB_ENCRYPT: {
-    name: 'Database Encryption',
-    description: 'Enable encryption for database connection',
-    category: ConfigurationCategory.Database,
-    dataType: 'boolean',
-    isSensitive: false,
-    environmentVariable: 'DB_ENCRYPT'
-  },
-  DB_TRUST_SERVER_CERTIFICATE: {
-    name: 'Trust Server Certificate',
-    description: 'Trust self-signed server certificates',
-    category: ConfigurationCategory.Database,
-    dataType: 'boolean',
-    isSensitive: false,
-    environmentVariable: 'DB_TRUST_SERVER_CERTIFICATE'
-  },
 
   // Application Configuration
   NODE_ENV: {
@@ -275,33 +217,6 @@ const CONFIGURATION_METADATA: Record<string, ConfigurationMetadata> = {
     constraints: 'Seconds',
     environmentVariable: 'CACHE_DEFAULT_TTL'
   },
-  DB_POOL_MIN: {
-    name: 'Database Pool Minimum',
-    description: 'Minimum number of connections in the database pool',
-    category: ConfigurationCategory.Performance,
-    dataType: 'number',
-    isSensitive: false,
-    constraints: '1-50 connections',
-    environmentVariable: 'DB_POOL_MIN'
-  },
-  DB_POOL_MAX: {
-    name: 'Database Pool Maximum',
-    description: 'Maximum number of connections in the database pool',
-    category: ConfigurationCategory.Performance,
-    dataType: 'number',
-    isSensitive: false,
-    constraints: '2-100 connections',
-    environmentVariable: 'DB_POOL_MAX'
-  },
-  DB_TIMEOUT_MS: {
-    name: 'Database Timeout',
-    description: 'Database query timeout in milliseconds',
-    category: ConfigurationCategory.Performance,
-    dataType: 'number',
-    isSensitive: false,
-    constraints: '5000-300000 ms',
-    environmentVariable: 'DB_TIMEOUT_MS'
-  },
   CACHE_TTL_SECONDS: {
     name: 'Cache TTL',
     description: 'Cache time-to-live in seconds',
@@ -423,13 +338,6 @@ function isDefaultValue(name: string, value: string): boolean {
  */
 function requiresRestart(envVar: string): boolean {
   const requiresRestartConfigs = [
-    'DB_HOST',
-    'DB_PORT',
-    'DB_NAME',
-    'DB_USER',
-    'DB_PASSWORD',
-    'DB_ENCRYPT',
-    'DB_TRUST_SERVER_CERTIFICATE',
     'NODE_ENV',
     'PORT',
     'JWT_SECRET',
@@ -441,9 +349,6 @@ function requiresRestart(envVar: string): boolean {
     'SMTP_PASSWORD',
     'REPORTS_DIR',
     'TEMP_DIR',
-    'DB_POOL_MIN',
-    'DB_POOL_MAX',
-    'DB_TIMEOUT_MS',
     'REDIS_HOST',
     'REDIS_PORT',
     'REDIS_PASSWORD',
@@ -483,7 +388,7 @@ export class ConfigurationService {
       // Load all environment variables
       for (const [envVar, value] of Object.entries(process.env)) {
         const metadata = CONFIGURATION_METADATA[envVar];
-        
+
         if (!metadata) {
           // Skip unknown environment variables
           continue;
@@ -509,7 +414,7 @@ export class ConfigurationService {
 
       // Group by category
       const groups = this.groupByCategory(configurations);
-      
+
       dbLogger.info(`Retrieved ${configurations.length} configurations in ${groups.length} categories`);
       return groups;
     } catch (error) {

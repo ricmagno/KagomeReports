@@ -55,7 +55,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'dashboards' | 'schedules' | 'users' | 'configuration' | 'about'>('create');
   const [dashboardViewMode, setDashboardViewMode] = useState<'list' | 'view' | 'edit'>('list');
   const [selectedDashboardId, setSelectedDashboardId] = useState<string | null>(null);
-  const [dbActiveTab, setDbActiveTab] = useState<'status' | 'config'>('status');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [healthStatus, setHealthStatus] = useState<string>('checking...');
   const [serverTime, setServerTime] = useState<{ local: string, timezone: string } | null>(null);

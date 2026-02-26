@@ -6,15 +6,6 @@ dotenv.config();
 
 // Environment validation schema
 const envSchema = z.object({
-  // Database Configuration
-  DB_HOST: z.string().min(1, 'Database host is required'),
-  DB_PORT: z.coerce.number().int().min(1).max(65535),
-  DB_NAME: z.string().min(1, 'Database name is required'),
-  DB_USER: z.string().min(1, 'Database user is required'),
-  DB_PASSWORD: z.string().min(1, 'Database password is required'),
-  DB_ENCRYPT: z.coerce.boolean().default(true),
-  DB_TRUST_SERVER_CERTIFICATE: z.coerce.boolean().default(false),
-
   // Application Configuration
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),

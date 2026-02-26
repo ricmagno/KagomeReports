@@ -25,6 +25,7 @@ import {
   ConnectionMetadata,
   SecurityNotice,
 } from '@/types/reportExportImport';
+import { databaseConfigService } from '@/services/databaseConfigService';
 import { logger } from '@/utils/logger';
 import { version as appVersion } from '../../package.json';
 import { env } from '@/config/environment';
@@ -183,9 +184,11 @@ export class ConfigExportService {
       ? config.timeRange.endTime
       : new Date(config.timeRange.endTime);
 
+    const activeConfig = databaseConfigService.getActiveConfiguration();
+
     return {
-      server: env.DB_HOST,
-      database: env.DB_NAME,
+      server: activeConfig?.host || 'NOT_CONFIGURED',
+      database: activeConfig?.database || 'Runtime',
       tags: config.tags,
       startTime,
       endTime,
@@ -365,9 +368,11 @@ in
    * @private
    */
   private buildConnectionMetadata(): ConnectionMetadata {
+    const activeConfig = databaseConfigService.getActiveConfiguration();
+
     return {
-      databaseServer: env.DB_HOST,
-      databaseName: env.DB_NAME,
+      databaseServer: activeConfig?.host || 'NOT_CONFIGURED',
+      databaseName: activeConfig?.database || 'Runtime',
       smtpServer: env.SMTP_HOST,
       smtpPort: env.SMTP_PORT,
     };
@@ -384,10 +389,10 @@ in
     return {
       message: 'SECURITY NOTICE: This exported configuration does NOT contain sensitive credentials (database passwords, SMTP passwords, or user credentials). You must configure these separately in your application environment.',
       instructions: [
-        'Database credentials (DB_USER, DB_PASSWORD) must be configured in your environment variables or .env file',
+        'Database credentials (Username, Password) must be configured in the Historian Configuration tab',
         'SMTP credentials (SMTP_USER, SMTP_PASSWORD) must be configured in your environment variables or .env file',
         'Connection metadata (server addresses, database names) is included for reference only',
-        'When importing this configuration, the application will use its current database and SMTP connection settings',
+        'When importing this configuration, the application will use its current active Historian connection',
         'Never share files containing credentials. This export is safe to share as it contains no sensitive information',
       ],
     };

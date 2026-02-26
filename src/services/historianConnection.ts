@@ -5,7 +5,6 @@
  */
 
 import { ConnectionPool, Request, IResult } from 'mssql';
-import { getDatabase, testDatabaseConnection } from '@/config/database';
 import { dbLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
 import { RetryHandler, RetryOptions } from '@/utils/retryHandler';
@@ -74,17 +73,10 @@ export class HistorianConnection {
               this.pool = await databaseConfigService.getActiveConnectionPool();
               this.currentConfigId = activeConfig.id;
             } else {
-              dbLogger.info('No active database configuration found, using environment configuration');
+              dbLogger.warn('No active database configuration found. Please configure and activate a connection in the Historian configuration tab.');
 
-              // Fall back to environment-based configuration
-              this.pool = getDatabase();
-              this.currentConfigId = null;
-
-              // Test the connection
-              const isHealthy = await testDatabaseConnection();
-              if (!isHealthy) {
-                throw createError('Database connection test failed', 503);
-              }
+              // Without an active configuration, we can't connect
+              throw createError('No active database configuration found. Historian connection required.', 503);
             }
 
             this.isConnected = true;

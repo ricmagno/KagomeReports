@@ -6,7 +6,6 @@
 
 import { Router, Request, Response } from 'express';
 import { getHistorianConnection } from '@/services/historianConnection';
-import { testDatabaseConnection } from '@/config/database';
 import { cacheManager } from '@/services/cacheManager';
 import { apiLogger } from '@/utils/logger';
 import { asyncHandler } from '@/middleware/errorHandler';
@@ -30,7 +29,6 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     uptime: process.uptime(),
     memory: process.memoryUsage(),
     services: {
-      database: 'unknown',
       historian: 'unknown',
       cache: 'unknown'
     },
@@ -42,14 +40,6 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     }
   };
 
-  // Test database connection
-  try {
-    const dbHealthy = await testDatabaseConnection();
-    healthStatus.services.database = dbHealthy ? 'healthy' : 'unhealthy';
-  } catch (error) {
-    healthStatus.services.database = 'unhealthy';
-    apiLogger.warn('Database health check failed:', error);
-  }
 
   // Test historian connection
   try {
@@ -101,11 +91,6 @@ router.get('/detailed', asyncHandler(async (req: Request, res: Response) => {
       nodeVersion: process.version
     },
     services: {
-      database: {
-        status: 'unknown',
-        connectionPool: null as any,
-        lastCheck: null as string | null
-      },
       historian: {
         status: 'unknown',
         connectionStatus: null as any,
@@ -127,26 +112,6 @@ router.get('/detailed', asyncHandler(async (req: Request, res: Response) => {
     }
   };
 
-  // Detailed database check
-  try {
-    const dbHealthy = await testDatabaseConnection();
-    detailedHealth.services.database = {
-      status: dbHealthy ? 'healthy' : 'unhealthy',
-      connectionPool: {
-        host: env.DB_HOST,
-        port: env.DB_PORT,
-        database: env.DB_NAME,
-        poolMin: env.DB_POOL_MIN,
-        poolMax: env.DB_POOL_MAX,
-        timeout: env.DB_TIMEOUT_MS
-      },
-      lastCheck: new Date().toISOString()
-    };
-  } catch (error) {
-    detailedHealth.services.database.status = 'unhealthy';
-    detailedHealth.services.database.lastCheck = new Date().toISOString();
-    apiLogger.warn('Detailed database health check failed:', error);
-  }
 
   // Detailed historian check
   try {
@@ -195,58 +160,6 @@ router.get('/detailed', asyncHandler(async (req: Request, res: Response) => {
   res.status(statusCode).json(detailedHealth);
 }));
 
-/**
- * GET /api/health/database
- * Database-specific health check
- */
-router.get('/database', asyncHandler(async (req: Request, res: Response) => {
-  const dbHealth = {
-    status: 'unknown',
-    timestamp: new Date().toISOString(),
-    connection: {
-      host: env.DB_HOST,
-      port: env.DB_PORT,
-      database: env.DB_NAME,
-      encrypted: env.DB_ENCRYPT
-    },
-    pool: {
-      min: env.DB_POOL_MIN,
-      max: env.DB_POOL_MAX,
-      timeout: env.DB_TIMEOUT_MS
-    },
-    test: {
-      successful: false,
-      duration: 0,
-      error: null as string | null
-    }
-  };
-
-  const startTime = Date.now();
-
-  try {
-    const isHealthy = await testDatabaseConnection();
-    const duration = Date.now() - startTime;
-
-    dbHealth.status = isHealthy ? 'healthy' : 'unhealthy';
-    dbHealth.test = {
-      successful: isHealthy,
-      duration,
-      error: null
-    };
-  } catch (error) {
-    const duration = Date.now() - startTime;
-
-    dbHealth.status = 'unhealthy';
-    dbHealth.test = {
-      successful: false,
-      duration,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    };
-  }
-
-  const statusCode = dbHealth.status === 'healthy' ? 200 : 503;
-  res.status(statusCode).json(dbHealth);
-}));
 
 /**
  * GET /api/health/historian

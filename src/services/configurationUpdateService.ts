@@ -172,13 +172,6 @@ export class ConfigurationUpdateService {
   private requiresRestart(configName: string): boolean {
     // Configurations that require restart
     const requiresRestartConfigs = [
-      'DB_HOST',
-      'DB_PORT',
-      'DB_NAME',
-      'DB_USER',
-      'DB_PASSWORD',
-      'DB_ENCRYPT',
-      'DB_TRUST_SERVER_CERTIFICATE',
       'NODE_ENV',
       'PORT',
       'JWT_SECRET',
@@ -190,9 +183,7 @@ export class ConfigurationUpdateService {
       'SMTP_PASSWORD',
       'REPORTS_DIR',
       'TEMP_DIR',
-      'DB_POOL_MIN',
-      'DB_POOL_MAX',
-      'DB_TIMEOUT_MS',
+      'TEMP_DIR',
       'REDIS_HOST',
       'REDIS_PORT',
       'REDIS_PASSWORD',
