@@ -25,31 +25,46 @@ echo "🚀 Starting release process for version $VERSION..."
 
 # 2. Update Versions
 echo "📝 Updating version in package.json..."
-# Use a more flexible regex for JSON to handle spaces
 sed -i '' "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
 
 echo "📝 Updating version label in Dockerfile..."
-# Match anything starting with 'version=' including spaces
 sed -i '' "s/[[:space:]]*version=\".*\"/    version=\"$VERSION\"/" Dockerfile
 
 echo "📝 Updating version in Kubernetes manifest..."
-sed -i '' "s|image: ghcr.io/ricmagno/kagomereports:.*|image: ghcr.io/ricmagno/kagomereports:$VERSION|" Kubernets/historian-reports-deployment.yaml
+# Updated path to match current structure
+MANIFEST="Kubernets/historian-reports-deployment.yaml"
+if [ -f "$MANIFEST" ]; then
+    sed -i '' "s|image: ghcr.io/ricmagno/kagomereports:.*|image: ghcr.io/ricmagno/kagomereports:$VERSION|" "$MANIFEST"
+else
+    echo "⚠️ Warning: $MANIFEST not found, skipping manifest update."
+fi
 
 # 3. Commit and Tag
 echo "💾 Committing version changes..."
-git add package.json Dockerfile Kubernets/historian-reports-deployment.yaml
+git add package.json Dockerfile "$MANIFEST" 2>/dev/null || git add package.json Dockerfile
 git commit -m "Chore: Release version $VERSION"
 
 echo "🏷️ Creating git tag $VERSION..."
-git tag -d "$VERSION" 2>/dev/null || true
-git tag "$VERSION"
+git tag -d "v$VERSION" 2>/dev/null || true
+git tag "v$VERSION"
 
-echo "⬆️ Pushing to GitHub (this triggers the Docker build)..."
-git push origin mobile
-git push origin "$VERSION" --force
+echo "⬆️ Pushing to GitHub..."
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+echo "   Pushing to current branch: $CURRENT_BRANCH"
+git push origin "$CURRENT_BRANCH"
+
+if [ "$CURRENT_BRANCH" != "main" ]; then
+    echo "   Syncing with main for autodeploy..."
+    git checkout main
+    git merge "$CURRENT_BRANCH"
+    git push origin main
+    git checkout "$CURRENT_BRANCH"
+fi
+
+git push origin "v$VERSION" --force
 
 echo "📦 Creating GitHub Release..."
-gh release create "$VERSION" --title "Release $VERSION" --notes "Automated release for version $VERSION" || echo "⚠️ Release already exists or gh CLI not authenticated"
+gh release create "v$VERSION" --title "Release v$VERSION" --notes "Automated release for version $VERSION" || echo "⚠️ Release already exists or gh CLI not authenticated"
 
 echo "----------------------------------------------------------------------"
 echo "✅ Step 1/2 Complete: Code is pushed and Tag is created."
