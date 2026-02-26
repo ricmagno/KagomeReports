@@ -15,7 +15,8 @@ export interface OpcuaConfiguration {
     createdBy: string;
     createdAt: Date;
     lastTested?: Date | undefined;
-    status: 'connected' | 'disconnected' | 'error' | 'untested';
+    status: 'connected' | 'disconnected' | 'error' | 'untested' | 'failed';
+    lastError?: string | undefined;
 }
 
 export interface OpcuaConfig {

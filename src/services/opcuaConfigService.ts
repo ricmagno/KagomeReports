@@ -23,9 +23,10 @@ export class OpcuaConfigService {
     async saveConfiguration(config: OpcuaConfig, userId: string): Promise<string> {
         try {
             const configId = config.id || uuidv4();
-            const isUpdate = !!config.id && this.configurations.has(configId);
+            const existingConfig = this.configurations.get(configId);
+            const isUpdate = !!existingConfig;
 
-            let encryptedPassword: string | undefined;
+            let encryptedPassword: string | undefined = existingConfig?.encryptedPassword;
             if (config.password) {
                 encryptedPassword = JSON.stringify(encryptionService.encrypt(config.password));
             }
@@ -39,10 +40,12 @@ export class OpcuaConfigService {
                 authenticationMode: config.authenticationMode,
                 username: config.username || '',
                 encryptedPassword,
-                isActive: false,
+                isActive: existingConfig?.isActive || false,
                 createdBy: userId,
-                createdAt: isUpdate ? this.configurations.get(configId)!.createdAt : new Date(),
-                status: 'untested'
+                createdAt: existingConfig ? existingConfig.createdAt : new Date(),
+                status: existingConfig ? existingConfig.status : 'untested',
+                lastTested: existingConfig?.lastTested,
+                lastError: existingConfig?.lastError
             };
 
             this.configurations.set(configId, opcuaConfig);

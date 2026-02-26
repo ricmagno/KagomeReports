@@ -11,7 +11,9 @@ import {
     RefreshCw,
     Shield,
     Key,
-    Globe
+    Globe,
+    Pencil,
+    X
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -26,6 +28,7 @@ export const OpcuaConfiguration: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
     const [isTesting, setIsTesting] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
     const { success, error: toastError, info } = useToast();
 
     const [newConfig, setNewConfig] = useState<OpcuaConfig>({
@@ -75,24 +78,58 @@ export const OpcuaConfiguration: React.FC = () => {
         e.preventDefault();
         try {
             setIsSaving(true);
-            const response = await apiService.saveOpcuaConfig(newConfig);
+            const configToSave = {
+                ...newConfig,
+                id: editingConfigId || undefined
+            };
+            const response = await apiService.saveOpcuaConfig(configToSave);
             if (response.success) {
-                success('Configuration Saved');
+                success(editingConfigId ? 'Configuration Updated' : 'Configuration Saved');
                 setNewConfig({
                     name: '',
                     endpointUrl: 'opc.tcp://localhost:4840',
                     securityMode: 'None',
                     securityPolicy: 'None',
-                    authenticationMode: 'Anonymous'
+                    authenticationMode: 'Anonymous',
+                    username: '',
+                    password: ''
                 });
+                setEditingConfigId(null);
                 // Add a small delay to ensure backend state has settled
                 setTimeout(() => loadConfigs(), 300);
             }
         } catch (err: any) {
-            toastError('Failed to save configuration', err.message);
+            toastError(editingConfigId ? 'Failed to update configuration' : 'Failed to save configuration', err.message);
         } finally {
             setIsSaving(false);
         }
+    };
+
+    const handleEditClick = (config: OpcuaConfigType) => {
+        setEditingConfigId(config.id);
+        setNewConfig({
+            name: config.name,
+            endpointUrl: config.endpointUrl,
+            securityMode: config.securityMode,
+            securityPolicy: config.securityPolicy,
+            authenticationMode: config.authenticationMode,
+            username: config.username,
+            password: '' // Keep empty unless changed
+        });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleCancelEdit = () => {
+        setEditingConfigId(null);
+        setNewConfig({
+            name: '',
+            endpointUrl: 'opc.tcp://localhost:4840',
+            securityMode: 'None',
+            securityPolicy: 'None',
+            authenticationMode: 'Anonymous',
+            username: '',
+            password: ''
+        });
     };
 
     const handleActivateConfig = async (id: string) => {
@@ -116,6 +153,9 @@ export const OpcuaConfiguration: React.FC = () => {
                 success('Configuration Deleted');
                 // Add a small delay to ensure backend state has settled
                 setTimeout(() => loadConfigs(), 300);
+                if (editingConfigId === id) {
+                    handleCancelEdit();
+                }
             }
         } catch (err: any) {
             toastError('Delete Failed', err.message);
@@ -127,12 +167,19 @@ export const OpcuaConfiguration: React.FC = () => {
             <Card>
                 <CardHeader>
                     <div className="flex items-center space-x-2">
-                        <Plus className="h-5 w-5 text-primary-600" />
-                        <h2 className="text-xl font-semibold">Add New OPC UA Server</h2>
+                        {editingConfigId ? (
+                            <Pencil className="h-5 w-5 text-primary-600" />
+                        ) : (
+                            <Plus className="h-5 w-5 text-primary-600" />
+                        )}
+                        <h2 className="text-xl font-semibold">
+                            {editingConfigId ? 'Edit OPC UA Server' : 'Add New OPC UA Server'}
+                        </h2>
                     </div>
                 </CardHeader>
                 <CardContent>
                     <form onSubmit={handleSaveConfig} className="space-y-4">
+                        {/* ... (keep existing form fields) ... */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <label className="text-sm font-medium">Configuration Name</label>
@@ -209,23 +256,33 @@ export const OpcuaConfiguration: React.FC = () => {
                                         type="password"
                                         value={newConfig.password}
                                         onChange={e => setNewConfig({ ...newConfig, password: e.target.value })}
-                                        placeholder="••••••••"
+                                        placeholder={editingConfigId ? "Leave empty to keep current" : "••••••••"}
                                     />
                                 </div>
                             </div>
                         )}
 
                         <div className="flex justify-end space-x-3">
+                            {editingConfigId && (
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    onClick={handleCancelEdit}
+                                    className="text-gray-500 hover:text-gray-700"
+                                >
+                                    <X className="h-4 w-4 mr-2" /> Cancel
+                                </Button>
+                            )}
                             <Button
                                 type="button"
                                 variant="outline"
-                                onClick={() => handleTestConnection(newConfig)}
-                                loading={isTesting === 'new'}
+                                onClick={() => handleTestConnection(newConfig, editingConfigId || 'new')}
+                                loading={isTesting === (editingConfigId || 'new')}
                             >
                                 Test Connection
                             </Button>
                             <Button type="submit" loading={isSaving}>
-                                Save Configuration
+                                {editingConfigId ? 'Update Configuration' : 'Save Configuration'}
                             </Button>
                         </div>
                     </form>
@@ -238,6 +295,7 @@ export const OpcuaConfiguration: React.FC = () => {
                     Configured OPC UA Servers
                 </h3>
 
+                {/* ... (isLoading / configs.length logic) ... */}
                 {isLoading ? (
                     <div className="flex justify-center py-8">
                         <RefreshCw className="h-8 w-8 animate-spin text-primary-600" />
@@ -252,7 +310,8 @@ export const OpcuaConfiguration: React.FC = () => {
                         {configs.map(config => (
                             <Card key={config.id} className={cn(
                                 "border-l-4 transition-shadow hover:shadow-md",
-                                config.isActive ? "border-l-green-500" : "border-l-gray-300"
+                                config.isActive ? "border-l-green-500" : "border-l-gray-300",
+                                editingConfigId === config.id && "ring-2 ring-primary-500"
                             )}>
                                 <CardContent className="p-4">
                                     <div className="flex items-start justify-between">
@@ -288,6 +347,15 @@ export const OpcuaConfiguration: React.FC = () => {
                                             >
                                                 <Play className="h-4 w-4" />
                                             </Button>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleEditClick(config)}
+                                                className={cn(editingConfigId === config.id && "bg-primary-50 text-primary-600")}
+                                                title="Edit Configuration"
+                                            >
+                                                <Pencil className="h-4 w-4" />
+                                            </Button>
                                             {!config.isActive && (
                                                 <Button
                                                     variant="secondary"
@@ -309,7 +377,7 @@ export const OpcuaConfiguration: React.FC = () => {
                                             </Button>
                                         </div>
                                     </div>
-
+                                    {/* Error reporting ... */}
                                     {config.status === 'failed' && config.lastError && (
                                         <div className="mt-3 p-2 bg-red-50 border border-red-100 rounded text-xs text-red-700 flex items-start">
                                             <AlertTriangle className="h-3.5 w-3.5 mr-2 mt-0.5 flex-shrink-0" />
