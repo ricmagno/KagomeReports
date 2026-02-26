@@ -16,6 +16,7 @@ export interface UserManagementUser {
   id: string;
   username: string;
   email: string;
+  mobile?: string;
   firstName: string;
   lastName: string;
   role: 'admin' | 'user' | 'view-only';
@@ -33,6 +34,7 @@ export interface UserManagementUser {
 export interface CreateUserRequest {
   username: string;
   email: string;
+  mobile?: string | undefined;
   firstName: string;
   lastName: string;
   password: string;
@@ -42,6 +44,7 @@ export interface CreateUserRequest {
 
 export interface UpdateUserRequest {
   email?: string | undefined;
+  mobile?: string | undefined;
   firstName?: string | undefined;
   lastName?: string | undefined;
   role?: 'admin' | 'user' | 'view-only' | undefined;
@@ -52,6 +55,7 @@ export interface UserResponse {
   id: string;
   username: string;
   email: string;
+  mobile?: string;
   firstName: string;
   lastName: string;
   role: 'admin' | 'user' | 'view-only';
@@ -112,13 +116,14 @@ export class UserManagementService {
       await new Promise<void>((resolve, reject) => {
         this.db.run(
           `INSERT INTO users (
-            id, username, email, first_name, last_name, role, password_hash,
+            id, username, email, mobile, first_name, last_name, role, password_hash,
             is_active, is_view_only, parent_user_id, auto_login_enabled, require_password_change
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             userId,
             userData.username,
             userData.email,
+            userData.mobile || null,
             userData.firstName,
             userData.lastName,
             userData.role,
@@ -281,6 +286,10 @@ export class UserManagementService {
         updates.push('email = ?');
         params.push(userData.email);
       }
+      if (userData.mobile !== undefined) {
+        updates.push('mobile = ?');
+        params.push(userData.mobile || null);
+      }
       if (userData.firstName !== undefined) {
         updates.push('first_name = ?');
         params.push(userData.firstName);
@@ -399,7 +408,7 @@ export class UserManagementService {
    */
   private async getUserByUsername(username: string): Promise<UserResponse | null> {
     return new Promise((resolve, reject) => {
-      this.db.get('SELECT * FROM users WHERE username = ?', [username], (err, row: any) => {
+      this.db.get('SELECT * FROM users WHERE username = ? COLLATE NOCASE', [username], (err, row: any) => {
         if (err) {
           reject(err);
         } else {
@@ -414,7 +423,7 @@ export class UserManagementService {
    */
   private async getUserByEmail(email: string): Promise<UserResponse | null> {
     return new Promise((resolve, reject) => {
-      this.db.get('SELECT * FROM users WHERE email = ?', [email], (err, row: any) => {
+      this.db.get('SELECT * FROM users WHERE email = ? COLLATE NOCASE', [email], (err, row: any) => {
         if (err) {
           reject(err);
         } else {
@@ -659,16 +668,32 @@ export class UserManagementService {
           firstName: 'Supervisor',
           lastName: 'User',
           role: 'user' as const
+        },
+        {
+          username: 'Maintenance',
+          password: 'maintenance',
+          email: 'maintenance@historian.local',
+          firstName: 'Maintenance',
+          lastName: 'User',
+          role: 'user' as const
         }
       ];
 
       for (const userData of users) {
-        const exists = await this.getUserByUsername(userData.username);
-        if (!exists) {
+        const [usernameExists, emailExists] = await Promise.all([
+          this.getUserByUsername(userData.username),
+          this.getUserByEmail(userData.email)
+        ]);
+
+        if (!usernameExists && !emailExists) {
           await this.createUser(userData);
           apiLogger.info('Initial user seeded', { username: userData.username, role: userData.role });
         } else {
-          apiLogger.info('Initial user already exists', { username: userData.username });
+          apiLogger.info('Initial user already exists or email in use', {
+            username: userData.username,
+            usernameExists: !!usernameExists,
+            emailExists: !!emailExists
+          });
         }
       }
 
@@ -687,6 +712,7 @@ export class UserManagementService {
       id: row.id,
       username: row.username,
       email: row.email,
+      mobile: row.mobile || undefined,
       firstName: row.first_name,
       lastName: row.last_name,
       role: row.role,
@@ -713,6 +739,7 @@ export class UserManagementService {
       id: row.id,
       username: row.username,
       email: row.email,
+      mobile: row.mobile || undefined,
       firstName: row.first_name,
       lastName: row.last_name,
       role: row.role,

@@ -1,13 +1,6 @@
-/**
- * Report Preview Component
- * Displays a preview of the report configuration and generated content with real data
- * Requirements: 5.4
- */
-
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useCallback, useReducer } from 'react';
 import {
   Eye,
-  Download,
   FileText,
   BarChart3,
   Calendar,
@@ -22,7 +15,7 @@ import {
 import { ReportConfig, TimeSeriesData, StatisticsResult } from '../../types/api';
 import { apiService } from '../../services/api';
 import { InteractiveChart } from '../charts';
-import { getTagColor, getTagIndex } from '../charts/chartUtils';
+import { getTagColor, getTagIndex, formatYValue } from '../charts/chartUtils';
 import { DataPreviewTable } from './DataPreviewTable';
 
 interface ReportPreviewProps {
@@ -49,13 +42,55 @@ interface DataQualityInfo {
   qualityPercentage: number;
 }
 
-export const ReportPreview: React.FC<ReportPreviewProps> = ({
+type PreviewAction =
+  | { type: 'FETCH_START' }
+  | {
+    type: 'FETCH_SUCCESS'; payload: {
+      dataPoints: Record<string, TimeSeriesData[]>;
+      statistics: Record<string, StatisticsResult>;
+      tagDescriptions: Record<string, string>;
+      tagUnits: Record<string, string>;
+    }
+  }
+  | { type: 'FETCH_ERROR'; payload: string }
+  | { type: 'CLEAR_DATA' };
+
+const previewReducer = (state: PreviewData, action: PreviewAction): PreviewData => {
+  switch (action.type) {
+    case 'FETCH_START':
+      return { ...state, loading: true, error: null };
+    case 'FETCH_SUCCESS':
+      return {
+        ...state,
+        ...action.payload,
+        loading: false,
+        error: null,
+        lastUpdated: new Date()
+      };
+    case 'FETCH_ERROR':
+      return { ...state, loading: false, error: action.payload };
+    case 'CLEAR_DATA':
+      return {
+        ...state,
+        dataPoints: {},
+        statistics: {},
+        lastUpdated: null
+      };
+    default:
+      return state;
+  }
+};
+
+export interface ReportPreviewRef {
+  getCapturedCharts: () => Promise<Record<string, string>>;
+}
+
+export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewProps>(({
   config,
   onEdit,
   className = ''
-}) => {
-
-  const [previewData, setPreviewData] = useState<PreviewData>({
+}, ref) => {
+  const [previewData, dispatch] = useReducer(previewReducer, {
     dataPoints: {},
     statistics: {},
     loading: false,
@@ -65,17 +100,70 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
     lastUpdated: null
   });
 
+  const { dataPoints, statistics, loading, error, tagDescriptions, tagUnits, lastUpdated } = previewData;
+
+  React.useImperativeHandle(ref, () => ({
+    getCapturedCharts: async () => {
+      const charts: Record<string, string> = {};
+      try {
+        if ((window as any).ApexCharts) {
+          // Add small delay to ensure rendering is complete
+          await new Promise(resolve => setTimeout(resolve, 800));
+
+          const captureSvg = (id: string) => {
+            const container = document.getElementById(id);
+            const chartElement = container?.querySelector('.apexcharts-svg');
+            if (chartElement) {
+              // Extract SVG XML
+              const svgData = new XMLSerializer().serializeToString(chartElement);
+              // Clean up potentially problematic attributes or prefixes if necessary
+              // For now, simple base64 encoding should work
+              return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svgData)))}`;
+            }
+            return null;
+          };
+
+          /* Capture Multi-Trend Chart */
+          const multiTrendId = 'multi-trend-chart';
+          try {
+            const svgDataUri = captureSvg(multiTrendId);
+            if (svgDataUri) {
+              charts['Multi-Trend Chart'] = svgDataUri;
+            }
+          } catch (e) {
+            console.warn('Could not capture multi-trend chart as SVG', e);
+          }
+
+          for (const tag of (config.tags || [])) {
+            const chartId = `mini-chart-${tag}`;
+            try {
+              const svgDataUri = captureSvg(chartId);
+              if (svgDataUri) {
+                charts[tag] = svgDataUri;
+              }
+            } catch (e) {
+              console.warn(`Could not capture chart ${chartId} as SVG`, e);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error capturing charts as SVG:', e);
+      }
+      return charts;
+    }
+  }));
+
   // Load preview data
-  const loadPreviewData = React.useCallback(async () => {
+  const loadPreviewData = useCallback(async () => {
     if (!config.tags || config.tags.length === 0 || !config.timeRange) {
-      setPreviewData(prev => ({
-        ...prev,
-        error: 'Please select tags and time range before querying data'
-      }));
+      dispatch({
+        type: 'FETCH_ERROR',
+        payload: 'Please select tags and time range before querying data'
+      });
       return;
     }
 
-    setPreviewData(prev => ({ ...prev, loading: true, error: null }));
+    dispatch({ type: 'FETCH_START' });
 
     try {
       // Load data for each tag
@@ -86,102 +174,123 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
             config.timeRange.startTime,
             config.timeRange.endTime,
             {
-              limit: 500, // Limit for preview
-              retrievalMode: config.retrievalMode || 'Cyclic',
-              // Use wwResolution 60000 (1 minute) as a reasonable default for previews
-              // @ts-ignore - wwResolution might not be in the type definition yet
-              wwResolution: 60000
+              limit: 1000, // Safe visual maximum
+              retrievalMode: config.retrievalMode || 'Delta'
             }
           );
           return { tagName, data: response.success ? response.data : [] };
-        } catch (error) {
-          console.warn(`Failed to load preview data for tag ${tagName}:`, error);
+        } catch (err) {
+          console.warn(`Failed to load preview data for tag ${tagName}:`, err);
           return { tagName, data: [] };
         }
       });
 
       const results = await Promise.all(dataPromises);
-      const dataPoints: Record<string, TimeSeriesData[]> = {};
+      const fetchedDataPoints: Record<string, TimeSeriesData[]> = {};
 
       results.forEach(({ tagName, data }) => {
-        dataPoints[tagName] = data;
+        fetchedDataPoints[tagName] = data;
       });
 
-      // Load statistics for tags with data
-      const statistics: Record<string, StatisticsResult> = {};
-      for (const [tagName, data] of Object.entries(dataPoints)) {
-        if (data.length > 0) {
-          try {
-            const statsResponse = await apiService.getStatistics(
-              tagName,
-              config.timeRange.startTime,
-              config.timeRange.endTime
-            );
-            if (statsResponse.success) {
-              statistics[tagName] = statsResponse.data;
-            }
-          } catch (error) {
-            console.warn(`Failed to load statistics for tag ${tagName}:`, error);
-          }
+      // Compute statistics locally from already-fetched data (mirrors backend calculateStatisticsSync).
+      // This is preferred over a separate API call because:
+      //   1. No extra round-trip — data is already in memory.
+      //   2. The SQL-based endpoint returns median: 0 (SQL Server lacks MEDIAN aggregate).
+      //   3. A failed secondary request would silently leave the stats object empty.
+      const fetchedStatistics: Record<string, StatisticsResult> = {};
+      const fetchedDescriptions: Record<string, string> = {};
+      const fetchedUnits: Record<string, string> = {};
+
+      // --- Local statistics helper ---
+      const computeLocalStats = (data: TimeSeriesData[]): StatisticsResult | null => {
+        const validValues = data
+          .map(p => p.value)
+          .filter(v => typeof v === 'number' && isFinite(v));
+        if (validValues.length === 0) return null;
+
+        const min = Math.min(...validValues);
+        const max = Math.max(...validValues);
+        const average = validValues.reduce((s, v) => s + v, 0) / validValues.length;
+
+        // Median
+        const sorted = [...validValues].sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        const median = sorted.length % 2 === 0
+          ? (sorted[mid - 1]! + sorted[mid]!) / 2
+          : sorted[mid]!;
+
+        // Population std dev
+        const variance = validValues.reduce((s, v) => s + Math.pow(v - average, 2), 0) / validValues.length;
+        const standardDeviation = Math.sqrt(variance);
+
+        // Data quality: proportion of Good-quality points (code 192)
+        const goodCount = data.filter(p => p.quality === 192 || p.quality === 'Good').length;
+        const dataQuality = (goodCount / data.length) * 100;
+
+        return { min, max, average, median, standardDeviation, count: validValues.length, dataQuality };
+      };
+
+      // Compute stats for every tag that has data
+      for (const tagName of config.tags) {
+        const tagData = fetchedDataPoints[tagName];
+        if (tagData && tagData.length > 0) {
+          const stats = computeLocalStats(tagData);
+          if (stats) fetchedStatistics[tagName] = stats;
         }
       }
 
-      // Load tag descriptions and units
-      const tagDescriptions: Record<string, string> = {};
-      const tagUnits: Record<string, string> = {};
-      await Promise.all(config.tags.map(async (tagName) => {
+      // Fetch tag metadata (description, units) in parallel
+      const metadataPromises = config.tags.map(async (tagName) => {
         try {
           const response = await apiService.getTags(tagName);
           if (response.success && response.data) {
-            // Find exact match
             const tagInfo = response.data.find(t => t.name === tagName);
             if (tagInfo) {
-              tagDescriptions[tagName] = tagInfo.description;
-              tagUnits[tagName] = tagInfo.units;
+              fetchedDescriptions[tagName] = tagInfo.description;
+              fetchedUnits[tagName] = tagInfo.units;
             }
           }
-        } catch (error) {
-          console.warn(`Failed to fetch tag info for ${tagName}:`, error);
+        } catch (err) {
+          console.warn(`Failed to fetch tag info for ${tagName}:`, err);
         }
-      }));
-
-      setPreviewData({
-        dataPoints,
-        statistics,
-        tagDescriptions,
-        tagUnits,
-        loading: false,
-        error: null,
-        lastUpdated: new Date()
       });
-    } catch (error) {
-      setPreviewData(prev => ({
-        ...prev,
-        loading: false,
-        error: error instanceof Error ? error.message : 'Failed to load preview data'
-      }));
-    }
-  }, [config.tags, config.timeRange, config.name, config.description, config.chartTypes, config.template]);
 
-  // Auto-update preview data when report configuration changes
+      await Promise.all(metadataPromises);
+
+      dispatch({
+        type: 'FETCH_SUCCESS',
+        payload: {
+          dataPoints: fetchedDataPoints,
+          statistics: fetchedStatistics,
+          tagDescriptions: fetchedDescriptions,
+          tagUnits: fetchedUnits
+        }
+      });
+    } catch (err) {
+      dispatch({
+        type: 'FETCH_ERROR',
+        payload: err instanceof Error ? err.message : 'Failed to load preview data'
+      });
+    }
+  }, [
+    config.tags,
+    config.timeRange,
+    config.timeRange?.startTime,
+    config.timeRange?.endTime,
+    config.retrievalMode
+  ]);
+
+  // Auto-update preview data when relevant configuration changes
   useEffect(() => {
-    // Only auto-update if we have at least one tag (the same condition that enables the Query Data button)
     if (config.tags && config.tags.length > 0) {
       const timer = setTimeout(() => {
         loadPreviewData();
       }, 1000); // 1 second debounce
       return () => clearTimeout(timer);
+    } else {
+      dispatch({ type: 'CLEAR_DATA' });
     }
-    // We want to clear data if tags are removed
-    else if (config.tags && config.tags.length === 0 && Object.keys(previewData.dataPoints).length > 0) {
-      setPreviewData(prev => ({
-        ...prev,
-        dataPoints: {},
-        statistics: {},
-        lastUpdated: null
-      }));
-    }
-  }, [loadPreviewData]);
+  }, [loadPreviewData, config.tags]);
 
   // Calculate data quality metrics
   const dataQuality = useMemo((): DataQualityInfo => {
@@ -271,7 +380,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
               <h3 className="text-lg font-semibold text-gray-900 break-words">
                 {config.name}
               </h3>
-              {previewData.loading && (
+              {loading && (
                 <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
               )}
             </div>
@@ -286,7 +395,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
             {config.tags && config.tags.length > 0 && (
               <div className="flex flex-wrap gap-1.5 mb-3">
                 {config.tags.map((tag, index) => {
-                  const tagData = previewData.dataPoints[tag] || [];
+                  const tagData = dataPoints[tag] || [];
                   const hasData = tagData.length > 0;
 
                   return (
@@ -298,7 +407,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                         }`}
                     >
                       {tag}
-                      {!previewData.loading && (
+                      {!loading && (
                         <span className="ml-1 opacity-70">
                           ({tagData.length})
                         </span>
@@ -310,7 +419,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
             )}
 
             {/* Data Quality Indicator */}
-            {!previewData.loading && dataQuality.totalPoints > 0 && (
+            {!loading && dataQuality.totalPoints > 0 && (
               <div className="flex items-center space-x-2 text-xs sm:text-sm">
                 {getQualityIcon(dataQuality.qualityPercentage)}
                 <span className={getQualityColor(dataQuality.qualityPercentage)}>
@@ -323,10 +432,10 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
             )}
 
             {/* Error Display */}
-            {previewData.error && (
+            {error && (
               <div className="flex items-center space-x-2 text-xs sm:text-sm text-red-600 mt-2">
                 <AlertCircle className="w-3.5 h-3.5" />
-                <span className="break-words">{previewData.error}</span>
+                <span className="break-words">{error}</span>
               </div>
             )}
           </div>
@@ -334,10 +443,10 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             <button
               onClick={loadPreviewData}
-              disabled={previewData.loading || !config.tags?.length}
+              disabled={loading || !config.tags?.length}
               className="flex-1 sm:flex-none inline-flex items-center justify-center px-3 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {previewData.loading ? (
+              {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
                   Querying...
@@ -361,11 +470,11 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
 
             <button
               onClick={handleRefresh}
-              disabled={previewData.loading || dataQuality.totalPoints === 0}
+              disabled={loading || dataQuality.totalPoints === 0}
               className="px-2.5 py-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed border border-gray-200"
               title="Refresh preview data"
             >
-              <RefreshCw className={`w-4 h-4 ${previewData.loading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
         </div>
@@ -439,25 +548,25 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
           )}
 
           {/* Statistics Preview */}
-          {!previewData.loading && Object.keys(previewData.statistics).length > 0 && (
+          {!loading && Object.keys(statistics).length > 0 && (
             <div className="space-y-2">
               <h4 className="text-sm font-medium text-gray-900 flex items-center">
                 <TrendingUp className="w-4 h-4 mr-2" />
                 Statistics
               </h4>
               <div className="text-sm text-gray-600">
-                {Object.entries(previewData.statistics).slice(0, 2).map(([tagName, stats]) => (
+                {Object.entries(statistics).slice(0, 2).map(([tagName, stats]) => (
                   <div key={tagName} className="mb-1">
                     <div className="font-medium text-xs text-gray-700">{tagName}:</div>
                     <div className="text-xs">
-                      Avg: {typeof stats?.average === 'number' ? stats.average.toFixed(2) : 'N/A'},
-                      Range: {typeof stats?.min === 'number' ? stats.min.toFixed(2) : 'N/A'}-{typeof stats?.max === 'number' ? stats.max.toFixed(2) : 'N/A'}
+                      Avg: {typeof stats?.average === 'number' ? formatYValue(stats.average) : 'N/A'},
+                      Range: {typeof stats?.min === 'number' ? formatYValue(stats.min) : 'N/A'}-{typeof stats?.max === 'number' ? formatYValue(stats.max) : 'N/A'}
                     </div>
                   </div>
                 ))}
-                {Object.keys(previewData.statistics).length > 2 && (
+                {Object.keys(statistics).length > 2 && (
                   <div className="text-xs text-gray-500">
-                    +{Object.keys(previewData.statistics).length - 2} more tags
+                    +{Object.keys(statistics).length - 2} more tags
                   </div>
                 )}
               </div>
@@ -495,6 +604,131 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
           </div>
         )}
 
+        {/* Statistics Summary Preview - Section II */}
+        {config.includeStatsSummary && !loading && Object.keys(statistics).length > 0 && (
+          <div className="mt-8 border border-blue-200 rounded-xl overflow-hidden shadow-sm">
+            {/* Section header */}
+            <div className="bg-gradient-to-r from-[#1e3a5f] to-[#2563eb] px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <TrendingUp className="w-5 h-5 text-blue-200" />
+                <div>
+                  <h4 className="text-base font-semibold text-white">Statistics Summary</h4>
+                  <p className="text-xs text-blue-200 mt-0.5">Statistical analysis and data distribution for process metrics</p>
+                </div>
+              </div>
+              <span className="text-xs text-blue-100 bg-blue-900/40 px-2.5 py-1 rounded-full font-medium">
+                {Object.keys(statistics).length} tag{Object.keys(statistics).length !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-200">
+                    {['Tag', 'Mean', 'Median', 'Std Dev', 'Min', 'Max', 'Count', 'Quality'].map(h => (
+                      <th
+                        key={h}
+                        className={`px-3 py-2 font-semibold text-gray-600 ${h === 'Tag' ? 'text-left' : 'text-center'
+                          }`}
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(statistics).map(([tagName, stats], idx) => {
+                    const qualityPct = stats.dataQuality;
+                    const qualityColor =
+                      qualityPct >= 90 ? 'bg-green-500'
+                        : qualityPct >= 70 ? 'bg-yellow-500'
+                          : 'bg-red-500';
+                    const tagColor = tagColors[tagName];
+
+                    return (
+                      <tr
+                        key={tagName}
+                        className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'
+                          } hover:bg-blue-50/40 transition-colors`}
+                      >
+                        {/* Tag name with colour dot */}
+                        <td className="px-3 py-2.5 font-medium text-gray-800 max-w-[160px]">
+                          <div className="flex items-center space-x-2">
+                            <span
+                              className="flex-shrink-0 w-2.5 h-2.5 rounded-full"
+                              style={{ backgroundColor: tagColor || '#6b7280' }}
+                            />
+                            <span className="truncate" title={tagName}>{tagName}</span>
+                          </div>
+                        </td>
+
+                        {/* Numeric metrics */}
+                        <td className="px-3 py-2.5 text-center text-gray-700 tabular-nums">
+                          {typeof stats.average === 'number' ? formatYValue(stats.average) : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-gray-700 tabular-nums">
+                          {typeof stats.median === 'number' ? formatYValue(stats.median) : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-gray-700 tabular-nums">
+                          {typeof stats.standardDeviation === 'number' ? formatYValue(stats.standardDeviation) : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-gray-500 tabular-nums">
+                          {typeof stats.min === 'number' ? formatYValue(stats.min) : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-gray-500 tabular-nums">
+                          {typeof stats.max === 'number' ? formatYValue(stats.max) : '—'}
+                        </td>
+                        <td className="px-3 py-2.5 text-center text-gray-600 tabular-nums">
+                          {typeof stats.count === 'number' ? stats.count.toLocaleString() : '—'}
+                        </td>
+
+                        {/* Quality bar */}
+                        <td className="px-3 py-2.5">
+                          <div className="flex flex-col items-center space-y-1">
+                            <div className="w-full max-w-[80px] h-2 bg-gray-200 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${qualityColor}`}
+                                style={{ width: `${Math.min(100, qualityPct)}%` }}
+                              />
+                            </div>
+                            <span className={`text-[10px] font-medium ${qualityPct >= 90 ? 'text-green-700'
+                              : qualityPct >= 70 ? 'text-yellow-700'
+                                : 'text-red-700'
+                              }`}>
+                              {qualityPct.toFixed(1)}%
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer note */}
+            <div className="px-4 py-2 bg-gray-50 border-t border-gray-100">
+              <p className="text-[10px] text-gray-400">
+                Quality %: proportion of readings with Good quality (code 192). Std Dev = population standard deviation.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Statistics Summary placeholder when option is enabled but data not yet queried */}
+        {config.includeStatsSummary && !loading && Object.keys(statistics).length === 0 && dataQuality.totalPoints === 0 && (
+          <div className="mt-6 p-4 border border-dashed border-blue-300 rounded-xl bg-blue-50/40">
+            <div className="flex items-center space-x-3 text-blue-700">
+              <TrendingUp className="w-4 h-4 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium">Statistics Summary will appear here</p>
+                <p className="text-xs text-blue-600 mt-0.5">Query data first to see the statistical breakdown of your selected tags.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Data Visualization Preview */}
         {!previewData.loading && dataQuality.totalPoints > 0 && (
           <div className="mt-8">
@@ -503,17 +737,18 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
               Trends
             </h4>
             <div className="grid grid-cols-1 gap-6 sm:gap-8">
-              {/* Combined Multi-Trend View (only if multiple tags selected) */}
-              {Object.keys(previewData.dataPoints).filter(tag => previewData.dataPoints[tag].length > 0).length > 1 && (
+              {/* Multi-Trend Overview Chart (First Position) */}
+              {(config.includeMultiTrend ?? true) && config.tags.length > 1 && (
                 <InteractiveChart
-                  dataPoints={previewData.dataPoints}
-                  tagDescriptions={previewData.tagDescriptions}
+                  dataPoints={dataPoints}
+                  tagDescriptions={tagDescriptions}
                   tags={config.tags}
-                  title={config.name}
-                  description={config.description}
                   width="100%"
-                  height={320}
-                  className="mb-4"
+                  height={380}
+                  title="Combined Process Trends"
+                  description={`Comparative view of ${config.tags.length} selected tags`}
+                  className="shadow-md border-blue-200 bg-blue-50/10"
+                  chartClassName="border-blue-100"
                   enableGuideLines={true}
                   displayMode="multi"
                   type={config.chartTypes[0] as any || 'line'}
@@ -522,26 +757,25 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
               )}
 
               {config.tags
-                .filter(tagName => previewData.dataPoints[tagName]?.length > 0)
-                .slice(0, 4) // Show top 4 tags in large format
+                .filter(tagName => dataPoints[tagName]?.length > 0)
                 .map((tagName) => {
-                  const data = previewData.dataPoints[tagName];
+                  const data = dataPoints[tagName];
 
                   return (
                     <InteractiveChart
                       key={tagName}
                       dataPoints={{ [tagName]: data }}
-                      tagDescriptions={previewData.tagDescriptions}
+                      tagDescriptions={tagDescriptions}
                       tagName={tagName}
                       width="100%"
                       height={320}
                       title={tagName}
-                      description={previewData.tagDescriptions[tagName]}
-                      units={previewData.tagUnits[tagName]}
-                      statistics={previewData.statistics[tagName]}
+                      description={tagDescriptions[tagName]}
+                      units={tagUnits[tagName]}
+                      statistics={statistics[tagName]}
                       color={tagColors[tagName]}
                       className="shadow-md border-gray-300"
-                      enableGuideLines={true}
+                      enableGuideLines={false}
                       displayMode="single"
                       type={config.chartTypes[0] as any || 'line'}
                       includeTrendLines={config.includeTrendLines}
@@ -549,18 +783,14 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
                   );
                 })}
             </div>
-            {Object.keys(previewData.dataPoints).length > 6 && (
-              <p className="text-xs text-gray-500 mt-2 text-center">
-                +{Object.keys(previewData.dataPoints).length - 6} more charts will be included in the report
-              </p>
-            )}
+
 
             {/* Data Preview Table */}
             <div className="mt-8">
               <DataPreviewTable
-                data={Object.values(previewData.dataPoints).flat()}
-                loading={previewData.loading}
-                error={previewData.error}
+                data={Object.values(dataPoints).flat()}
+                loading={loading}
+                error={error}
                 onRetry={loadPreviewData}
                 reportName={config.name}
               />
@@ -569,7 +799,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
         )}
 
         {/* No Data State - Show when no data has been queried yet */}
-        {!previewData.loading && dataQuality.totalPoints === 0 && !previewData.lastUpdated && (
+        {!loading && dataQuality.totalPoints === 0 && !lastUpdated && (
           <div className="mt-6 p-6 bg-blue-50 border border-blue-200 rounded-lg text-center">
             <div className="flex flex-col items-center space-y-3">
               <BarChart3 className="w-12 h-12 text-blue-400" />
@@ -584,7 +814,7 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
         )}
 
         {/* No Data Warning - Show when query returned no results */}
-        {!previewData.loading && dataQuality.totalPoints === 0 && previewData.lastUpdated && config.tags.length > 0 && (
+        {!loading && dataQuality.totalPoints === 0 && lastUpdated && config.tags.length > 0 && (
           <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
             <div className="flex items-start space-x-3">
               <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
@@ -611,9 +841,9 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
             )}
           </div>
           <div className="flex items-center space-x-2">
-            {previewData.lastUpdated && (
+            {lastUpdated && (
               <span className="text-xs">
-                Updated: {previewData.lastUpdated.toLocaleTimeString()}
+                Updated: {lastUpdated.toLocaleTimeString()}
               </span>
             )}
             <div className="flex items-center">
@@ -625,4 +855,4 @@ export const ReportPreview: React.FC<ReportPreviewProps> = ({
       </div>
     </div>
   );
-};
+});

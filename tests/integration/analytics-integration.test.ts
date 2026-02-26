@@ -17,10 +17,10 @@ describe('Analytics Integration in Report Generation', () => {
   ): TimeSeriesData[] {
     const data: TimeSeriesData[] = [];
     const startTime = new Date('2024-01-01T00:00:00Z');
-    
+
     for (let i = 0; i < count; i++) {
       const timestamp = new Date(startTime.getTime() + i * 60000); // 1 minute intervals
-      
+
       // Generate value with normal distribution
       let value: number;
       if (outOfControlIndices.includes(i)) {
@@ -30,7 +30,7 @@ describe('Analytics Integration in Report Generation', () => {
         // Normal point
         value = mean + (Math.random() - 0.5) * 2 * stdDev;
       }
-      
+
       data.push({
         timestamp,
         value,
@@ -38,7 +38,7 @@ describe('Analytics Integration in Report Generation', () => {
         tagName
       });
     }
-    
+
     return data;
   }
 
@@ -46,11 +46,11 @@ describe('Analytics Integration in Report Generation', () => {
   function generateDigitalData(tagName: string, count: number): TimeSeriesData[] {
     const data: TimeSeriesData[] = [];
     const startTime = new Date('2024-01-01T00:00:00Z');
-    
+
     for (let i = 0; i < count; i++) {
       const timestamp = new Date(startTime.getTime() + i * 60000);
       const value = Math.random() > 0.5 ? 1 : 0; // Binary values
-      
+
       data.push({
         timestamp,
         value,
@@ -58,14 +58,14 @@ describe('Analytics Integration in Report Generation', () => {
         tagName
       });
     }
-    
+
     return data;
   }
 
   it('should generate report with analog tags, trend lines, and SPC charts', async () => {
     const analogData1 = generateTestData('TEMP_01', 100, 75, 5, [10, 25, 40]);
     const analogData2 = generateTestData('PRESSURE_01', 100, 100, 10, [15, 30]);
-    
+
     const reportData = {
       config: {
         id: 'test-analytics-1',
@@ -96,6 +96,7 @@ describe('Analytics Integration in Report Generation', () => {
           min: Math.min(...analogData1.map(d => d.value)),
           max: Math.max(...analogData1.map(d => d.value)),
           average: analogData1.reduce((sum, d) => sum + d.value, 0) / analogData1.length,
+          median: analogData1.reduce((sum, d) => sum + d.value, 0) / analogData1.length,
           standardDeviation: 5,
           count: analogData1.length,
           dataQuality: 100
@@ -104,6 +105,7 @@ describe('Analytics Integration in Report Generation', () => {
           min: Math.min(...analogData2.map(d => d.value)),
           max: Math.max(...analogData2.map(d => d.value)),
           average: analogData2.reduce((sum, d) => sum + d.value, 0) / analogData2.length,
+          median: analogData2.reduce((sum, d) => sum + d.value, 0) / analogData2.length,
           standardDeviation: 10,
           count: analogData2.length,
           dataQuality: 100
@@ -111,9 +113,9 @@ describe('Analytics Integration in Report Generation', () => {
       },
       generatedAt: new Date()
     };
-    
+
     const result = await reportGenerationService.generateReport(reportData);
-    
+
     expect(result.success).toBe(true);
     expect(result.filePath).toBeDefined();
     expect(result.metadata.pages).toBeGreaterThan(0);
@@ -124,7 +126,7 @@ describe('Analytics Integration in Report Generation', () => {
   it('should generate report with mixed analog and digital tags', async () => {
     const analogData = generateTestData('FLOW_01', 80, 50, 8);
     const digitalData = generateDigitalData('PUMP_STATUS', 80);
-    
+
     const reportData = {
       config: {
         id: 'test-analytics-2',
@@ -154,6 +156,7 @@ describe('Analytics Integration in Report Generation', () => {
           min: Math.min(...analogData.map(d => d.value)),
           max: Math.max(...analogData.map(d => d.value)),
           average: analogData.reduce((sum, d) => sum + d.value, 0) / analogData.length,
+          median: analogData.reduce((sum, d) => sum + d.value, 0) / analogData.length,
           standardDeviation: 8,
           count: analogData.length,
           dataQuality: 100
@@ -162,6 +165,7 @@ describe('Analytics Integration in Report Generation', () => {
           min: 0,
           max: 1,
           average: digitalData.reduce((sum, d) => sum + d.value, 0) / digitalData.length,
+          median: digitalData.reduce((sum, d) => sum + d.value, 0) / digitalData.length,
           standardDeviation: 0.5,
           count: digitalData.length,
           dataQuality: 100
@@ -169,9 +173,9 @@ describe('Analytics Integration in Report Generation', () => {
       },
       generatedAt: new Date()
     };
-    
+
     const result = await reportGenerationService.generateReport(reportData);
-    
+
     expect(result.success).toBe(true);
     expect(result.filePath).toBeDefined();
     expect(result.metadata.pages).toBeGreaterThan(0);
@@ -180,7 +184,7 @@ describe('Analytics Integration in Report Generation', () => {
 
   it('should generate report with trend lines but no SPC charts when spec limits not provided', async () => {
     const analogData = generateTestData('LEVEL_01', 60, 120, 15);
-    
+
     const reportData = {
       config: {
         id: 'test-analytics-3',
@@ -206,6 +210,7 @@ describe('Analytics Integration in Report Generation', () => {
           min: Math.min(...analogData.map(d => d.value)),
           max: Math.max(...analogData.map(d => d.value)),
           average: analogData.reduce((sum, d) => sum + d.value, 0) / analogData.length,
+          median: analogData.reduce((sum, d) => sum + d.value, 0) / analogData.length,
           standardDeviation: 15,
           count: analogData.length,
           dataQuality: 100
@@ -213,9 +218,9 @@ describe('Analytics Integration in Report Generation', () => {
       },
       generatedAt: new Date()
     };
-    
+
     const result = await reportGenerationService.generateReport(reportData);
-    
+
     expect(result.success).toBe(true);
     expect(result.filePath).toBeDefined();
     expect(result.metadata.pages).toBeGreaterThan(0);

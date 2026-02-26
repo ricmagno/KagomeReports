@@ -34,7 +34,7 @@ export const DatabaseConfigManager: React.FC<DatabaseConfigManagerProps> = ({ cl
       setError('You do not have permission to create database configurations. Administrator access required.');
       return;
     }
-    
+
     setEditingConfig(null);
     setViewMode('create');
     setError(null);
@@ -49,7 +49,7 @@ export const DatabaseConfigManager: React.FC<DatabaseConfigManagerProps> = ({ cl
     try {
       setIsLoading(true);
       setError(null);
-      
+
       // Load full configuration details for editing
       const response = await apiService.getDatabaseConfiguration(configSummary.id);
       setEditingConfig(response.data);
@@ -67,17 +67,17 @@ export const DatabaseConfigManager: React.FC<DatabaseConfigManagerProps> = ({ cl
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete the configuration "${config.name}"?`)) {
+    if (!window.confirm(`Are you sure you want to delete the configuration "${config.name}"?`)) {
       return;
     }
 
     try {
       setIsLoading(true);
       setError(null);
-      
+
       await apiService.deleteDatabaseConfiguration(config.id);
       setRefreshTrigger(prev => prev + 1);
-      
+
       // Show success message
       alert('Configuration deleted successfully');
     } catch (error) {
@@ -98,10 +98,10 @@ export const DatabaseConfigManager: React.FC<DatabaseConfigManagerProps> = ({ cl
     try {
       setIsLoading(true);
       setError(null);
-      
+
       await apiService.activateDatabaseConfiguration(config.id);
       setRefreshTrigger(prev => prev + 1);
-      
+
       // Show success message
       alert(`Configuration "${config.name}" activated successfully`);
     } catch (error) {
@@ -172,18 +172,10 @@ export const DatabaseConfigManager: React.FC<DatabaseConfigManagerProps> = ({ cl
           {/* Header */}
           <div className="mb-6">
             <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Database Configuration</h1>
-                <p className="text-gray-600 mt-1">
-                  Manage database connections for the Historian Reports application
-                  {!canModifyConfigs && (
-                    <span className="block text-sm text-yellow-600 mt-1">
-                      ⚠️ Read-only access - Administrator privileges required for modifications
-                    </span>
-                  )}
-                </p>
+              <div className="flex-1">
+                {/* Header content removed for better nesting */}
               </div>
-              
+
               {viewMode === 'list' && canModifyConfigs && (
                 <Button onClick={handleCreateNew} disabled={isLoading}>
                   <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">

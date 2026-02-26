@@ -8,6 +8,8 @@ export interface TimeSeriesData {
   value: number;
   quality: QualityCode;
   tagName: string;
+  description?: string | undefined;
+  dataSource?: 'historian' | 'opcua';
 }
 
 // AVEVA Historian quality codes
@@ -35,6 +37,8 @@ export interface TagInfo {
   minValue?: number;
   maxValue?: number;
   engineeringUnits?: string;
+  dataSource?: 'historian' | 'opcua';
+  opcuaNodeId?: string; // Specific to OPC UA tags
 }
 
 // Time range for data queries
@@ -87,6 +91,7 @@ export interface StatisticsResult {
   min: number;
   max: number;
   average: number;
+  median: number;           // Middle value (50th percentile)
   standardDeviation: number;
   count: number;
   dataQuality: number; // Percentage of good quality data
@@ -145,6 +150,7 @@ export enum RetrievalMode {
   Maximum = 'Maximum',     // Maximum value in period
   Interpolated = 'Interpolated', // Linear interpolation
   ValueState = 'ValueState', // State-based retrieval
+  Live = 'Live',           // Real-time live data (most recent value only)
 }
 
 // Query options for AVEVA Historian
@@ -155,6 +161,7 @@ export interface HistorianQueryOptions {
   tolerance?: number | undefined;       // For Delta mode (percentage)
   maxPoints?: number | undefined;       // Maximum points to return (maps to wwCycleCount)
   includeQuality?: boolean | undefined; // Include quality information
+  limit?: number | undefined;           // Maximum number of rows to return (maps to TOP/wwRowCount)
 }
 
 // Specification limits for SPC analysis

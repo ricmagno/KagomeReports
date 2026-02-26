@@ -53,7 +53,9 @@ export interface ReportConfig {
   specificationLimits?: Record<string, SpecificationLimits>; // Map of tag name to spec limits
   includeSPCCharts?: boolean;      // Include Statistical Process Control charts
   includeTrendLines?: boolean;     // Include trend lines on standard charts
+  includeMultiTrend?: boolean;     // Include Combined Process Trends chart
   includeStatsSummary?: boolean;   // Include statistical summaries on charts
+  includeDataTable?: boolean;      // Include data tables in the report
 
   // Import tracking metadata (for configurations loaded from export files)
   importMetadata?: {
@@ -72,6 +74,7 @@ export interface SavedReport {
   config: ReportConfig;
   version: number;
   createdBy: string;
+  createdByUserId?: string;
   createdAt: Date;
   updatedAt: Date;
   isLatestVersion: boolean;
@@ -105,6 +108,7 @@ export interface ReportListItem {
   config: ReportConfig;
   version: number;
   createdBy: string;
+  createdByUserId?: string;
   createdAt: Date;
   updatedAt: Date;
   isLatestVersion: boolean;

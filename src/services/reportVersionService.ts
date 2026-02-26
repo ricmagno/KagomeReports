@@ -6,6 +6,8 @@
 import { Database } from 'sqlite3';
 import { ReportConfig, ReportVersion, ReportVersionHistory } from '../types/reports';
 import { logger } from '../utils/logger';
+import { getDatabasePath } from '@/config/environment';
+import { authService } from './authService';
 
 export interface VersionComparison {
   reportName: string;
@@ -29,6 +31,7 @@ export interface VersionCleanupPolicy {
 
 export class ReportVersionService {
   private db: Database;
+  private initPromise: Promise<void> | null = null;
   private defaultCleanupPolicy: VersionCleanupPolicy = {
     maxVersionsToKeep: 10,
     maxAgeInDays: 90,
@@ -37,6 +40,45 @@ export class ReportVersionService {
 
   constructor(database: Database) {
     this.db = database;
+    this.initPromise = this.initialize();
+  }
+
+  /**
+   * Wait for service initialization to complete
+   */
+  async waitForInitialization(): Promise<void> {
+    if (this.initPromise) {
+      await this.initPromise;
+    }
+  }
+
+  /**
+   * Initialize service - ensures auth database is attached
+   */
+  private async initialize(): Promise<void> {
+    try {
+      // Wait for auth service to be ready before attaching
+      await authService.waitForInitialization();
+
+      // Attach auth database for user lookups
+      const authDbPath = getDatabasePath('auth.db');
+      await new Promise<void>((resolve) => {
+        this.db.run(`ATTACH DATABASE '${authDbPath}' AS auth`, (err) => {
+          if (err) {
+            // If it's already attached or file is locked, we'll handle it gracefully
+            if (err.message.includes('already being used') || err.message.includes('database auth is already in use')) {
+              resolve();
+              return;
+            }
+            logger.debug('Auth database attachment note in ReportVersionService:', err.message);
+          }
+          resolve();
+        });
+      });
+    } catch (error) {
+      logger.error('Failed to initialize ReportVersionService:', error);
+      // Don't throw, we'll try to proceed
+    }
   }
 
   /**
@@ -64,6 +106,7 @@ export class ReportVersionService {
    * Get the next version number for a report
    */
   async getNextVersionNumber(reportName: string): Promise<number> {
+    await this.waitForInitialization();
     return new Promise((resolve, reject) => {
       const query = `
         SELECT MAX(version) as max_version 
@@ -88,6 +131,7 @@ export class ReportVersionService {
    * Archive old version (mark as inactive)
    */
   async archiveOldVersion(reportId: string, version: number): Promise<void> {
+    await this.waitForInitialization();
     return new Promise((resolve, reject) => {
       const query = `
         UPDATE report_versions 
@@ -112,6 +156,7 @@ export class ReportVersionService {
    * Restore a specific version (make it active and create new version)
    */
   async restoreVersion(reportId: string, version: number, userId: string): Promise<ReportConfig | null> {
+    await this.waitForInitialization();
     try {
       // Get the version to restore
       const versionToRestore = await this.getSpecificVersion(reportId, version);
@@ -172,6 +217,7 @@ export class ReportVersionService {
    * Get a specific version of a report
    */
   async getSpecificVersion(reportId: string, version: number): Promise<ReportVersion | null> {
+    await this.waitForInitialization();
     return new Promise((resolve, reject) => {
       const query = `
         SELECT rv.*, u.username as created_by_name 
@@ -217,6 +263,7 @@ export class ReportVersionService {
    * Compare two versions of a report
    */
   async compareVersions(reportId: string, oldVersion: number, newVersion: number): Promise<VersionComparison | null> {
+    await this.waitForInitialization();
     try {
       const oldVersionData = await this.getSpecificVersion(reportId, oldVersion);
       const newVersionData = await this.getSpecificVersion(reportId, newVersion);
@@ -314,11 +361,12 @@ export class ReportVersionService {
    * Clean up old versions based on policy
    */
   async cleanupOldVersions(reportId: string, policy?: VersionCleanupPolicy): Promise<number> {
-    const cleanupPolicy = policy || this.defaultCleanupPolicy;
+    await this.waitForInitialization();
     let deletedCount = 0;
 
     try {
       // Get all versions for the report
+      const cleanupPolicy = policy || this.defaultCleanupPolicy;
       const versions = await this.getAllVersions(reportId);
 
       if (versions.length <= cleanupPolicy.maxVersionsToKeep) {
@@ -437,6 +485,7 @@ export class ReportVersionService {
     oldestVersion: number;
     averageTimeBetweenVersions: number; // in days
   } | null> {
+    await this.waitForInitialization();
     try {
       const versions = await this.getAllVersions(reportId);
 

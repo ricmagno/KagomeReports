@@ -5,20 +5,30 @@
  */
 
 import { createCanvas } from 'canvas';
-import { Chart, ChartConfiguration, registerables } from 'chart.js';
+import { Chart, ChartConfiguration, registerables, _adapters } from 'chart.js';
 import annotationPlugin from 'chartjs-plugin-annotation';
-import { TimeSeriesData, StatisticsResult, TrendResult, SPCMetrics, SpecificationLimits } from '@/types/historian';
+import { TimeSeriesData, StatisticsResult, TrendResult, SPCMetrics, SpecificationLimits, QualityCode, TagInfo } from '@/types/historian';
 import { reportLogger } from '@/utils/logger';
 import { env } from '@/config/environment';
 import { chartBufferValidator } from '@/utils/chartBufferValidator';
+
+// Make sure Chart has _adapters property which the date adapter expects
+if (Chart && !(Chart as any)._adapters) {
+  (Chart as any)._adapters = _adapters;
+}
 
 // Register Chart.js components
 Chart.register(...registerables, annotationPlugin);
 
 // Load date adapter using require (works better in CommonJS context)
 try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const adapter = require('chartjs-adapter-date-fns');
+  // Ensure Chart is available globally for the adapter to find it in Node environment
+  if (typeof global !== 'undefined') {
+    (global as any).Chart = Chart;
+  }
+
+  // Use the standard require which resolves to the correct entry point
+  require('chartjs-adapter-date-fns');
   reportLogger.info('Chart.js date adapter loaded successfully');
 } catch (error) {
   reportLogger.error('Failed to load Chart.js date adapter', {
@@ -28,12 +38,16 @@ try {
 }
 
 export interface ChartOptions {
-  width?: number;
-  height?: number;
-  title?: string;
-  backgroundColor?: string;
-  colors?: string[];
+  width?: number | undefined;
+  height?: number | undefined;
+  title?: string | undefined;
+  backgroundColor?: string | undefined;
+  colors?: string[] | undefined;
   timezone?: string | undefined;
+  includeTrendLines?: boolean | undefined;
+  tags?: string[] | undefined;
+  yUnits?: string | undefined;
+  showLegend?: boolean | undefined;
 }
 
 export interface LineChartData {
@@ -72,20 +86,52 @@ export class ChartGenerationService {
   private defaultWidth: number;
   private defaultHeight: number;
   private defaultColors: string[];
+  private readonly CHART_FONT_FAMILY = "'Inter', 'Helvetica Neue', 'Helvetica', 'Arial', sans-serif";
+  private readonly CHART_LABEL_COLOR = '#475569'; // Slate 600
+  private readonly CHART_TICK_COLOR = '#94a3b8';  // Slate 400
+  private readonly CHART_GRID_COLOR = '#f1f5f9';  // Slate 100
+
 
   constructor() {
-    this.defaultWidth = (env.CHART_WIDTH as number) || 2400;  // Increased to 2400 for high resolution
-    this.defaultHeight = (env.CHART_HEIGHT as number) || 1200; // Increased to 1200 for high resolution
+    this.defaultWidth = (env.CHART_WIDTH as number) || 1200;
+    this.defaultHeight = (env.CHART_HEIGHT as number) || 500;
     this.defaultColors = [
-      '#3b82f6', // Blue
-      '#10b981', // Green
-      '#f59e0b', // Yellow
-      '#ef4444', // Red
-      '#8b5cf6', // Purple
-      '#f97316', // Orange
-      '#06b6d4', // Cyan
-      '#84cc16'  // Lime
+      '#3b82f6', // blue
+      '#10b981', // emerald (green)
+      '#f59e0b', // amber (orange)
+      '#f43f5e', // rose
+      '#6366f1', // indigo
+      '#f97316', // orange-dark
+      '#06b6d4', // cyan
+      '#8b5cf6'  // violet
     ];
+  }
+
+  /**
+   * Assigns a stable color to a tag based on its index in the report configuration.
+   * This matches the frontend getTagColor/getTagIndex logic.
+   */
+  public getStableTagColor(tagName: string, allTags: string[]): string {
+    if (!tagName || !allTags) return this.defaultColors[0]!;
+    const lowerTag = tagName.toLowerCase().trim();
+    const index = allTags.findIndex(t => t && t.toLowerCase().trim() === lowerTag);
+    if (index < 0) return this.defaultColors[0]!;
+    return this.defaultColors[index % this.defaultColors.length]!;
+  }
+
+  /**
+   * Calculate quality color based on percentage
+   * Replicates frontend logic in MiniChart.tsx
+   */
+  private getQualityColor(dataPoints: TimeSeriesData[]): string {
+    if (!dataPoints || dataPoints.length === 0) return '#94a3b8';
+
+    const goodQualityCount = dataPoints.filter(point => point.quality === QualityCode.Good).length;
+    const qualityPercentage = (goodQualityCount / dataPoints.length) * 100;
+
+    if (qualityPercentage >= 90) return '#10b981'; // Green
+    if (qualityPercentage >= 70) return '#f59e0b'; // Yellow
+    return '#ef4444'; // Red
   }
 
   /**
@@ -124,6 +170,10 @@ export class ChartGenerationService {
       const canvas = createCanvas(width, height);
       const ctx = canvas.getContext('2d');
 
+      const allTimestamps = datasets.flatMap(d => d.data.map(p => p.timestamp.getTime()));
+      const minX = Math.min(...allTimestamps);
+      const maxX = Math.max(...allTimestamps);
+
       reportLogger.debug('Canvas created successfully', {
         canvasWidth: canvas.width,
         canvasHeight: canvas.height
@@ -139,7 +189,7 @@ export class ChartGenerationService {
 
       // Add main data series
       datasets.forEach((dataset, index) => {
-        const baseColor = grayscale ? '#000000' : (dataset.color || this.defaultColors[index % this.defaultColors.length]);
+        const baseColor = grayscale ? '#000000' : (dataset.color || this.getStableTagColor(dataset.tagName, options.tags || []));
 
         chartDatasets.push({
           label: dataset.tagName,
@@ -149,22 +199,23 @@ export class ChartGenerationService {
           })),
           borderColor: baseColor,
           backgroundColor: 'transparent',
-          borderWidth: 1,
+          borderWidth: 2, // Increased to match frontend stroke width
           fill: false,
-          tension: 0.1,
-          pointRadius: 2,
-          pointHoverRadius: 4
+          tension: 0.4, // Match frontend "smooth" curve
+          stepped: false, // Ensure no "square" stepped lines
+          spanGaps: true, // Connect gaps for smoother appearance
+          pointRadius: 0,
+          pointHitRadius: 5
         });
 
-        // Add trend line if available
-        if (dataset.trendLine && dataset.data.length >= 3) {
+        // Add trend line if available and explicitly requested (defaulting to true if not specified)
+        if (dataset.trendLine && dataset.data.length >= 3 && options.includeTrendLines !== false) {
           const startTime = dataset.data[0]!.timestamp.getTime();
           const endTime = dataset.data[dataset.data.length - 1]!.timestamp.getTime();
-          const timeSpanSeconds = (endTime - startTime) / 1000;
-
-          // Calculate y values at start and end
+          // Correct yEnd calculation: slope is per millisecond, so use full duration in ms
           const yStart = dataset.trendLine.intercept;
-          const yEnd = dataset.trendLine.slope * timeSpanSeconds + dataset.trendLine.intercept;
+          const durationMs = endTime - startTime;
+          const yEnd = dataset.trendLine.slope * durationMs + dataset.trendLine.intercept;
 
           // Determine if trend fit is weak (R² < 0.3)
           const weakFit = dataset.trendLine.rSquared < 0.3;
@@ -194,38 +245,7 @@ export class ChartGenerationService {
       // Prepare annotations for statistics
       const annotations: any = {};
 
-      // Add statistics box if available (only for single dataset)
-      if (datasets.length === 1 && datasets[0]!.statistics) {
-        const stats = datasets[0]!.statistics;
-        annotations.statsBox = {
-          type: 'label',
-          xValue: (ctx: any) => {
-            const xScale = ctx.chart.scales.x;
-            return xScale.max - (xScale.max - xScale.min) * 0.15; // Moved further from right edge (15%)
-          },
-          yValue: (ctx: any) => {
-            const yScale = ctx.chart.scales.y;
-            return yScale.max - (yScale.max - yScale.min) * 0.15; // Moved further from top (15%)
-          },
-          xAdjust: 0,
-          yAdjust: 0,
-          content: [
-            `Min: ${stats.min.toFixed(2)}`,
-            `Max: ${stats.max.toFixed(2)}`,
-            `Avg: ${stats.mean.toFixed(2)}`,
-            `StdDev: ${stats.stdDev.toFixed(2)}`
-          ],
-          font: {
-            size: 9
-          },
-          color: '#000000',
-          backgroundColor: 'rgba(255, 255, 255, 0.9)',
-          borderColor: '#000000',
-          borderWidth: 1,
-          padding: 6,
-          position: 'end'
-        };
-      }
+      // NOTE: statsBox removed at user request for cleaner look (exists in header already)
 
       const config: ChartConfiguration = {
         type: 'line',
@@ -237,94 +257,140 @@ export class ChartGenerationService {
           animation: false,
           plugins: {
             title: {
-              display: !!options.title,
-              text: options.title || '',
-              font: {
-                size: 16,
-                weight: 'bold'
-              },
-              color: '#000000'
+              display: false // Titles are managed by the PDF report structure, not internally
             },
             legend: {
-              display: true,
-              position: 'top',
+              display: options.showLegend ?? false,
+              position: 'bottom',
+              align: 'center',
               labels: {
-                color: '#000000',
+                boxWidth: 12,
+                usePointStyle: true,
+                pointStyle: 'circle',
+                padding: 15,
+                color: this.CHART_LABEL_COLOR,
                 font: {
-                  size: 10
-                },
-                usePointStyle: false,
-                boxWidth: 15,  // Reduced from 20 to save space
-                padding: 8     // Reduced from 10 to save space
-              },
-              maxHeight: 100   // Increased from 60 to prevent legend cutoff
+                  family: this.CHART_FONT_FAMILY,
+                  size: 10,
+                  weight: 'bold'
+                }
+              }
             },
             annotation: {
               annotations: annotations
+            },
+            tooltip: {
+              enabled: false // Not needed for PDF
             }
           },
           scales: {
             x: {
               type: 'linear',
+              min: minX,
+              max: maxX,
+              offset: false,
+              bounds: 'ticks',
               title: {
-                display: true,
-                text: 'Time',
-                color: '#000000'
+                display: false
               },
               ticks: {
-                color: '#000000',
+                color: this.CHART_TICK_COLOR,
+                font: {
+                  family: this.CHART_FONT_FAMILY,
+                  size: 9
+                },
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 6,
+                includeBounds: true,
                 callback: function (value) {
                   const date = new Date(value);
                   return date.toLocaleTimeString('en-US', {
                     hour: '2-digit',
                     minute: '2-digit',
                     hour12: false,
-                    timeZone: options.timezone || 'UTC'
+                    timeZone: options.timezone || env.DEFAULT_TIMEZONE || 'UTC'
                   });
                 }
               },
               grid: {
-                color: '#e5e7eb'
+                display: true,
+                color: this.CHART_GRID_COLOR,
+                drawTicks: false
+              },
+              border: {
+                display: false
               }
             },
             y: {
+              type: 'linear',
               title: {
-                display: true,
-                text: 'Value',
-                color: '#000000'
+                display: !!options.yUnits,
+                text: options.yUnits || '',
+                color: this.CHART_LABEL_COLOR,
+                font: {
+                  family: this.CHART_FONT_FAMILY,
+                  size: 10
+                }
               },
               ticks: {
-                color: '#000000'
+                color: this.CHART_TICK_COLOR,
+                font: {
+                  family: this.CHART_FONT_FAMILY,
+                  size: 9
+                },
+                maxTicksLimit: 5,
+                padding: 4
               },
               grid: {
-                color: '#e5e7eb'
+                display: true,
+                color: this.CHART_GRID_COLOR,
+                drawTicks: false
               },
-              beginAtZero: false
+              border: {
+                display: false
+              }
+            }
+          },
+          layout: {
+            padding: {
+              top: 5,
+              bottom: 5,
+              left: 0,
+              right: 0
             }
           },
           elements: {
             point: {
-              radius: 2,
-              hoverRadius: 4
+              radius: 0 // Global fallback to ensure no dots
             }
           }
-        }
+        },
+        plugins: [
+          {
+            id: 'custom_canvas_background',
+            beforeDraw: (chart) => {
+              const ctx = chart.canvas.getContext('2d');
+              if (ctx) {
+                ctx.save();
+                ctx.globalCompositeOperation = 'destination-over';
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, chart.width, chart.height);
+                ctx.restore();
+              }
+            }
+          }
+        ]
       };
 
       // Create chart
       reportLogger.debug('Creating Chart.js instance');
-      const chart = new Chart(ctx, config);
+      const chartInstance = new Chart(ctx, config);
       reportLogger.debug('Chart.js instance created successfully');
 
       // Convert to buffer
       reportLogger.debug('Converting canvas to PNG buffer');
       const buffer = canvas.toBuffer('image/png');
-
-      reportLogger.info('Canvas converted to buffer successfully', {
-        bufferSize: buffer.length,
-        bufferType: typeof buffer,
-        isBuffer: Buffer.isBuffer(buffer)
-      });
 
       // Validate buffer
       const validation = chartBufferValidator.validateBuffer(buffer, 'line_chart');
@@ -338,23 +404,14 @@ export class ChartGenerationService {
         throw new Error(errorMsg);
       }
 
-      if (validation.warnings.length > 0) {
-        reportLogger.warn('Line chart buffer validation warnings', {
-          warnings: validation.warnings,
-          bufferInfo: validation.bufferInfo
-        });
-      }
-
       // Clean up
-      chart.destroy();
+      chartInstance.destroy();
 
       reportLogger.info('Line chart generated and validated successfully', {
         bufferSize: buffer.length,
         format: validation.bufferInfo.format,
         dimensions: validation.bufferInfo.dimensions || { width, height },
-        dataPoints: datasets.reduce((sum, d) => sum + d.data.length, 0),
-        trendLinesAdded: datasets.filter(d => d.trendLine).length,
-        statisticsAdded: datasets.filter(d => d.statistics).length
+        dataPoints: totalDataPoints
       });
 
       return buffer;
@@ -542,7 +599,7 @@ export class ChartGenerationService {
                     hour: '2-digit',
                     minute: '2-digit',
                     hour12: false,
-                    timeZone: options.timezone || 'UTC'
+                    timeZone: options.timezone || env.DEFAULT_TIMEZONE
                   });
                 }
               }
@@ -717,7 +774,7 @@ export class ChartGenerationService {
   ): Promise<Buffer> {
     const width = options.width || this.defaultWidth;
     const height = options.height || this.defaultHeight;
-    const grayscale = true; // Always use grayscale for printing
+    const grayscale = false; // PRESERVE COLORS - SPC standards use specific colors for limits
 
     try {
       reportLogger.info('Generating SPC chart', {
@@ -743,13 +800,9 @@ export class ChartGenerationService {
         y: point.value
       }));
 
-      // Determine point colors based on control status
       const pointColors = data.map((_, index) => {
         const isOutOfControl = spcMetrics.outOfControlPoints.includes(index);
-        if (grayscale) {
-          return isOutOfControl ? '#000000' : '#666666';
-        }
-        return isOutOfControl ? '#ef4444' : '#3b82f6';
+        return isOutOfControl ? '#ef4444' : '#000000';
       });
 
       // Prepare annotations for control limits and center line
@@ -758,16 +811,18 @@ export class ChartGenerationService {
           type: 'line',
           yMin: spcMetrics.mean,
           yMax: spcMetrics.mean,
-          borderColor: grayscale ? '#000000' : '#10b981',
+          borderColor: '#000000',
           borderWidth: 2,
           label: {
             display: true,
             content: `Mean = ${spcMetrics.mean.toFixed(2)}`,
             position: 'end',
             backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            color: '#000000',
+            color: this.CHART_LABEL_COLOR,
             font: {
-              size: 9
+              family: this.CHART_FONT_FAMILY,
+              size: 9,
+              weight: 'bold'
             }
           }
         },
@@ -783,9 +838,11 @@ export class ChartGenerationService {
             content: `UCL = ${spcMetrics.ucl.toFixed(2)}`,
             position: 'end',
             backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            color: '#000000',
+            color: this.CHART_LABEL_COLOR,
             font: {
-              size: 9
+              family: this.CHART_FONT_FAMILY,
+              size: 9,
+              weight: 'bold'
             }
           }
         },
@@ -801,9 +858,11 @@ export class ChartGenerationService {
             content: `LCL = ${spcMetrics.lcl.toFixed(2)}`,
             position: 'end',
             backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            color: '#000000',
+            color: this.CHART_LABEL_COLOR,
             font: {
-              size: 9
+              family: this.CHART_FONT_FAMILY,
+              size: 9,
+              weight: 'bold'
             }
           }
         }
@@ -815,17 +874,19 @@ export class ChartGenerationService {
           type: 'line',
           yMin: specLimits.usl,
           yMax: specLimits.usl,
-          borderColor: grayscale ? '#333333' : '#f59e0b',
+          borderColor: grayscale ? '#333333' : '#8b5cf6', // Standard Blue/Purple for Specs
           borderDash: [10, 5],
-          borderWidth: 1,
+          borderWidth: 1.5,
           label: {
             display: true,
             content: `USL = ${specLimits.usl.toFixed(2)}`,
             position: 'start',
             backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            color: '#000000',
+            color: this.CHART_LABEL_COLOR,
             font: {
-              size: 9
+              family: this.CHART_FONT_FAMILY,
+              size: 9,
+              weight: 'bold'
             }
           }
         };
@@ -836,17 +897,19 @@ export class ChartGenerationService {
           type: 'line',
           yMin: specLimits.lsl,
           yMax: specLimits.lsl,
-          borderColor: grayscale ? '#333333' : '#f59e0b',
+          borderColor: grayscale ? '#333333' : '#8b5cf6', // Standard Blue/Purple for Specs
           borderDash: [10, 5],
-          borderWidth: 1,
+          borderWidth: 1.5,
           label: {
             display: true,
             content: `LSL = ${specLimits.lsl.toFixed(2)}`,
             position: 'start',
             backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            color: '#000000',
+            color: this.CHART_LABEL_COLOR,
             font: {
-              size: 9
+              family: this.CHART_FONT_FAMILY,
+              size: 9,
+              weight: 'bold'
             }
           }
         };
@@ -864,7 +927,7 @@ export class ChartGenerationService {
           datasets: [{
             label: 'Process Data',
             data: chartData,
-            borderColor: grayscale ? '#000000' : '#3b82f6',
+            borderColor: '#000000',
             backgroundColor: 'transparent',
             pointRadius: 4,
             pointBackgroundColor: pointColors,
@@ -886,10 +949,11 @@ export class ChartGenerationService {
                 `σ = ${spcMetrics.stdDev.toFixed(2)}${capabilityInfo}`
               ],
               font: {
+                family: this.CHART_FONT_FAMILY,
                 size: 14,
                 weight: 'bold'
               },
-              color: '#000000',
+              color: this.CHART_LABEL_COLOR,
               padding: {
                 top: 10,
                 bottom: 10
@@ -899,8 +963,9 @@ export class ChartGenerationService {
               display: true,
               position: 'top',
               labels: {
-                color: '#000000',
+                color: this.CHART_LABEL_COLOR,
                 font: {
+                  family: this.CHART_FONT_FAMILY,
                   size: 10
                 },
                 generateLabels: (chart) => {
@@ -908,9 +973,10 @@ export class ChartGenerationService {
                   const labels = [
                     {
                       text: `Process Data (${data.length} points)`,
-                      fillStyle: grayscale ? '#666666' : '#3b82f6',
-                      strokeStyle: grayscale ? '#666666' : '#3b82f6',
-                      lineWidth: 2
+                      fillStyle: '#000000',
+                      strokeStyle: '#000000',
+                      lineWidth: 2,
+                      fontColor: this.CHART_LABEL_COLOR
                     }
                   ];
 
@@ -919,11 +985,12 @@ export class ChartGenerationService {
                       text: `Out of Control (${outOfControlCount} points)`,
                       fillStyle: grayscale ? '#000000' : '#ef4444',
                       strokeStyle: grayscale ? '#000000' : '#ef4444',
-                      lineWidth: 2
+                      lineWidth: 2,
+                      fontColor: this.CHART_LABEL_COLOR
                     });
                   }
 
-                  return labels;
+                  return labels as any[];
                 }
               }
             },
@@ -937,40 +1004,61 @@ export class ChartGenerationService {
               title: {
                 display: true,
                 text: 'Time',
-                color: '#000000',
+                color: this.CHART_LABEL_COLOR,
                 font: {
-                  size: 12
+                  family: this.CHART_FONT_FAMILY,
+                  size: 12,
+                  weight: 'bold'
                 }
               },
               ticks: {
-                color: '#000000',
+                color: this.CHART_TICK_COLOR,
+                font: {
+                  family: this.CHART_FONT_FAMILY,
+                  size: 9
+                },
                 callback: function (value) {
                   const date = new Date(value);
                   return date.toLocaleTimeString('en-US', {
                     hour: '2-digit',
                     minute: '2-digit',
-                    hour12: false
+                    hour12: false,
+                    timeZone: options.timezone || env.DEFAULT_TIMEZONE
                   });
                 }
               },
               grid: {
-                color: '#e5e7eb'
+                color: this.CHART_GRID_COLOR,
+                drawTicks: false
+              },
+              border: {
+                display: false
               }
             },
             y: {
               title: {
                 display: true,
-                text: 'Value',
-                color: '#000000',
+                text: options.yUnits || 'Value',
+                color: this.CHART_LABEL_COLOR,
                 font: {
-                  size: 12
+                  family: this.CHART_FONT_FAMILY,
+                  size: 12,
+                  weight: 'bold'
                 }
               },
               ticks: {
-                color: '#000000'
+                color: this.CHART_TICK_COLOR,
+                font: {
+                  family: this.CHART_FONT_FAMILY,
+                  size: 9
+                }
               },
               grid: {
-                color: '#e5e7eb'
+                color: this.CHART_GRID_COLOR,
+                drawTicks: false
+              },
+              border: {
+                display: false
               },
               beginAtZero: false
             }
@@ -1052,7 +1140,7 @@ export class ChartGenerationService {
     statistics?: Record<string, StatisticsResult>,
     trends?: Record<string, TrendResult>,
     chartTypes: ('line' | 'bar' | 'trend' | 'scatter')[] = ['line'],
-    options: ChartOptions = {}
+    options: ChartOptions & { tagInfo?: Record<string, TagInfo> | undefined } = {}
   ): Promise<Record<string, Buffer>> {
     const charts: Record<string, Buffer> = {};
 
@@ -1068,36 +1156,28 @@ export class ChartGenerationService {
       const { statisticalAnalysisService } = await import('./statisticalAnalysis');
       const { classifyTag } = await import('./tagClassificationService');
 
-      // Generate line charts for each tag with trend lines and statistics
-      if (chartTypes.includes('line')) {
-        for (const [tagName, tagData] of Object.entries(data)) {
-          if (tagData.length > 0) {
-            // Classify tag to determine if it's analog or digital
-            const classification = classifyTag(tagData);
+      // Primary Data Visualizations (Multi-Trend and Individual Tag Charts)
+      const analogDatasets: LineChartData[] = [];
 
-            // Prepare chart data
-            const chartData: LineChartData = {
-              tagName,
-              data: tagData
-            };
+      for (const [tagName, tagData] of Object.entries(data)) {
+        if (tagData.length > 0) {
+          const classification = classifyTag(tagData);
+          const chartData: LineChartData = {
+            tagName,
+            data: tagData,
+            color: this.getStableTagColor(tagName, options.tags || Object.keys(data))
+          };
 
-            // Add trend line for analog tags with sufficient data
-            if (classification.type === 'analog' && tagData.length >= 3) {
+          // Calculate statistics and trends for analog tags to include in charts (only if requested)
+          if (classification.type === 'analog') {
+            if (options.includeTrendLines && tagData.length >= 3) {
               try {
-                const trendLine = statisticalAnalysisService.calculateAdvancedTrendLine(tagData);
-                chartData.trendLine = trendLine;
-                reportLogger.debug(`Trend line calculated for ${tagName}`, {
-                  equation: trendLine.equation,
-                  rSquared: trendLine.rSquared
-                });
-              } catch (error) {
-                reportLogger.warn(`Failed to calculate trend line for ${tagName}`, {
-                  error: error instanceof Error ? error.message : 'Unknown error'
-                });
+                chartData.trendLine = statisticalAnalysisService.calculateAdvancedTrendLine(tagData);
+              } catch (e) {
+                reportLogger.warn(`Trend calc failed for ${tagName}`, { error: e instanceof Error ? e.message : String(e) });
               }
             }
 
-            // Add statistics if available
             if (statistics && statistics[tagName]) {
               chartData.statistics = {
                 min: statistics[tagName]!.min,
@@ -1106,29 +1186,55 @@ export class ChartGenerationService {
                 stdDev: statistics[tagName]!.standardDeviation
               };
             } else {
-              // Calculate statistics if not provided
               try {
                 const stats = statisticalAnalysisService.calculateStatisticsSync(tagData);
                 chartData.statistics = {
-                  min: stats.min,
-                  max: stats.max,
-                  mean: stats.average,
-                  stdDev: stats.standardDeviation
+                  min: stats.min, max: stats.max, mean: stats.average, stdDev: stats.standardDeviation
                 };
-              } catch (error) {
-                reportLogger.warn(`Failed to calculate statistics for ${tagName}`, {
-                  error: error instanceof Error ? error.message : 'Unknown error'
-                });
+              } catch (e) {
+                reportLogger.warn(`Stats calc failed for ${tagName}`, { error: e instanceof Error ? e.message : String(e) });
               }
             }
-
-            const chartBuffer = await this.generateLineChart(
-              [chartData],
-              { title: `${tagName} - Time Series` }
-            );
-            charts[`${tagName}_line`] = chartBuffer;
+            analogDatasets.push(chartData);
           }
+
+          // ALWAYS generate individual chart for EACH tag (Baseline visualization)
+          const chartBuffer = await this.generateLineChart(
+            [chartData],
+            {
+              timezone: options.timezone,
+              includeTrendLines: options.includeTrendLines,
+              yUnits: options.tagInfo?.[tagName]?.units,
+              tags: options.tags || Object.keys(data)
+            }
+          );
+          charts[tagName] = chartBuffer;
         }
+      }
+
+      // ALWAYS generate Multi-Trend Analysis chart if multiple analog tags exist (Baseline visualization)
+      if (analogDatasets.length > 1) {
+        try {
+          const multiTrendBuffer = await this.generateLineChart(
+            analogDatasets,
+            {
+              title: 'Multi-Trend Analysis',
+              timezone: options.timezone,
+              includeTrendLines: options.includeTrendLines,
+              tags: options.tags || Object.keys(data),
+              showLegend: true
+            }
+          );
+          charts['Multi-Trend Chart'] = multiTrendBuffer;
+          reportLogger.info('Generated Multi-Trend Chart for all analog tags');
+        } catch (error) {
+          reportLogger.error('Failed to generate Multi-Trend Analysis chart', { error });
+        }
+      }
+
+      // Generate additional specific chart types if requested in chartTypes
+      if (chartTypes.includes('scatter')) {
+        // Scatter chart logic could be added here if needed in the future
       }
 
       // Generate trend charts if trend data is available
@@ -1180,7 +1286,7 @@ export class ChartGenerationService {
 
     // Generate points for the trend line
     const points = [];
-    const numPoints = Math.min(100, data.length); // Limit to 100 points for performance
+    const numPoints = data.length;
 
     for (let i = 0; i <= numPoints; i++) {
       const x = firstTime + (lastTime - firstTime) * (i / numPoints);

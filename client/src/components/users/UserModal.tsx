@@ -12,10 +12,11 @@ interface UserModalProps {
 
 export const UserModal: React.FC<UserModalProps> = ({ user, onClose, onSave }) => {
   const isEditMode = !!user;
-  
+
   const [formData, setFormData] = useState({
     username: user?.username || '',
     email: user?.email || '',
+    mobile: user?.mobile || '',
     firstName: user?.firstName || '',
     lastName: user?.lastName || '',
     role: user?.role || 'user' as UserRole,
@@ -89,6 +90,7 @@ export const UserModal: React.FC<UserModalProps> = ({ user, onClose, onSave }) =
       if (isEditMode) {
         const updateData: UpdateUserData = {
           email: formData.email,
+          mobile: formData.mobile || undefined,
           firstName: formData.firstName,
           lastName: formData.lastName,
           role: formData.role
@@ -98,6 +100,7 @@ export const UserModal: React.FC<UserModalProps> = ({ user, onClose, onSave }) =
         const createData: CreateUserData = {
           username: formData.username,
           email: formData.email,
+          mobile: formData.mobile || undefined,
           password: formData.password,
           firstName: formData.firstName,
           lastName: formData.lastName,
@@ -128,7 +131,7 @@ export const UserModal: React.FC<UserModalProps> = ({ user, onClose, onSave }) =
 
   const getPasswordStrength = (password: string): { strength: string; color: string } => {
     if (!password) return { strength: '', color: '' };
-    
+
     let score = 0;
     if (password.length >= 8) score++;
     if (password.length >= 12) score++;
@@ -163,15 +166,26 @@ export const UserModal: React.FC<UserModalProps> = ({ user, onClose, onSave }) =
             />
           )}
 
-          <Input
-            label="Email"
-            type="email"
-            value={formData.email}
-            onChange={(e) => handleChange('email', e.target.value)}
-            error={errors.email}
-            required
-            autoComplete="email"
-          />
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Email"
+              type="email"
+              value={formData.email}
+              onChange={(e) => handleChange('email', e.target.value)}
+              error={errors.email}
+              required
+              autoComplete="email"
+            />
+            <Input
+              label="Mobile Number"
+              type="tel"
+              value={formData.mobile}
+              onChange={(e) => handleChange('mobile', e.target.value)}
+              error={errors.mobile}
+              autoComplete="tel"
+              placeholder="+1234567890 (Optional)"
+            />
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <Input
@@ -224,7 +238,7 @@ export const UserModal: React.FC<UserModalProps> = ({ user, onClose, onSave }) =
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
                     <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-                      <div 
+                      <div
                         className={`h-full ${passwordStrength.color} transition-all`}
                         style={{ width: passwordStrength.strength === 'Weak' ? '33%' : passwordStrength.strength === 'Medium' ? '66%' : '100%' }}
                       />

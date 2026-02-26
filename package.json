@@ -1,6 +1,6 @@
 {
   "name": "historian-reports",
-  "version": "0.76.0",
+  "version": "1.2.5",
   "description": "Professional reporting application for AVEVA Historian database",
   "main": "dist/server.js",
   "scripts": {
@@ -11,6 +11,7 @@
     "build:client": "cd client && npm run build",
     "build:all": "npm run build && npm run build:electron && npm run build:client",
     "start": "node dist/server.js",
+    "start:build": "node dist/server.js",
     "start:dev": "concurrently \"npm run dev\" \"cd client && npm start\"",
     "start:dev:mock": "concurrently \"npm run dev:mock\" \"cd client && npm start\"",
     "test": "jest",
@@ -60,14 +61,17 @@
     "jsonwebtoken": "^9.0.2",
     "mssql": "^10.0.1",
     "node-cron": "^3.0.3",
+    "node-opcua": "^2.163.1",
     "nodemailer": "^6.9.7",
+    "path-to-regexp": "^8.3.0",
     "pdfkit": "^0.14.0",
     "redis": "^5.10.0",
     "side-channel": "^1.1.0",
     "sqlite3": "^5.1.6",
+    "svg-to-pdfkit": "^0.1.8",
     "uuid": "^10.0.0",
     "winston": "^3.11.0",
-    "zod": "^3.22.4"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",

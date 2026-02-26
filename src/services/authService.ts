@@ -110,8 +110,9 @@ export class AuthService {
           this.db.run(`
             CREATE TABLE IF NOT EXISTS users (
               id TEXT PRIMARY KEY,
-              username TEXT UNIQUE NOT NULL,
-              email TEXT UNIQUE NOT NULL,
+              username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+              email TEXT UNIQUE NOT NULL COLLATE NOCASE,
+              mobile TEXT,
               first_name TEXT NOT NULL,
               last_name TEXT NOT NULL,
               role TEXT NOT NULL DEFAULT 'user',
@@ -172,6 +173,20 @@ export class AuthService {
               apiLogger.error('Failed to create tables', { error: err });
               reject(err);
             } else {
+              // Check and add mobile column if it doesn't exist
+              this.db.all("PRAGMA table_info(users)", (err, columns: any[]) => {
+                const hasMobile = columns?.some(col => col.name === 'mobile');
+                if (!hasMobile) {
+                  this.db.run('ALTER TABLE users ADD COLUMN mobile TEXT', (alterErr) => {
+                    if (alterErr) {
+                      apiLogger.error('Failed to add mobile column to users table', { error: alterErr });
+                    } else {
+                      apiLogger.info('Added mobile column to users table');
+                    }
+                  });
+                }
+              });
+
               // Insert default permissions
               this.createDefaultPermissions().then(() => {
                 apiLogger.info('Authentication database initialized and tables created');
@@ -209,12 +224,15 @@ export class AuthService {
       // User permissions
       { role: 'user' as const, resource: 'reports', action: 'read' },
       { role: 'user' as const, resource: 'reports', action: 'write' },
+      { role: 'user' as const, resource: 'reports', action: 'delete' },
       { role: 'user' as const, resource: 'schedules', action: 'read' },
       { role: 'user' as const, resource: 'schedules', action: 'write' },
+      { role: 'user' as const, resource: 'schedules', action: 'delete' },
       { role: 'user' as const, resource: 'system', action: 'read' },
 
       // View-Only permissions
       { role: 'view-only' as const, resource: 'reports', action: 'read' },
+      { role: 'view-only' as const, resource: 'schedules', action: 'read' },
       { role: 'view-only' as const, resource: 'system', action: 'read' }
     ];
 
@@ -222,7 +240,7 @@ export class AuthService {
       const permId = `perm_${perm.role}_${perm.resource}_${perm.action}`;
       return new Promise<void>((resolve, reject) => {
         this.db.run(
-          `INSERT OR IGNORE INTO role_permissions (id, role, resource, action, granted)
+          `INSERT OR REPLACE INTO role_permissions (id, role, resource, action, granted)
            VALUES (?, ?, ?, ?, ?)`,
           [permId, perm.role, perm.resource, perm.action, true],
           (err) => {
@@ -249,7 +267,7 @@ export class AuthService {
         }
 
         this.db.get(
-          'SELECT * FROM users WHERE (username = ? OR email = ?) AND is_active = 1',
+          'SELECT * FROM users WHERE (username = ? COLLATE NOCASE OR email = ? COLLATE NOCASE) AND is_active = 1',
           [usernameOrEmail, usernameOrEmail],
           (err, row: any) => {
             if (err) {

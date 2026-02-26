@@ -13,6 +13,7 @@ import {
   SortColumn,
   SortDirection,
 } from '../../utils/tableUtils';
+import { formatYValue } from '../charts/chartUtils';
 
 interface DataPreviewTableProps {
   data: TimeSeriesData[];
@@ -242,7 +243,7 @@ export const DataPreviewTable: React.FC<DataPreviewTableProps> = ({
                     {formatTimestamp(row.timestamp)}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-900 font-mono">
-                    {formatValue(row.value)}
+                    {formatYValue(row.value)}
                   </td>
                   <td className="px-4 py-3">
                     <QualityIndicator qualityCode={row.quality} />
@@ -277,7 +278,7 @@ export const DataPreviewTable: React.FC<DataPreviewTableProps> = ({
                   {formatTimestamp(row.timestamp)}
                 </span>
                 <span className="text-sm font-mono font-bold text-blue-700">
-                  {formatValue(row.value)}
+                  {formatYValue(row.value)}
                 </span>
               </div>
             </div>

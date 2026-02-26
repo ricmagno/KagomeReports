@@ -8,7 +8,7 @@ import PDFDocument from 'pdfkit';
 import Handlebars from 'handlebars';
 import fs from 'fs';
 import path from 'path';
-import { TimeSeriesData, StatisticsResult, TrendResult, SPCMetricsSummary, SpecificationLimits, TagClassification } from '@/types/historian';
+import { TimeSeriesData, StatisticsResult, TrendResult, SPCMetricsSummary, SpecificationLimits, TagClassification, TagInfo } from '@/types/historian';
 import { reportLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
 import { env } from '@/config/environment';
@@ -52,7 +52,9 @@ export interface ReportConfig {
   specificationLimits?: Record<string, SpecificationLimits> | undefined;
   includeSPCCharts?: boolean | undefined;
   includeTrendLines?: boolean | undefined;
+  includeMultiTrend?: boolean | undefined;
   includeStatsSummary?: boolean | undefined;
+  includeDataTable?: boolean | undefined;
   version?: number | undefined;
   retrievalMode?: string | undefined;
 }
@@ -63,6 +65,7 @@ export interface ReportData {
   statistics?: Record<string, StatisticsResult>;
   trends?: Record<string, TrendResult>;
   charts?: Record<string, Buffer>;
+  tagInfo?: Record<string, TagInfo>;
   generatedAt: Date;
 }
 
@@ -127,6 +130,7 @@ export class ReportGenerationService {
         throw createError('Unsupported report format', 400);
       }
     } catch (error) {
+      console.error('DEBUG: generateReport caught error:', error);
       reportLogger.error('Report generation failed', {
         reportId: reportData.config.id,
         error
@@ -141,7 +145,7 @@ export class ReportGenerationService {
           format: reportData.config.format,
           generationTime: Date.now() - startTime
         },
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: error instanceof Error ? error.stack || error.message : 'Unknown error'
       };
     }
   }
@@ -173,8 +177,19 @@ export class ReportGenerationService {
         const spcMetrics = new Map<string, any>();
         const spcMetricsSummary: SPCMetricsSummary[] = [];
 
-        const includeTrendLines = reportData.config.includeTrendLines !== false; // Default true
-        const includeSPCCharts = reportData.config.includeSPCCharts !== false; // Default true
+        const includeTrendLines = reportData.config.includeTrendLines !== false; // Default: true
+        const includeStatsSummary = reportData.config.includeStatsSummary !== false; // Default: true
+        const includeSPCCharts = !!reportData.config.includeSPCCharts; // Default: false
+        const includeDataTable = !!reportData.config.includeDataTable; // Default: false
+
+        reportLogger.info('PDF Generation configuration', {
+          reportId: reportData.config.id,
+          includeTrendLines,
+          includeSPCCharts,
+          includeStatsSummary,
+          includeDataTable,
+          hasStatistics: !!reportData.statistics && Object.keys(reportData.statistics).length > 0
+        });
 
         for (const [tagName, data] of Object.entries(reportData.data)) {
           const classification = tagClassifications.get(tagName);
@@ -234,47 +249,130 @@ export class ReportGenerationService {
         // Step 3: Generate enhanced charts with trend lines and statistics
         const enhancedCharts = new Map<string, Buffer>();
 
+        // Pre-populate with WYSIWYG charts from frontend
+        if (reportData.charts) {
+          for (const [chartName, chartBuffer] of Object.entries(reportData.charts)) {
+            enhancedCharts.set(chartName, chartBuffer);
+            reportLogger.debug(`Using pre-generated WYSIWYG chart: ${chartName}`);
+          }
+        }
+
+        // ALWAYS generate the Multi-Trend Chart in the backend if missing or to ensure legend presence
+        const shouldIncludeMultiTrend = reportData.config.includeMultiTrend !== false;
+        if (shouldIncludeMultiTrend && (!enhancedCharts.has('Multi-Trend Chart') || true)) { // Force backend generation for legendary reliability
+          const analogDatasets: any[] = [];
+          for (const [tagName, data] of Object.entries(reportData.data)) {
+            const classification = tagClassifications.get(tagName);
+            if (classification?.type === 'analog' && data.length > 0) {
+              analogDatasets.push({
+                tagName,
+                data,
+                trendLine: trendLines.get(tagName),
+                statistics: reportData.statistics?.[tagName] ? {
+                  min: reportData.statistics[tagName].min,
+                  max: reportData.statistics[tagName].max,
+                  mean: reportData.statistics[tagName].average,
+                  stdDev: reportData.statistics[tagName].standardDeviation
+                } : undefined,
+                color: chartGenerationService.getStableTagColor(tagName, reportData.config.tags)
+              });
+            }
+          }
+
+          if (analogDatasets.length > 0) {
+            try {
+              const multiTrendBuffer = await chartGenerationService.generateLineChart(
+                analogDatasets,
+                {
+                  title: 'Combined Process Trends',
+                  width: 1200,
+                  height: 600,
+                  timezone: reportData.config.timeRange.timezone,
+                  includeTrendLines: includeTrendLines,
+                  tags: reportData.config.tags,
+                  showLegend: true
+                }
+              );
+              enhancedCharts.set('Multi-Trend Chart', multiTrendBuffer);
+              reportLogger.info('Generated Multi-Trend Chart in backend');
+            } catch (error) {
+              reportLogger.error('Failed to generate multi-trend chart in backend', { error });
+            }
+          }
+        }
+
         for (const [tagName, data] of Object.entries(reportData.data)) {
           if (data.length === 0) continue;
 
           const classification = tagClassifications.get(tagName);
           const stats = reportData.statistics?.[tagName];
 
-          // Generate standard chart with trend line and statistics
-          const trendLine = trendLines.get(tagName);
-          const statistics = stats ? {
-            min: stats.min,
-            max: stats.max,
-            mean: stats.average,
-            stdDev: stats.standardDeviation
-          } : undefined;
+          // Generate standard chart with trend line and statistics if NOT provided by frontend
+          const hasFrontendChart = Array.from(enhancedCharts.keys()).some(k => k === tagName || k.startsWith(`${tagName} - `));
 
-          const lineChartData: any = {
-            tagName,
-            data,
-            trendLine,
-            statistics
-          };
+          // if (!hasFrontendChart) {
+          //   const trendLine = trendLines.get(tagName);
+          //   const statistics = stats ? {
+          //     min: stats.min,
+          //     max: stats.max,
+          //     mean: stats.average,
+          //     stdDev: stats.standardDeviation
+          //   } : undefined;
 
-          try {
-            const chartBuffer = await chartGenerationService.generateLineChart(
-              [lineChartData],
-              {
-                title: `${tagName} - Time Series Data`,
-                width: 1200,
-                height: 600,
-                timezone: reportData.config.timeRange.timezone
-              }
-            );
+          //   const lineChartData: any = {
+          //     tagName,
+          //     data,
+          //     trendLine,
+          //     statistics
+          //   };
 
-            enhancedCharts.set(`${tagName} - Data Trend`, chartBuffer);
-            reportLogger.debug(`Enhanced chart generated for ${tagName}`);
-          } catch (error) {
-            reportLogger.error(`Failed to generate line chart for ${tagName}`, {
-              error: error instanceof Error ? error.message : 'Unknown error'
-            });
-            // Chart generation failed - report will continue without this chart
-            // The addChartsSection method will handle missing charts gracefully
+          //   try {
+          //     const chartBuffer = await chartGenerationService.generateLineChart(
+          //       [lineChartData],
+          //       {
+          //         // Removed internal title to match frontend "captured" SVG look
+          //         width: 1200,
+          //         height: 600,
+          //         timezone: reportData.config.timeRange.timezone,
+          //         includeTrendLines: includeTrendLines
+          if (!hasFrontendChart) {
+            const trendLine = trendLines.get(tagName);
+            const statistics = stats ? {
+              min: stats.min,
+              max: stats.max,
+              mean: stats.average,
+              stdDev: stats.standardDeviation
+            } : undefined;
+
+            const lineChartData: any = {
+              tagName,
+              data,
+              trendLine,
+              statistics
+            };
+
+            try {
+              const chartBuffer = await chartGenerationService.generateLineChart(
+                [lineChartData],
+                {
+                  // Used 1200x530 to match the 2.26 aspect ratio of the PDF slots (521x230)
+                  width: 1200,
+                  height: 530,
+                  timezone: reportData.config.timeRange.timezone,
+                  includeTrendLines: includeTrendLines,
+                  tags: reportData.config.tags
+                }
+              );
+
+              enhancedCharts.set(`${tagName} - Data Trend`, chartBuffer);
+              reportLogger.debug(`Enhanced chart generated for ${tagName}`);
+            } catch (error) {
+              reportLogger.error(`Failed to generate line chart for ${tagName}`, {
+                error: error instanceof Error ? error.message : 'Unknown error'
+              });
+              // Chart generation failed - report will continue without this chart
+              // The addChartsSection method will handle missing charts gracefully
+            }
           }
 
           // Generate SPC chart for analog tags if enabled
@@ -292,7 +390,7 @@ export class ReportGenerationService {
                   {
                     title: `${tagName} - SPC Chart`,
                     width: 1200,
-                    height: 600,
+                    height: 530, // Match 2.26 aspect ratio
                     timezone: reportData.config.timeRange.timezone
                   }
                 );
@@ -312,12 +410,12 @@ export class ReportGenerationService {
         // Step 4: Create PDF document
         const doc = new PDFDocument({
           size: 'A4',
-          margins: { top: 80, bottom: 60, left: 30, right: 30 },
+          margins: { top: 70, bottom: 50, left: 25, right: 25 },
           bufferPages: true, // Enable page buffering for footer addition
           info: {
             Title: reportData.config.name,
             Author: reportData.config.metadata?.author || 'Historian Reports',
-            Subject: reportData.config.metadata?.subject || reportData.config.description,
+            Subject: reportData.config.metadata?.subject || reportData.config.description || '',
             Keywords: reportData.config.metadata?.keywords?.join(', ') || '',
             Creator: 'Historian Reports Application',
             Producer: 'PDFKit'
@@ -342,66 +440,133 @@ export class ReportGenerationService {
         // Add executive summary
         this.addExecutiveSummary(doc, reportData);
 
-        // Add data sections for each tag
-        let isFirstTag = true;
-        for (const [tagName, data] of Object.entries(reportData.data)) {
-          if (data.length > 0) {
-            // Only add page break if not the first tag or if we're too far down the page
-            if (!isFirstTag || doc.y > doc.page.height - 300) {
-              doc.addPage();
-            } else {
-              // Add some spacing before first tag section
-              doc.moveDown(1);
-            }
-            this.addTagSection(doc, tagName, data, reportData);
-            isFirstTag = false;
-          }
+        // Add Key Findings
+        this.addKeyFindings(doc, reportData);
+
+        // -- Section and page break
+        doc.addPage();
+
+        // *** Section Information (only displayed if option Statistics Summary is selected)
+        if (includeStatsSummary && reportData.statistics) {
+          doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Statistics Summary', { align: 'center' });
+          doc.moveDown(1);
+          this.addStatisticalSummary(doc, reportData.statistics);
+          doc.addPage();
         }
 
-        // Separate standard charts from SPC charts
-        const standardCharts = new Map<string, Buffer>();
-        const spcCharts = new Map<string, Buffer>();
+        // *** Section Data visualization (ALWAYS DISPLAYED)
+        doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Data Visualization', { align: 'center' });
+        doc.moveDown(1);
 
+        // Separate SPC charts to be used in Section Statistical Process Control Analysis later
+        const spcCharts = new Map<string, Buffer>();
         for (const [chartName, chartBuffer] of enhancedCharts.entries()) {
           if (chartName.includes('SPC Chart')) {
             spcCharts.set(chartName, chartBuffer);
-          } else {
-            standardCharts.set(chartName, chartBuffer);
           }
         }
 
-        // Add standard charts section (with trend lines)
-        if (standardCharts.size > 0) {
-          // Only add page if we're too far down the current page
-          if (doc.y > doc.page.height - 400) {
-            doc.addPage();
-          } else {
-            doc.moveDown(1);
-          }
-          this.addChartsSection(doc, Object.fromEntries(standardCharts));
-        }
+        // 1. Multi-Trend Overview Chart (Requirement: provide comparative view first)
+        const includeMultiTrendFlag = reportData.config.includeMultiTrend ?? true;
+        const multiTrendBuffer = includeMultiTrendFlag ? enhancedCharts.get('Multi-Trend Chart') : undefined;
 
-        // Add SPC section on a new page if we have SPC data
-        if (spcCharts.size > 0 || spcMetricsSummary.length > 0) {
-          // Always start SPC section on a new page
+        if (multiTrendBuffer) {
+          doc.fontSize(14).fillColor('#4b5563').font('Helvetica-Bold').text('Combined Process Trends', 25);
+          doc.moveDown(0.5);
+
+          const fullChartWidth = 545;
+          const fullChartHeight = 320;
+
+          try {
+            const bufferInfo = chartBufferValidator.getBufferInfo(multiTrendBuffer);
+            if (bufferInfo.format === 'SVG') {
+              const rawSvg = multiTrendBuffer.toString('utf8');
+              const svgString = rawSvg.replace(/width="[^"]*"/, '').replace(/height="[^"]*"/, '');
+              const SVGtoPDF = require('svg-to-pdfkit');
+              SVGtoPDF(doc, svgString, 25, doc.y, {
+                width: fullChartWidth,
+                height: fullChartHeight,
+                preserveAspectRatio: 'xMidYMid meet'
+              });
+            } else {
+              doc.image(multiTrendBuffer, 25, doc.y, {
+                fit: [fullChartWidth, fullChartHeight],
+                align: 'center',
+                valign: 'center'
+              });
+            }
+            doc.y += fullChartHeight + 40;
+          } catch (error) {
+            reportLogger.error('Failed to embed multi-trend overview chart', { error });
+          }
+
+          // Move to new page for individual tag breakdown
           doc.addPage();
+        }
 
-          // Add SPC section header
-          doc.fontSize(16)
-            .fillColor('#111827')
-            .font('Helvetica-Bold')
-            .text('Statistical Process Control Analysis', { align: 'center' });
+        // 2. Individual Tag Charts - Replicates the MiniChart view from Report Preview
+        let chartCount = 0;
+        for (const tagName of reportData.config.tags) {
+          // Priority: Use the SVG captured from the frontend for total WYSIWYG
+          let chartBuffer = enhancedCharts.get(tagName);
 
+          if (!chartBuffer) {
+            // Fallback to generated line chart if no WYSIWYG chart for this tag
+            chartBuffer = enhancedCharts.get(`${tagName} - Data Trend`);
+          }
+
+          if (chartBuffer) {
+            // Logic for 2 charts per page (matching preview density)
+            if (chartCount > 0 && chartCount % 2 === 0) {
+              doc.addPage();
+            }
+
+            const stats = reportData.statistics?.[tagName];
+            const trend = reportData.trends?.[tagName];
+            const tagInfo = reportData.tagInfo?.[tagName];
+
+            this.addMiniChart(
+              doc,
+              tagName,
+              chartBuffer,
+              tagInfo?.description,
+              stats,
+              trend
+            );
+
+            chartCount++;
+          }
+        }
+
+        doc.addPage();
+
+        // Trend lines are now overlaid directly on charts in the Data Visualization section, 
+        // so a separate Trend Analysis section is no longer needed.
+
+
+        // *** Section Statistical Process Control Analysis (Section IV)
+        if (includeSPCCharts && (spcCharts.size > 0 || spcMetricsSummary.length > 0)) {
+          doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Statistical Process Control Analysis', { align: 'center' });
           doc.moveDown(1);
 
-          // Add SPC charts first
-          if (spcCharts.size > 0) {
-            this.addChartsSection(doc, Object.fromEntries(spcCharts));
+          // 2 charts per page logic for SPC charts
+          let spcChartIdx = 0;
+          for (const tagName of reportData.config.tags) {
+            const chartBuffer = enhancedCharts.get(`${tagName} - SPC Chart`);
+            if (chartBuffer) {
+              if (spcChartIdx > 0 && spcChartIdx % 2 === 0) {
+                doc.addPage();
+              }
+
+              const metrics = spcMetrics.get(tagName);
+              const specLimits = reportData.config.specificationLimits?.[tagName];
+
+              this.addSPCChart(doc, tagName, chartBuffer, metrics, specLimits);
+              spcChartIdx++;
+            }
           }
 
-          // Add SPC metrics summary table after charts
           if (spcMetricsSummary.length > 0) {
-            // Only add page if we're too far down the current page
             if (doc.y > doc.page.height - 300) {
               doc.addPage();
             } else {
@@ -409,25 +574,20 @@ export class ReportGenerationService {
             }
             this.addSPCMetricsTable(doc, spcMetricsSummary);
           }
+          doc.addPage();
         }
 
-        // Add data table for each tag
-        for (const [tagName, data] of Object.entries(reportData.data)) {
-          if (data.length > 0) {
-            doc.addPage();
-            this.addDataTable(doc, tagName, data);
-          }
-        }
+        // *** Section Data table (only displayed if Includes Data Table is selected)
+        if (reportData.config.includeDataTable) {
+          doc.fontSize(16).fillColor('#111827').font('Helvetica-Bold').text('Data Table', { align: 'center' });
+          doc.moveDown(1);
 
-        // Add statistical summary
-        if (reportData.statistics) {
-          // Only add page if we're too far down the current page
-          if (doc.y > doc.page.height - 300) {
-            doc.addPage();
-          } else {
-            doc.moveDown(1);
+          for (const [tagName, data] of Object.entries(reportData.data)) {
+            if (data.length > 0) {
+              this.addDataTable(doc, tagName, data);
+              doc.addPage();
+            }
           }
-          this.addStatisticalSummary(doc, reportData.statistics);
         }
 
         // Get page count before adding footers
@@ -513,7 +673,8 @@ export class ReportGenerationService {
           }
         });
       } catch (error) {
-        reject(error);
+        console.error('DEBUG: generatePDFReport caught error:', error);
+        reject(error instanceof Error ? error : new Error(String(error)));
       }
     });
   }
@@ -522,337 +683,206 @@ export class ReportGenerationService {
    * Add report header with branding
    */
   private addReportHeader(doc: PDFKit.PDFDocument, config: ReportConfig): void {
-    // Company name - Kagome branding
+    // Company name - Kagome branding or from config
+    const margin = 25;
+    const companyName = config.branding?.companyName || 'Kagome';
     doc.fontSize(16)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text('Kagome', 40, 25);
+      .text(companyName, margin, 25);
 
     // Subtitle - Historian Reports
     doc.fontSize(11)
       .fillColor('#6b7280')
       .font('Helvetica')
-      .text('Historian Reports', 40, 45);
+      .text('Historian Reports', margin, 45);
 
-    // Subtle separator line
+    // Logo (optional)
+    if (config.branding?.logo) {
+      try {
+        const logoBuffer = Buffer.from(config.branding.logo, 'base64');
+        doc.image(logoBuffer, doc.page.width - 100, 25, { width: 60 });
+      } catch (error) {
+        reportLogger.warn('Failed to embed logo from base64 string', { error: error instanceof Error ? error.message : 'Unknown error' });
+      }
+    }
+
+    // Horizontal line below header
     doc.strokeColor('#e5e7eb')
-      .lineWidth(1)
-      .moveTo(40, 65)
-      .lineTo(doc.page.width - 40, 65)
+      .lineWidth(0.5)
+      .moveTo(margin, 70)
+      .lineTo(doc.page.width - margin, 70)
       .stroke();
 
-    // Reset position and color
+    doc.moveDown(1);
     doc.fillColor('#111827');
-    doc.y = 130;  // Increased from 110 for further improved spacing to avoid overlap
-    doc.x = 40;   // Explicitly reset x to margin
+    doc.x = margin;
   }
 
   /**
-   * Add report title and basic information
+   * Add report title (name + description).
    */
   private addReportTitle(doc: PDFKit.PDFDocument, config: ReportConfig): void {
+    const margin = 25;
     const title = config.version
       ? `${config.name} (v${config.version})`
       : config.name;
 
-    doc.fontSize(20)
+    doc.fontSize(22)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text(title, { align: 'center' });
+      .text(title, margin, doc.y, { align: 'center', width: doc.page.width - (margin * 2) });
 
-    doc.moveDown();
+    doc.moveDown(0.6);
 
     if (config.description) {
-      doc.fontSize(14)
+      doc.fontSize(13)
         .fillColor('#6b7280')
         .font('Helvetica')
-        .text(config.description, { align: 'center' });
-      doc.moveDown();
+        .text(config.description, margin, doc.y, { align: 'center', width: doc.page.width - (margin * 2) });
+      doc.moveDown(0.5);
     }
 
-    // Time range - safely handle dates with timezone
-    const formatOptions: Intl.DateTimeFormatOptions = {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      timeZone: config.timeRange.timezone || 'UTC'
-    };
+    doc.strokeColor('#e5e7eb')
+      .lineWidth(0.5)
+      .moveTo(margin, doc.y)
+      .lineTo(doc.page.width - margin, doc.y)
+      .stroke();
 
-    const startTime = config.timeRange.startTime instanceof Date
-      ? config.timeRange.startTime.toLocaleString('en-US', formatOptions)
-      : 'Unknown';
-    const endTime = config.timeRange.endTime instanceof Date
-      ? config.timeRange.endTime.toLocaleString('en-US', formatOptions)
-      : 'Unknown';
-
-    doc.fontSize(12)
-      .fillColor('#6b7280')
-      .text(`Report Period: ${startTime} - ${endTime} (${config.timeRange.timezone || 'UTC'})`, { align: 'center' });
-
-    // Reset to default black
+    doc.moveDown(0.8);
     doc.fillColor('#111827');
-    doc.moveDown(1);
+    doc.x = margin;
   }
 
   /**
-   * Add report metadata
+   * Add compact metadata strip.
    */
   private addReportMetadata(doc: PDFKit.PDFDocument, reportData: ReportData): void {
-    const startY = doc.y;
+    const { config } = reportData;
+    const margin = 25;
+    const tz = config.timeRange.timezone || env.DEFAULT_TIMEZONE;
 
-    // Left column
     const formatOptions: Intl.DateTimeFormatOptions = {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-      timeZone: reportData.config.timeRange.timezone || 'UTC'
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false, timeZone: tz
     };
 
-    const generatedDate = reportData.generatedAt instanceof Date
-      ? reportData.generatedAt.toLocaleString('en-US', formatOptions)
-      : 'Unknown';
+    const fmt = (d: Date | unknown) =>
+      d instanceof Date ? d.toLocaleString('en-US', formatOptions) : 'Unknown';
 
-    doc.fontSize(10)
-      .fillColor('#111827')
-      .font('Helvetica-Bold')
-      .text('Generated:', 50, startY)
-      .fillColor('#6b7280')
-      .font('Helvetica')
-      .text(generatedDate, 120, startY);
+    doc.x = margin;
+    doc.fontSize(10);
+    doc.fillColor('#6b7280').font('Helvetica')
+      .text(`Period: ${fmt(config.timeRange.startTime)} — ${fmt(config.timeRange.endTime)}  (${tz})`, margin, doc.y, { width: doc.page.width - (margin * 2) });
+    doc.text(`Tags: ${config.tags.join(', ')}`, margin, doc.y, { width: doc.page.width - (margin * 2) });
+    doc.text(`Retrieval Mode: ${config.retrievalMode || 'Delta'}`, margin, doc.y, { width: doc.page.width - (margin * 2) });
+    doc.text(`Generated: ${fmt(reportData.generatedAt)}`, margin, doc.y, { width: doc.page.width - (margin * 2) });
 
-    doc.fillColor('#111827')
-      .font('Helvetica-Bold')
-      .text('Tags:', 50, startY + 15)
-      .fillColor('#6b7280')
-      .font('Helvetica')
-      .text(reportData.config.tags.join(', '), 120, startY + 15);
-
-    // Right column
-    const totalDataPoints = Object.values(reportData.data)
-      .reduce((sum, data) => sum + data.length, 0);
-
-    doc.fillColor('#111827')
-      .font('Helvetica-Bold')
-      .text('Data Points:', 300, startY)
-      .fillColor('#6b7280')
-      .font('Helvetica')
-      .text(totalDataPoints.toString(), 370, startY);
-
-    doc.fillColor('#111827')
-      .font('Helvetica-Bold')
-      .text('Format:', 300, startY + 15)
-      .fillColor('#6b7280')
-      .font('Helvetica')
-      .text(reportData.config.format.toUpperCase(), 370, startY + 15);
-
-    // Reset to default
+    doc.moveDown(1);
+    doc.strokeColor('#e5e7eb').lineWidth(0.5).moveTo(margin, doc.y).lineTo(doc.page.width - margin, doc.y).stroke();
+    doc.moveDown(1);
     doc.fillColor('#111827');
-    doc.y = startY + 40;
-    doc.x = 40; // Explicitly reset x to margin after the two-column metadata
-    doc.moveDown(0.5);
+    doc.x = margin;
   }
 
   /**
-   * Add executive summary
+   * Add executive summary paragraph.
    */
   private addExecutiveSummary(doc: PDFKit.PDFDocument, reportData: ReportData): void {
-    doc.fontSize(14)
-      .fillColor('#111827')
-      .font('Helvetica-Bold')
-      .text('Executive Summary', 40);  // Explicit x position
-
-    doc.moveDown(0.5);
-
+    const margin = 25;
     const totalTags = reportData.config.tags.length;
-    const totalDataPoints = Object.values(reportData.data)
-      .reduce((sum, data) => sum + data.length, 0);
+    const totalDataPoints = Object.values(reportData.data).reduce((sum, data) => sum + data.length, 0);
 
-    doc.fontSize(12)
-      .fillColor('#111827')
-      .font('Helvetica')
-      .text(`This report analyzes ${totalTags} tag(s) over the specified time period, ` +
-        `containing a total of ${totalDataPoints} data points. ` +
-        `The analysis includes statistical summaries, trend analysis, and data quality metrics.`,
-        40, doc.y, {  // Explicit x position and current y
-        width: doc.page.width - 80,  // Full width minus margins
-        align: 'left'
-      });
+    const summaryText = `This report analyses ${totalTags} monitoring point(s) over the configured time period, covering ${totalDataPoints.toLocaleString()} data points in total.`;
 
-    doc.moveDown(0.5);
-
-    // Key findings
-    if (reportData.statistics) {
-      doc.fillColor('#111827')
-        .font('Helvetica-Bold')
-        .text('Key Findings:', 40);  // Explicit x position
-
-      doc.fillColor('#111827')
-        .font('Helvetica');
-
-      for (const [tagName, stats] of Object.entries(reportData.statistics)) {
-        doc.text(`• ${tagName}: Average ${stats.average.toFixed(2)}, ` +
-          `Range ${stats.min.toFixed(2)} - ${stats.max.toFixed(2)}, ` +
-          `Data Quality ${stats.dataQuality.toFixed(1)}%`,
-          40, doc.y, {  // Explicit x position
-          width: doc.page.width - 80,
-          align: 'left'
-        });
-      }
-    }
-
+    doc.fontSize(14).fillColor('#111827').font('Helvetica-Bold').text('Executive Summary', margin);
+    doc.moveDown(0.4);
+    doc.fontSize(11).fillColor('#374151').font('Helvetica').text(summaryText, margin, doc.y, { width: doc.page.width - (margin * 2), align: 'justify' });
     doc.moveDown(1);
   }
 
   /**
-   * Add section for individual tag
+   * Add key findings as bullet points.
    */
-  private addTagSection(
-    doc: PDFKit.PDFDocument,
-    tagName: string,
-    data: TimeSeriesData[],
-    reportData: ReportData
-  ): void {
-    doc.fontSize(14)
-      .fillColor('#111827')
-      .font('Helvetica-Bold')
-      .text(`Tag: ${tagName}`);
+  private addKeyFindings(doc: PDFKit.PDFDocument, reportData: ReportData): void {
+    const margin = 25;
+    const findings: string[] = [
+      `Analysed ${reportData.config.tags.length} monitoring point(s).`,
+      `Processed ${Object.values(reportData.data).reduce((s, d) => s + d.length, 0).toLocaleString()} data points.`
+    ];
 
-    doc.moveDown(0.5);
+    doc.fontSize(14).fillColor('#111827').font('Helvetica-Bold').text('Key Findings', margin, doc.y);
+    doc.moveDown(0.4);
+    doc.fontSize(11).font('Helvetica').fillColor('#374151');
 
-    // Basic information
-    doc.fontSize(12)
-      .fillColor('#111827')
-      .font('Helvetica')
-      .text(`Data Points: ${data.length}`);
-
-    if (data.length > 0) {
-      const formatOptions: Intl.DateTimeFormatOptions = {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-        timeZone: reportData.config.timeRange.timezone || 'UTC'
-      };
-      const startTime = data[0]?.timestamp?.toLocaleString('en-US', formatOptions) || 'Unknown';
-      const endTime = data[data.length - 1]?.timestamp?.toLocaleString('en-US', formatOptions) || 'Unknown';
-      doc.text(`Time Range: ${startTime} - ${endTime}`);
-    } else {
-      doc.text('Time Range: No data available');
+    for (const finding of findings) {
+      doc.text(`•  ${finding}`, margin + 10, doc.y, { width: doc.page.width - (margin * 2 + 10), align: 'left' });
+      doc.moveDown(0.3);
     }
-
-    doc.moveDown(0.5);
-
-    // Statistics if available
-    const stats = reportData.statistics?.[tagName];
-    if (stats) {
-      doc.fillColor('#111827')
-        .font('Helvetica-Bold')
-        .text('Statistical Summary:');
-
-      doc.fillColor('#111827')
-        .font('Helvetica')
-        .text(`Minimum: ${stats.min.toFixed(2)}`)
-        .text(`Maximum: ${stats.max.toFixed(2)}`)
-        .text(`Average: ${stats.average.toFixed(2)}`)
-        .text(`Standard Deviation: ${stats.standardDeviation.toFixed(2)}`)
-        .text(`Data Quality: ${stats.dataQuality.toFixed(1)}%`);
-
-      doc.moveDown(0.5);
-    }
-
-    // Trend information if available
-    const trend = reportData.trends?.[tagName];
-    if (trend) {
-      doc.fillColor('#111827')
-        .font('Helvetica-Bold')
-        .text('Trend Analysis:');
-
-      doc.fillColor('#111827')
-        .font('Helvetica')
-        .text(`Trend Equation: ${trend.equation}`)
-        .text(`Correlation: ${trend.correlation.toFixed(3)}`)
-        .text(`Confidence: ${(trend.confidence * 100).toFixed(1)}%`);
-
-      doc.moveDown(0.5);
-    }
-
-    // Data quality breakdown
-    const qualityBreakdown = this.calculateQualityBreakdown(data);
-    doc.fillColor('#111827')
-      .font('Helvetica-Bold')
-      .text('Data Quality Breakdown:');
-
-    doc.fillColor('#111827')
-      .font('Helvetica')
-      .text(`Good Quality: ${qualityBreakdown.good} (${qualityBreakdown.goodPercent.toFixed(1)}%)`)
-      .text(`Bad Quality: ${qualityBreakdown.bad} (${qualityBreakdown.badPercent.toFixed(1)}%)`)
-      .text(`Uncertain Quality: ${qualityBreakdown.uncertain} (${qualityBreakdown.uncertainPercent.toFixed(1)}%)`);
+    doc.moveDown(0.8);
   }
 
   /**
    * Add charts section
    */
-  private addChartsSection(doc: PDFKit.PDFDocument, charts: Record<string, Buffer>): void {
-    doc.fontSize(14)
-      .fillColor('#111827')
-      .font('Helvetica-Bold')
-      .text('Data Visualizations');
-
-    doc.moveDown();
+  private addChartsSection(
+    doc: PDFKit.PDFDocument,
+    charts: Record<string, Buffer>,
+    printHeader: boolean = true,
+    descriptions: Record<string, string | undefined> = {}
+  ): void {
+    if (printHeader) {
+      doc.fontSize(16)
+        .fillColor('#111827')
+        .font('Helvetica-Bold')
+        .text('Data Visualizations', { align: 'center' });
+      doc.moveDown(1.5);
+    }
 
     let chartCount = 0;
-    let successCount = 0;
-    let failureCount = 0;
-    const failures: string[] = [];
 
     reportLogger.info('Adding charts section to PDF', {
       totalCharts: Object.keys(charts).length
     });
 
     for (const [chartName, chartBuffer] of Object.entries(charts)) {
+      // Logic for 2 charts per page
       if (chartCount > 0 && chartCount % 2 === 0) {
         doc.addPage();
         reportLogger.debug('Added new page for charts', { chartCount });
       }
 
-      const y = doc.y;
-      const chartWidth = 535;  // Increased from 515 for wider appearance
-      const chartHeight = 320; // Slightly reduced height to fit better with wider aspect
+      const chartWidth = 545;
+      const chartHeight = 280;
 
-      doc.fontSize(12)
+      // Print Title
+      doc.fontSize(14)
         .fillColor('#111827')
         .font('Helvetica-Bold')
         .text(chartName, { align: 'center' });
 
-      doc.moveDown(0.5);
+      // Print Description if available
+      const description = descriptions[chartName];
+      if (description) {
+        doc.moveDown(0.3);
+        doc.fontSize(10)
+          .fillColor('#4b5563')
+          .font('Helvetica')
+          .text(description, { align: 'center', width: chartWidth });
+      }
+
+      doc.moveDown(0.7);
 
       // Validate buffer before embedding
-      reportLogger.debug('Validating chart buffer before embedding', {
-        chartName,
-        bufferSize: chartBuffer?.length || 0
-      });
-
       const validation = chartBufferValidator.validateBuffer(chartBuffer, chartName);
 
       if (!validation.valid) {
         reportLogger.error('Chart buffer validation failed before embedding', {
           chartName,
-          errors: validation.errors,
-          bufferInfo: validation.bufferInfo
+          errors: validation.errors
         });
 
-        // Add placeholder text
         doc.fontSize(12)
           .font('Helvetica')
           .fillColor('#ef4444')
@@ -861,142 +891,520 @@ export class ReportGenerationService {
             width: chartWidth
           })
           .fillColor('#111827');
-
-        failures.push(chartName);
-        failureCount++;
       } else {
         try {
-          // Log buffer details before embedding
-          reportLogger.info('Embedding chart in PDF', {
-            chartName,
-            bufferSize: validation.bufferInfo.size,
-            format: validation.bufferInfo.format,
-            dimensions: validation.bufferInfo.dimensions,
-            targetSize: { width: chartWidth, height: chartHeight }
-          });
+          const bufferInfo = chartBufferValidator.getBufferInfo(chartBuffer);
 
-          // Add chart image with explicit options
-          doc.image(chartBuffer, {
-            fit: [chartWidth, chartHeight],
-            align: 'center'
-          });
+          if (bufferInfo.format === 'SVG') {
+            const rawSvg = chartBuffer.toString('utf8');
+            // Remove fixed width/height so it stretches to fill the container width
+            const svgString = rawSvg.replace(/width="[^"]*"/, '').replace(/height="[^"]*"/, '');
 
-          successCount++;
+            // @ts-ignore - svg-to-pdfkit type definitions might be missing or incomplete
+            const SVGtoPDF = require('svg-to-pdfkit');
 
-          reportLogger.info('Chart embedded successfully in PDF', {
-            chartName,
-            bufferSize: validation.bufferInfo.size
-          });
+            reportLogger.debug('Embedding SVG chart', {
+              chartName,
+              svgLength: svgString.length,
+              x: doc.x,
+              y: doc.y
+            });
 
+            SVGtoPDF(doc, svgString, doc.x, doc.y, {
+              width: chartWidth,
+              height: chartHeight,
+              preserveAspectRatio: 'none'
+            });
+
+            doc.y += chartHeight + 20;
+          } else {
+            doc.image(chartBuffer, doc.x, doc.y, {
+              fit: [chartWidth, chartHeight],
+              align: 'center'
+            });
+            doc.y += chartHeight + 20;
+          }
         } catch (error) {
-          reportLogger.error('Failed to embed chart in PDF', {
-            chartName,
-            error: error instanceof Error ? error.message : 'Unknown error',
-            stack: error instanceof Error ? error.stack : undefined,
-            bufferSize: validation.bufferInfo.size,
-            bufferFormat: validation.bufferInfo.format
-          });
-
-          // Add error placeholder
-          doc.fontSize(12)
-            .font('Helvetica')
-            .fillColor('#ef4444')
-            .text(`Chart embedding failed: ${error instanceof Error ? error.message : 'Unknown error'}`, {
-              align: 'center',
-              width: chartWidth
-            })
-            .fillColor('#111827');
-
-          failures.push(chartName);
-          failureCount++;
+          reportLogger.error('Failed to embed chart image', { chartName, error });
         }
       }
 
-      doc.moveDown(1.5);
       chartCount++;
-    }
-
-    // Log summary
-    reportLogger.info('Chart embedding summary', {
-      total: chartCount,
-      successful: successCount,
-      failed: failureCount,
-      failures: failures,
-      successRate: chartCount > 0 ? ((successCount / chartCount) * 100).toFixed(1) + '%' : '0%'
-    });
-
-    // Add summary note if there were failures
-    if (failureCount > 0) {
-      doc.moveDown();
-      doc.fontSize(10)
-        .font('Helvetica')
-        .fillColor('#666666')
-        .text(`Note: ${failureCount} of ${chartCount} chart(s) could not be displayed. See logs for details.`, {
-          align: 'center'
-        })
-        .fillColor('#111827');
     }
   }
 
   /**
-   * Add statistical summary section
+   * Add statistical summary section (Section II of the report)
+   * Renders a professional banded table with all key metrics per tag.
+   * Columns: Tag | Mean | Median | Std Dev | Min | Max | Count | Quality %
    */
-  private addStatisticalSummary(doc: PDFKit.PDFDocument, statistics: Record<string, StatisticsResult>): void {
+  private addStatisticalSummary(
+    doc: PDFKit.PDFDocument,
+    statistics: Record<string, StatisticsResult>
+  ): void {
+    if (Object.keys(statistics).length === 0) {
+      doc.fontSize(11)
+        .fillColor('#6b7280')
+        .font('Helvetica')
+        .text('No statistical data available for the selected tags.', 25, doc.y);
+      return;
+    }
+
+    // ── Section header ──────────────────────────────────────────────────────
     doc.fontSize(14)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text('Statistical Summary', 40); // Explicit x position
+      .text('Statistical Summary', 25);
 
-    doc.moveDown(0.5);
-
-    // Create table
-    const tableTop = doc.y;
-    const tableLeft = 40;
-    const columnWidth = 85;
-    const rowHeight = 20;
-
-    // Table headers
-    const headers = ['Tag', 'Min', 'Max', 'Average', 'Std Dev', 'Quality %'];
+    doc.moveDown(0.4);
 
     doc.fontSize(10)
-      .fillColor('#111827')
+      .fillColor('#6b7280')
+      .font('Helvetica')
+      .text(
+        'The table below shows key statistical metrics computed from the queried time-series data for each monitoring tag.',
+        25, doc.y,
+        { width: doc.page.width - 50, align: 'left' }
+      );
+
+    doc.moveDown(1);
+
+    // ── Table layout ────────────────────────────────────────────────────────
+    const pageWidth = doc.page.width - 50;  // usable width with 25px margins
+    const tableLeft = 25;
+
+    // Column definitions  [label, relativeWidth]
+    const columns: Array<{ label: string; width: number; align: 'left' | 'center' | 'right' }> = [
+      { label: 'Tag', width: pageWidth * 0.20, align: 'left' },
+      { label: 'Mean', width: pageWidth * 0.11, align: 'center' },
+      { label: 'Median', width: pageWidth * 0.11, align: 'center' },
+      { label: 'Std Dev', width: pageWidth * 0.11, align: 'center' },
+      { label: 'Min', width: pageWidth * 0.11, align: 'center' },
+      { label: 'Max', width: pageWidth * 0.11, align: 'center' },
+      { label: 'Count', width: pageWidth * 0.10, align: 'center' },
+      { label: 'Quality', width: pageWidth * 0.15, align: 'center' },
+    ];
+
+    const totalTableWidth = columns.reduce((s, c) => s + c.width, 0);
+    const headerHeight = 26;
+    const rowHeight = 22;
+
+    // ── Helper: check page break ─────────────────────────────────────────
+    const ensureSpace = (needed: number): void => {
+      if (doc.y + needed > doc.page.height - doc.page.margins.bottom - 20) {
+        doc.addPage();
+      }
+    };
+
+    // ── Draw header row ──────────────────────────────────────────────────
+    ensureSpace(headerHeight + rowHeight);
+
+    const headerTop = doc.y;
+
+    // Header background
+    doc.rect(tableLeft, headerTop, totalTableWidth, headerHeight)
+      .fill('#1e3a5f');
+
+    // Header text
+    let xPos = tableLeft;
+    doc.fontSize(8.5)
+      .fillColor('#ffffff')
       .font('Helvetica-Bold');
 
-    headers.forEach((header, i) => {
-      doc.text(header, tableLeft + i * columnWidth, tableTop, {
-        width: columnWidth,
-        align: 'center'
+    columns.forEach(col => {
+      doc.text(col.label, xPos + 4, headerTop + 7, {
+        width: col.width - 8,
+        align: col.align
       });
+      xPos += col.width;
     });
 
-    // Table rows
-    doc.fillColor('#111827')
-      .font('Helvetica');
-    let rowIndex = 1;
+    let currentY = headerTop + headerHeight;
 
-    for (const [tagName, stats] of Object.entries(statistics)) {
-      const y = tableTop + rowIndex * rowHeight;
+    // ── Draw data rows ───────────────────────────────────────────────────
+    const entries = Object.entries(statistics);
 
-      const values = [
-        tagName,
-        stats.min.toFixed(2),
-        stats.max.toFixed(2),
-        stats.average.toFixed(2),
-        stats.standardDeviation.toFixed(2),
-        stats.dataQuality.toFixed(1) + '%'
+    entries.forEach(([tagName, stats], rowIndex) => {
+      ensureSpace(rowHeight);
+      currentY = doc.y;
+
+      // Alternating row background
+      if (rowIndex % 2 === 0) {
+        doc.rect(tableLeft, currentY, totalTableWidth, rowHeight)
+          .fill('#f8fafc');
+      } else {
+        doc.rect(tableLeft, currentY, totalTableWidth, rowHeight)
+          .fill('#ffffff');
+      }
+
+      // Subtle left accent bar on odd rows
+      if (rowIndex % 2 !== 0) {
+        doc.rect(tableLeft, currentY, 3, rowHeight)
+          .fill('#dbeafe');
+      }
+
+      // Cell values
+      const qualityPct = stats.dataQuality;
+      const cells: string[] = [
+        tagName.length > 24 ? tagName.substring(0, 22) + '…' : tagName,
+        typeof stats.average === 'number' ? stats.average.toFixed(3) : 'N/A',
+        typeof stats.median === 'number' ? stats.median.toFixed(3) : 'N/A',
+        typeof stats.standardDeviation === 'number' ? stats.standardDeviation.toFixed(3) : 'N/A',
+        typeof stats.min === 'number' ? stats.min.toFixed(3) : 'N/A',
+        typeof stats.max === 'number' ? stats.max.toFixed(3) : 'N/A',
+        typeof stats.count === 'number' ? stats.count.toLocaleString() : 'N/A',
+        // Quality rendered separately below
+        ''
       ];
 
-      values.forEach((value, i) => {
-        doc.text(value, tableLeft + i * columnWidth, y, {
-          width: columnWidth,
-          align: 'center'
-        });
+      xPos = tableLeft;
+      doc.font('Helvetica').fontSize(8).fillColor('#111827');
+
+      cells.forEach((cell, colIndex) => {
+        const col = columns[colIndex]!;
+        if (colIndex < columns.length - 1) {
+          // Normal text cell
+          doc.text(cell, xPos + 4, currentY + 7, {
+            width: col.width - 8,
+            align: col.align
+          });
+        } else {
+          // ── Quality column: progress bar + percentage ──────────────────
+          const qualityCol = col;
+          const barAreaX = xPos + 4;
+          const barAreaW = qualityCol.width - 8;
+          const barH = 7;
+          const barY = currentY + rowHeight / 2 - barH / 2;
+
+          // Background track
+          doc.roundedRect(barAreaX, barY, barAreaW, barH, 2).fill('#e5e7eb');
+
+          // Filled portion
+          const fillW = Math.max(0, Math.min(barAreaW, barAreaW * (qualityPct / 100)));
+          const fillColor = qualityPct >= 90 ? '#16a34a'
+            : qualityPct >= 70 ? '#ca8a04'
+              : '#dc2626';
+          if (fillW > 0) {
+            doc.roundedRect(barAreaX, barY, fillW, barH, 2).fill(fillColor);
+          }
+
+          // Percentage text after bar
+          doc.fillColor('#374151').font('Helvetica').fontSize(7.5)
+            .text(`${qualityPct.toFixed(1)}%`, barAreaX, currentY + 7, {
+              width: barAreaW,
+              align: 'center'
+            });
+        }
+        xPos += col.width;
       });
 
-      rowIndex++;
+      // Bottom separator line
+      doc.strokeColor('#e5e7eb')
+        .lineWidth(0.4)
+        .moveTo(tableLeft, currentY + rowHeight)
+        .lineTo(tableLeft + totalTableWidth, currentY + rowHeight)
+        .stroke();
+
+      doc.y = currentY + rowHeight;
+    });
+
+    // ── Table bottom border ──────────────────────────────────────────────
+    doc.strokeColor('#1e3a5f')
+      .lineWidth(1)
+      .moveTo(tableLeft, doc.y)
+      .lineTo(tableLeft + totalTableWidth, doc.y)
+      .stroke();
+
+    doc.moveDown(1);
+
+    // ── Legend note ─────────────────────────────────────────────────────
+    doc.fontSize(8)
+      .fillColor('#6b7280')
+      .font('Helvetica')
+      .text(
+        '* Quality %: proportion of data points with Good quality status (code 192). ' +
+        'Std Dev = population standard deviation. Count = number of valid numeric data points.',
+        25, doc.y,
+        { width: doc.page.width - 50 }
+      );
+
+    doc.moveDown(0.5);
+    doc.fillColor('#111827');
+    doc.x = 25;
+  }
+
+  /**
+   * Add a single MiniChart block to the PDF.
+   * Replicates the exact layout of the MiniChart component from the frontend.
+   */
+  /**
+   * Format a value for display with dynamic precision based on magnitude.
+   * Replicates client-side logic in chartUtils.ts.
+   */
+  private formatValue(value: number | undefined | null, decimals?: number): string {
+    if (value === null || value === undefined || isNaN(value)) return 'N/A';
+
+    let d = decimals;
+    if (d === undefined) {
+      const absVal = Math.abs(value);
+      if (absVal >= 100) {
+        d = 0;
+      } else if (absVal >= 1) {
+        d = 1;
+      } else {
+        // Match frontend: User requested 0 decimals for values between 0 and 1
+        d = 0;
+      }
     }
 
-    doc.y = tableTop + (rowIndex + 1) * rowHeight;
+    const formatted = value.toFixed(d);
+    return formatted;
+  }
+
+  private addMiniChart(
+    doc: PDFKit.PDFDocument,
+    tagName: string,
+    chartBuffer: Buffer,
+    description?: string,
+    stats?: StatisticsResult,
+    trend?: TrendResult
+  ): void {
+    const cardWidth = 545;
+    const cardPadding = 12;
+    const headerHeight = 35;
+    const chartHeight = 230; // Increased from 220 to provide better ratio when stretched
+    const footerHeight = trend ? 48 : 0;
+    const totalHeight = headerHeight + chartHeight + footerHeight + (cardPadding * 2);
+
+    const startX = 25;
+    const currentY = doc.y;
+
+    // Draw Card Border
+    doc.roundedRect(startX, currentY, cardWidth, totalHeight, 6)
+      .lineWidth(0.5)
+      .strokeColor('#e5e7eb')
+      .stroke();
+
+    // 1. Header Area
+    const contentX = startX + cardPadding;
+    const contentY = currentY + cardPadding;
+
+    doc.fontSize(10).fillColor('#1f2937').font('Helvetica-Bold').text(tagName, contentX, contentY, { width: cardWidth - 250 });
+    if (description) {
+      doc.fontSize(7.5).fillColor('#9ca3af').font('Helvetica').text(description, contentX, doc.y + 1, { width: cardWidth - 250, lineBreak: false });
+    }
+
+    if (stats) {
+      const statsX = startX + cardWidth - cardPadding;
+      const statsY = contentY;
+
+      doc.fontSize(9);
+      const ptsStr = `${stats.count} pts`;
+      const ptsWidth = doc.widthOfString(ptsStr);
+
+      const avgLabel = 'AVG: ';
+      const avgVal = this.formatValue(stats.average);
+      const maxLabel = '  MAX: ';
+      const maxVal = this.formatValue(stats.max);
+
+      // Accurate width calculation accounting for font weight changes
+      doc.font('Helvetica');
+      const avgLabelWidth = doc.widthOfString(avgLabel);
+      const maxLabelWidth = doc.widthOfString(maxLabel);
+      doc.font('Helvetica-Bold');
+      const avgValWidth = doc.widthOfString(avgVal);
+      const maxValWidth = doc.widthOfString(maxVal);
+
+      const avgWidth = avgLabelWidth + avgValWidth;
+      const maxWidth = maxLabelWidth + maxValWidth;
+
+      // Line 1: Statistics (AVG in blue, MAX in amber)
+      const lineX = statsX - (avgWidth + maxWidth);
+      doc.fillColor('#94a3b8').font('Helvetica').text(avgLabel, lineX, statsY, { continued: true })
+        .fillColor('#2563eb').font('Helvetica-Bold').text(avgVal, { continued: true })
+        .fillColor('#94a3b8').font('Helvetica').text(maxLabel, { continued: true })
+        .fillColor('#d97706').font('Helvetica-Bold').text(maxVal);
+
+      // Line 2: Point count
+      doc.fontSize(8.5).fillColor('#94a3b8').font('Helvetica').text(ptsStr, statsX - ptsWidth - 5, statsY + 11);
+    }
+
+    // 2. Chart
+    const chartY = currentY + cardPadding + headerHeight;
+    try {
+      const bufferInfo = chartBufferValidator.getBufferInfo(chartBuffer);
+      if (bufferInfo.format === 'SVG') {
+        const rawSvg = chartBuffer.toString('utf8');
+        // Remove fixed width/height so it stretches to fill the container width
+        const svgString = rawSvg.replace(/width="[^"]*"/, '').replace(/height="[^"]*"/, '');
+
+        const SVGtoPDF = require('svg-to-pdfkit');
+        SVGtoPDF(doc, svgString, contentX, chartY, {
+          width: cardWidth - (cardPadding * 2),
+          height: chartHeight,
+          preserveAspectRatio: 'xMidYMid meet'
+        });
+      } else {
+        doc.image(chartBuffer, contentX, chartY, {
+          fit: [cardWidth - (cardPadding * 2), chartHeight],
+          align: 'center',
+          valign: 'center'
+        });
+      }
+    } catch (error) {
+      reportLogger.error('Failed to embed mini chart', { tagName, error });
+    }
+
+    // 3. Regression
+    if (trend) {
+      const footerPadding = 8;
+      const rowHeight = 12;
+      const tableY = chartY + chartHeight + 10;
+      const tableWidth = cardWidth - (cardPadding * 2);
+
+      // Background for regression info
+      doc.roundedRect(contentX, tableY, tableWidth, footerHeight - 10, 3).fill('#f9fafb');
+      doc.roundedRect(contentX, tableY, tableWidth, footerHeight - 10, 3).lineWidth(0.3).strokeColor('#f3f4f6').stroke();
+
+      doc.fontSize(8).font('Helvetica');
+
+      // Calculate Rate of Change per minute to match frontend parity
+      const slopePerMin = trend.slope * 60000;
+      // Use 'Delta' instead of 'Δ' to avoid encoding issues (renders as 9C in some PDF readers)
+      const rateStr = `Delta: ${slopePerMin >= 0 ? '+' : ''}${slopePerMin.toFixed(4)} /min`;
+
+      const col1X = contentX + 10;
+      const col2X = contentX + (tableWidth * 0.5);
+
+      // Row 1: Equation and R²
+      doc.fillColor('#94a3b8').text('Equation:', col1X, tableY + footerPadding, { continued: true })
+        .fillColor('#2563eb').font('Helvetica-Bold').text(' ' + rateStr);
+
+      doc.fillColor('#94a3b8').font('Helvetica').text('R²:', col2X, tableY + footerPadding, { continued: true })
+        .fillColor('#d97706').font('Helvetica-Bold').text(' ' + trend.confidence.toFixed(4));
+
+      // Row 2: Std Dev and Variance
+      doc.fillColor('#94a3b8').font('Helvetica').text('Std Dev:', col1X, tableY + footerPadding + rowHeight, { continued: true })
+        .fillColor('#374151').font('Helvetica-Bold').text(' ' + this.formatValue(stats?.standardDeviation, 3));
+
+      doc.fillColor('#94a3b8').font('Helvetica').text('Variance:', col2X, tableY + footerPadding + rowHeight, { continued: true })
+        .fillColor('#374151').font('Helvetica-Bold').text(' ' + (stats?.standardDeviation ? this.formatValue(Math.pow(stats.standardDeviation, 2), 3) : 'N/A'));
+    }
+
+    doc.y = currentY + totalHeight + 15;
+  }
+
+  /**
+   * Add SPC chart as a professional card with metrics
+   */
+  private addSPCChart(
+    doc: PDFKit.PDFDocument,
+    tagName: string,
+    chartBuffer: Buffer,
+    metrics?: any,
+    specLimits?: SpecificationLimits
+  ): void {
+    const cardWidth = 545;
+    const cardPadding = 12;
+    const headerHeight = 35;
+    const chartHeight = 230; // Unified with addMiniChart height (2.26 aspect ratio)
+    const footerHeight = (metrics || specLimits) ? 50 : 0;
+    const totalHeight = headerHeight + chartHeight + footerHeight + (cardPadding * 2);
+
+    const startX = 25;
+
+    // Check if we need a new page before drawing this card (safety check)
+    if (doc.y > doc.page.height - totalHeight - 50) {
+      doc.addPage();
+    }
+
+    const drawY = doc.y;
+
+    // Draw Card Border
+    doc.roundedRect(startX, drawY, cardWidth, totalHeight, 6)
+      .lineWidth(0.5)
+      .strokeColor('#e5e7eb')
+      .stroke();
+
+    // 1. Header Area
+    const contentX = startX + cardPadding;
+    const contentY = drawY + cardPadding;
+
+    doc.fontSize(10).fillColor('#1f2937').font('Helvetica-Bold').text(`${tagName} - SPC Analysis`, contentX, contentY, { width: cardWidth - 50 });
+
+    // 2. Chart
+    const chartY = drawY + cardPadding + headerHeight;
+    try {
+      const bufferInfo = chartBufferValidator.getBufferInfo(chartBuffer);
+      if (bufferInfo.format === 'SVG') {
+        const rawSvg = chartBuffer.toString('utf8');
+        const svgString = rawSvg.replace(/width="[^"]*"/, '').replace(/height="[^"]*"/, '');
+        // @ts-ignore
+        const SVGtoPDF = require('svg-to-pdfkit');
+        SVGtoPDF(doc, svgString, contentX, chartY, {
+          width: cardWidth - (cardPadding * 2),
+          height: chartHeight,
+          preserveAspectRatio: 'xMidYMid meet'
+        });
+      } else {
+        doc.image(chartBuffer, contentX, chartY, {
+          fit: [cardWidth - (cardPadding * 2), chartHeight],
+          align: 'center',
+          valign: 'center'
+        });
+      }
+    } catch (error) {
+      reportLogger.error('Failed to embed SPC chart', { tagName, error });
+    }
+
+    // 3. SPC Metrics Footer
+    if (metrics || specLimits) {
+      const footerPadding = 8;
+      const tableY = chartY + chartHeight + 10;
+      const tableWidth = cardWidth - (cardPadding * 2);
+
+      // Background for SPC info
+      doc.roundedRect(contentX, tableY, tableWidth, footerHeight - 10, 3).fill('#f8fafc');
+      doc.roundedRect(contentX, tableY, tableWidth, footerHeight - 10, 3).lineWidth(0.3).strokeColor('#e2e8f0').stroke();
+
+      doc.fontSize(8.5).font('Helvetica').fillColor('#64748b');
+
+      const col1X = contentX + 15;
+      const col2X = contentX + (tableWidth * 0.33);
+      const col3X = contentX + (tableWidth * 0.66);
+
+      // Row 1: Mean, UCL, LCL
+      if (metrics) {
+        doc.text('Mean:', col1X, tableY + footerPadding, { continued: true })
+          .fillColor('#0f172a').font('Helvetica-Bold').text(' ' + this.formatValue(metrics.mean));
+
+        doc.fillColor('#64748b').font('Helvetica').text('UCL:', col2X, tableY + footerPadding, { continued: true })
+          .fillColor('#ef4444').font('Helvetica-Bold').text(' ' + this.formatValue(metrics.ucl));
+
+        doc.fillColor('#64748b').font('Helvetica').text('LCL:', col3X, tableY + footerPadding, { continued: true })
+          .fillColor('#ef4444').font('Helvetica-Bold').text(' ' + this.formatValue(metrics.lcl));
+      }
+
+      // Row 2: Cp, Cpk, and Spec Limits
+      const row2Y = tableY + footerPadding + 18;
+      if (metrics) {
+        const cpColor = metrics.cp >= 1.33 ? '#16a34a' : (metrics.cp >= 1.0 ? '#d97706' : '#dc2626');
+        const cpkColor = metrics.cpk >= 1.33 ? '#16a34a' : (metrics.cpk >= 1.0 ? '#d97706' : '#dc2626');
+
+        doc.fillColor('#64748b').font('Helvetica').text('Cp:', col1X, row2Y, { continued: true })
+          .fillColor(cpColor).font('Helvetica-Bold').text(' ' + (metrics.cp?.toFixed(3) || 'N/A'));
+
+        doc.fillColor('#64748b').font('Helvetica').text('Cpk:', col2X, row2Y, { continued: true })
+          .fillColor(cpkColor).font('Helvetica-Bold').text(' ' + (metrics.cpk?.toFixed(3) || 'N/A'));
+      }
+
+      if (specLimits) {
+        doc.fillColor('#64748b').font('Helvetica').text('Specs:', col3X, row2Y, { continued: true })
+          .fillColor('#334155').font('Helvetica-Bold').text(` [${specLimits.lsl ?? '-∞'}, ${specLimits.usl ?? '∞'}]`);
+      }
+    }
+
+    doc.y = drawY + totalHeight + 15;
   }
 
   /**
@@ -1011,8 +1419,8 @@ export class ReportGenerationService {
 
     // Table configuration
     const tableTop = doc.y;
-    const tableLeft = 40;
-    const pageWidth = doc.page.width - 80; // Account for margins (40 on each side)
+    const tableLeft = 25;
+    const pageWidth = doc.page.width - 50; // Account for margins (25 on each side)
 
     // Column widths (proportional)
     const colWidths = {
@@ -1156,20 +1564,20 @@ export class ReportGenerationService {
             .font('Helvetica')
             .text(
               `${reportData.config.name} - ${periodStr}`,
-              40,
               25,
-              { align: 'right', width: doc.page.width - 80 }
+              25,
+              { align: 'right', width: doc.page.width - 50 }
             );
 
           // Add a subtle line below the repeat header
           doc.strokeColor('#e5e7eb')
             .lineWidth(0.5)
-            .moveTo(40, 38)
-            .lineTo(doc.page.width - 40, 38)
+            .moveTo(25, 38)
+            .lineTo(doc.page.width - 25, 38)
             .stroke();
         }
 
-        // Temporarily disable bottom margin to prevent auto-page-adding 
+        // Temporarily disable bottom margin to prevent auto-page-adding
         // when writing in the footer area (within the original margin)
         const oldBottomMargin = doc.page.margins.bottom;
         doc.page.margins.bottom = 0;
@@ -1180,8 +1588,8 @@ export class ReportGenerationService {
         // Add horizontal separator line above footer
         doc.strokeColor('#cccccc')
           .lineWidth(1)
-          .moveTo(40, footerY)
-          .lineTo(doc.page.width - 40, footerY)
+          .moveTo(25, footerY)
+          .lineTo(doc.page.width - 25, footerY)
           .stroke();
 
         // Add generation timestamp (left side)
@@ -1190,7 +1598,7 @@ export class ReportGenerationService {
           .font('Helvetica')
           .text(
             `Generated by Historian Reports v${packageJson.version} on ${generatedDate}`,
-            40,
+            25,
             footerY + 10,
             { align: 'left', width: doc.page.width - 200 }
           );
@@ -1229,14 +1637,14 @@ export class ReportGenerationService {
     doc.fontSize(14)
       .fillColor('#111827')
       .font('Helvetica-Bold')
-      .text('SPC Metrics Summary', 40); // Explicit x position
+      .text('SPC Metrics Summary', 25); // Explicit x position
 
     doc.moveDown(0.5);
 
     const tableTop = doc.y + 10;
-    const tableLeft = 40;
+    const tableLeft = 25;
     const colWidths: number[] = [100, 50, 50, 50, 50, 45, 45, 45, 45, 50];
-    const headers = ['Tag Name', 'Average', 'Std Dev', 'LCL', 'UCL', 'LSL', 'USL', 'Cp', 'Cpk', 'Stat'];
+    const headers = ['Tag Name', 'Mean', 'StdDev', 'LCL', 'UCL', 'LSL', 'USL', 'Cp', 'Cpk', 'Stat'];
     const rowHeight = 20;
     const headerHeight = 25;
 

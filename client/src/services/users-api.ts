@@ -3,16 +3,17 @@
  * Handles all user management API calls
  */
 
-import { 
-  User, 
-  CreateUserData, 
-  UpdateUserData, 
-  UserFilters, 
+import {
+  User,
+  CreateUserData,
+  UpdateUserData,
+  UserFilters,
   UserListResponse,
   Machine,
   ChangePasswordData,
   ResetPasswordData
 } from '../types/user';
+import { getAuthToken } from './api';
 
 const API_BASE = '/api';
 
@@ -25,7 +26,7 @@ export async function getUsers(
   offset: number = 0
 ): Promise<UserListResponse> {
   const params = new URLSearchParams();
-  
+
   if (filters?.role) params.append('role', filters.role);
   if (filters?.isActive !== undefined) params.append('isActive', String(filters.isActive));
   if (filters?.search) params.append('search', filters.search);
@@ -34,7 +35,7 @@ export async function getUsers(
 
   const response = await fetch(`${API_BASE}/users?${params}`, {
     headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+      'Authorization': `Bearer ${getAuthToken()}`
     }
   });
 
@@ -51,7 +52,7 @@ export async function getUsers(
 export async function getUser(userId: string): Promise<User> {
   const response = await fetch(`${API_BASE}/users/${userId}`, {
     headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+      'Authorization': `Bearer ${getAuthToken()}`
     }
   });
 
@@ -71,7 +72,7 @@ export async function createUser(userData: CreateUserData): Promise<{ user: User
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+      'Authorization': `Bearer ${getAuthToken()}`
     },
     body: JSON.stringify(userData)
   });
@@ -93,7 +94,7 @@ export async function updateUser(userId: string, updates: UpdateUserData): Promi
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+      'Authorization': `Bearer ${getAuthToken()}`
     },
     body: JSON.stringify(updates)
   });
@@ -114,7 +115,7 @@ export async function deleteUser(userId: string): Promise<void> {
   const response = await fetch(`${API_BASE}/users/${userId}`, {
     method: 'DELETE',
     headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+      'Authorization': `Bearer ${getAuthToken()}`
     }
   });
 
@@ -132,7 +133,7 @@ export async function changePassword(data: ChangePasswordData): Promise<void> {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+      'Authorization': `Bearer ${getAuthToken()}`
     },
     body: JSON.stringify(data)
   });
@@ -151,7 +152,7 @@ export async function resetPassword(userId: string, data: ResetPasswordData): Pr
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+      'Authorization': `Bearer ${getAuthToken()}`
     },
     body: JSON.stringify(data)
   });
@@ -168,7 +169,7 @@ export async function resetPassword(userId: string, data: ResetPasswordData): Pr
 export async function getUserMachines(userId: string): Promise<Machine[]> {
   const response = await fetch(`${API_BASE}/users/${userId}/machines`, {
     headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+      'Authorization': `Bearer ${getAuthToken()}`
     }
   });
 
@@ -187,7 +188,7 @@ export async function removeMachine(userId: string, machineId: string): Promise<
   const response = await fetch(`${API_BASE}/users/${userId}/machines/${machineId}`, {
     method: 'DELETE',
     headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+      'Authorization': `Bearer ${getAuthToken()}`
     }
   });
 
@@ -204,7 +205,7 @@ export async function activateUser(userId: string): Promise<void> {
   const response = await fetch(`${API_BASE}/users/${userId}/activate`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+      'Authorization': `Bearer ${getAuthToken()}`
     }
   });
 
@@ -221,7 +222,7 @@ export async function deactivateUser(userId: string): Promise<void> {
   const response = await fetch(`${API_BASE}/users/${userId}/deactivate`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${localStorage.getItem('token')}`
+      'Authorization': `Bearer ${getAuthToken()}`
     }
   });
 
@@ -230,3 +231,4 @@ export async function deactivateUser(userId: string): Promise<void> {
     throw new Error(error.error || 'Failed to deactivate user');
   }
 }
+

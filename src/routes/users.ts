@@ -17,6 +17,7 @@ const router = Router();
 const createUserSchema = z.object({
   username: z.string().min(3).max(50),
   email: z.string().email(),
+  mobile: z.string().optional(),
   password: z.string().min(8).max(200),
   firstName: z.string().min(1).max(50),
   lastName: z.string().min(1).max(50),
@@ -26,6 +27,7 @@ const createUserSchema = z.object({
 
 const updateUserSchema = z.object({
   email: z.string().email().optional(),
+  mobile: z.string().optional(),
   firstName: z.string().min(1).max(50).optional(),
   lastName: z.string().min(1).max(50).optional(),
   role: z.enum(['user', 'admin', 'view-only']).optional(),
@@ -51,21 +53,21 @@ const resetPasswordSchema = z.object({
  * List users with filtering and pagination
  */
 router.get('/', authenticateToken, requireAdmin, asyncHandler(async (req: Request, res: Response) => {
-  const { 
-    role, 
-    isActive, 
-    search, 
-    limit = 50, 
-    offset = 0 
+  const {
+    role,
+    isActive,
+    search,
+    limit = 50,
+    offset = 0
   } = req.query;
 
-  apiLogger.info('List users request', { 
-    role, 
-    isActive, 
-    search, 
-    limit, 
+  apiLogger.info('List users request', {
+    role,
+    isActive,
+    search,
+    limit,
     offset,
-    requestedBy: req.user?.username 
+    requestedBy: req.user?.username
   });
 
   const filters: any = {};
@@ -125,17 +127,17 @@ router.get('/:userId', authenticateToken, requireAdmin, asyncHandler(async (req:
  */
 router.post('/', authenticateToken, requireAdmin, asyncHandler(async (req: Request, res: Response) => {
   const validationResult = createUserSchema.safeParse(req.body);
-  
+
   if (!validationResult.success) {
     throw createError('Invalid user data', 400);
   }
 
   const userData = validationResult.data;
 
-  apiLogger.info('Create user request', { 
+  apiLogger.info('Create user request', {
     username: userData.username,
     role: userData.role,
-    createdBy: req.user?.username 
+    createdBy: req.user?.username
   });
 
   const result = await userManagementService.createUser(userData);
@@ -159,17 +161,17 @@ router.put('/:userId', authenticateToken, requireAdmin, asyncHandler(async (req:
   }
 
   const validationResult = updateUserSchema.safeParse(req.body);
-  
+
   if (!validationResult.success) {
     throw createError('Invalid update data', 400);
   }
 
   const updates = validationResult.data;
 
-  apiLogger.info('Update user request', { 
-    userId, 
+  apiLogger.info('Update user request', {
+    userId,
     updates,
-    updatedBy: req.user?.username 
+    updatedBy: req.user?.username
   });
 
   const updatedUser = await userManagementService.updateUser(userId, updates);
@@ -192,9 +194,9 @@ router.delete('/:userId', authenticateToken, requireAdmin, asyncHandler(async (r
     throw createError('User ID required', 400);
   }
 
-  apiLogger.info('Delete user request', { 
-    userId, 
-    deletedBy: req.user?.username 
+  apiLogger.info('Delete user request', {
+    userId,
+    deletedBy: req.user?.username
   });
 
   // Prevent self-deletion
@@ -216,7 +218,7 @@ router.delete('/:userId', authenticateToken, requireAdmin, asyncHandler(async (r
  */
 router.post('/me/change-password', authenticateToken, asyncHandler(async (req: Request, res: Response) => {
   const validationResult = changePasswordSchema.safeParse(req.body);
-  
+
   if (!validationResult.success) {
     throw createError('Invalid password data', 400);
   }
@@ -249,16 +251,16 @@ router.post('/:userId/reset-password', authenticateToken, requireAdmin, asyncHan
   }
 
   const validationResult = resetPasswordSchema.safeParse(req.body);
-  
+
   if (!validationResult.success) {
     throw createError('Invalid password data', 400);
   }
 
   const { newPassword, requirePasswordChange } = validationResult.data;
 
-  apiLogger.info('Reset password request', { 
-    userId, 
-    resetBy: req.user?.username 
+  apiLogger.info('Reset password request', {
+    userId,
+    resetBy: req.user?.username
   });
 
   await userManagementService.resetPassword(userId, newPassword);
@@ -334,9 +336,9 @@ router.post('/:userId/activate', authenticateToken, requireAdmin, asyncHandler(a
     throw createError('User ID required', 400);
   }
 
-  apiLogger.info('Activate user request', { 
-    userId, 
-    activatedBy: req.user?.username 
+  apiLogger.info('Activate user request', {
+    userId,
+    activatedBy: req.user?.username
   });
 
   await userManagementService.activateUser(userId);
@@ -363,9 +365,9 @@ router.post('/:userId/deactivate', authenticateToken, requireAdmin, asyncHandler
     throw createError('Cannot deactivate your own account', 400);
   }
 
-  apiLogger.info('Deactivate user request', { 
-    userId, 
-    deactivatedBy: req.user?.username 
+  apiLogger.info('Deactivate user request', {
+    userId,
+    deactivatedBy: req.user?.username
   });
 
   await userManagementService.deactivateUser(userId);

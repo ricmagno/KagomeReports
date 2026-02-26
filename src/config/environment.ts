@@ -6,15 +6,6 @@ dotenv.config();
 
 // Environment validation schema
 const envSchema = z.object({
-  // Database Configuration
-  DB_HOST: z.string().min(1, 'Database host is required'),
-  DB_PORT: z.coerce.number().int().min(1).max(65535),
-  DB_NAME: z.string().min(1, 'Database name is required'),
-  DB_USER: z.string().min(1, 'Database user is required'),
-  DB_PASSWORD: z.string().min(1, 'Database password is required'),
-  DB_ENCRYPT: z.coerce.boolean().default(true),
-  DB_TRUST_SERVER_CERTIFICATE: z.coerce.boolean().default(false),
-
   // Application Configuration
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
@@ -45,8 +36,8 @@ const envSchema = z.object({
   CACHE_DEFAULT_TTL: z.string().default('300').transform(val => parseInt(val, 10)), // 5 minutes
 
   // Performance Configuration
-  DB_POOL_MIN: z.coerce.number().int().min(1).max(50).default(2),
-  DB_POOL_MAX: z.coerce.number().int().min(2).max(100).default(10),
+  DB_POOL_MIN: z.coerce.number().int().min(1).max(50).default(1),
+  DB_POOL_MAX: z.coerce.number().int().min(2).max(100).default(15),
   DB_TIMEOUT_MS: z.coerce.number().int().min(5000).max(300000).default(30000),
   CACHE_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(300),
   MAX_CONCURRENT_REPORTS: z.coerce.number().int().min(1).max(20).default(5),
@@ -68,6 +59,13 @@ const envSchema = z.object({
 
   // Environment Information
   IS_DOCKER: z.string().default('false').transform(val => val.toLowerCase() === 'true'),
+
+  // Timezone Configuration
+  DEFAULT_TIMEZONE: z.string().default('Australia/Sydney'),
+
+  // Notification Configuration
+  SMS_API_TOKEN: z.string().optional(),
+  NOTIFICATIONS_API_URL: z.string().url('Valid notification API URL is required').default('https://notifications.kagome.com.au/api/publish/sms'),
 });
 
 // Validate and export environment configuration

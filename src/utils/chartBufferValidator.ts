@@ -39,11 +39,11 @@ export class ChartBufferValidator {
     // Check buffer exists and has content
     if (!buffer || buffer.length === 0) {
       errors.push(`Chart buffer is empty for ${chartName}`);
-      return { 
-        valid: false, 
-        errors, 
-        warnings, 
-        bufferInfo: { size: 0, format: 'unknown' } 
+      return {
+        valid: false,
+        errors,
+        warnings,
+        bufferInfo: { size: 0, format: 'unknown' }
       };
     }
 
@@ -56,16 +56,16 @@ export class ChartBufferValidator {
       warnings.push(`Chart buffer very large (${buffer.length} bytes) for ${chartName}`);
     }
 
-    // Check PNG format
-    if (!this.isPNGBuffer(buffer)) {
-      errors.push(`Chart buffer is not valid PNG format for ${chartName}`);
-      
+    // Check PNG or SVG format
+    if (!this.isPNGBuffer(buffer) && !this.isSVGBuffer(buffer)) {
+      errors.push(`Chart buffer is not a supported format (PNG or SVG) for ${chartName}`);
+
       // Log first few bytes for debugging
-      const firstBytes = buffer.slice(0, Math.min(16, buffer.length));
-      reportLogger.error('Invalid PNG buffer - first bytes:', {
+      const firstBytes = buffer.slice(0, Math.min(32, buffer.length));
+      reportLogger.error('Invalid chart buffer format', {
         chartName,
         firstBytes: firstBytes.toString('hex'),
-        expected: this.PNG_MAGIC_BYTES.toString('hex')
+        firstBytesText: firstBytes.toString('utf8')
       });
     }
 
@@ -107,34 +107,61 @@ export class ChartBufferValidator {
     if (buffer.length < 8) {
       return false;
     }
-    
+
     const header = buffer.slice(0, 4);
     return header.equals(this.PNG_MAGIC_BYTES);
+  }
+
+  /**
+   * Check if buffer is a valid SVG
+   */
+  isSVGBuffer(buffer: Buffer): boolean {
+    if (buffer.length < 10) return false;
+
+    const content = buffer.toString('utf8', 0, Math.min(100, buffer.length)).toLowerCase();
+    return content.includes('<svg') || content.includes('<?xml');
   }
 
   /**
    * Get buffer information
    */
   getBufferInfo(buffer: Buffer): BufferInfo {
+    const isPNG = this.isPNGBuffer(buffer);
+    const isSVG = this.isSVGBuffer(buffer);
+
     const info: BufferInfo = {
       size: buffer.length,
-      format: this.isPNGBuffer(buffer) ? 'PNG' : 'unknown'
+      format: isPNG ? 'PNG' : (isSVG ? 'SVG' : 'unknown')
     };
 
-    // Try to extract PNG dimensions if it's a valid PNG
-    if (this.isPNGBuffer(buffer) && buffer.length >= 24) {
+    // Try to extract PNG dimensions
+    if (isPNG && buffer.length >= 24) {
       try {
-        // PNG IHDR chunk starts at byte 16
-        // Width is bytes 16-19, height is bytes 20-23 (big-endian)
         const width = buffer.readUInt32BE(16);
         const height = buffer.readUInt32BE(20);
-        
+
         if (width > 0 && width < 10000 && height > 0 && height < 10000) {
           info.dimensions = { width, height };
         }
       } catch (error) {
-        // Silently fail dimension extraction
         reportLogger.debug('Could not extract PNG dimensions', { error });
+      }
+    }
+    // Try to extract SVG dimensions
+    else if (isSVG) {
+      try {
+        const content = buffer.toString('utf8', 0, Math.min(500, buffer.length));
+        const widthMatch = content.match(/width=["'](\d+)(px)?["']/i);
+        const heightMatch = content.match(/height=["'](\d+)(px)?["']/i);
+
+        if (widthMatch && heightMatch) {
+          info.dimensions = {
+            width: parseInt(widthMatch[1]!),
+            height: parseInt(heightMatch[1]!)
+          };
+        }
+      } catch (error) {
+        reportLogger.debug('Could not extract SVG dimensions', { error });
       }
     }
 
@@ -148,7 +175,7 @@ export class ChartBufferValidator {
     if (result.valid) {
       return `Valid ${result.bufferInfo.format} buffer (${result.bufferInfo.size} bytes)`;
     }
-    
+
     return `Invalid buffer: ${result.errors.join(', ')}`;
   }
 }

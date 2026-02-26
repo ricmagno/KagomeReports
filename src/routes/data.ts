@@ -11,7 +11,7 @@ import { dataFilteringService } from '@/services/dataFiltering';
 import { progressMiddleware } from '@/middleware/progressTracker';
 import { apiLogger } from '@/utils/logger';
 import { asyncHandler, createError } from '@/middleware/errorHandler';
-import { TimeRange, DataFilter, HistorianQueryOptions, RetrievalMode } from '@/types/historian';
+import { TimeRange, DataFilter, HistorianQueryOptions, RetrievalMode, TimeSeriesData } from '@/types/historian';
 
 const router = Router();
 
@@ -34,7 +34,7 @@ const dataFilterSchema = z.object({
 });
 
 const queryOptionsSchema = z.object({
-  mode: z.nativeEnum(RetrievalMode).default(RetrievalMode.Cyclic),
+  mode: z.nativeEnum(RetrievalMode).default(RetrievalMode.Delta),
   retrievalMode: z.string().optional().transform(val => {
     if (!val) return undefined;
     // Map frontend values to backend RetrievalMode enum values
@@ -42,12 +42,18 @@ const queryOptionsSchema = z.object({
     if (val === 'Cyclic') return RetrievalMode.Cyclic;
     if (val === 'AVG' || val === 'Average') return RetrievalMode.Average;
     if (val === 'RoundTrip' || val === 'Full') return RetrievalMode.Full;
+    if (val === 'BestFit') return RetrievalMode.BestFit;
+    if (val === 'Minimum') return RetrievalMode.Minimum;
+    if (val === 'Maximum') return RetrievalMode.Maximum;
+    if (val === 'Interpolated') return RetrievalMode.Interpolated;
+    if (val === 'ValueState') return RetrievalMode.ValueState;
+    if (val === 'Live') return RetrievalMode.Live;
     return val as RetrievalMode; // Pass through if it's already a valid enum value
   }),
   interval: z.number().positive().optional(),
   tolerance: z.number().positive().optional(),
-  maxPoints: z.preprocess((val) => val === undefined ? undefined : Number(val), z.number().positive().max(10000).optional()),
-  limit: z.preprocess((val) => val === undefined ? undefined : Number(val), z.number().positive().max(10000).optional()),
+  maxPoints: z.preprocess((val) => val === undefined ? undefined : Number(val), z.number().positive().max(1000000000000).optional()),
+  limit: z.preprocess((val) => val === undefined ? undefined : Number(val), z.number().positive().max(1000000000000).optional()),
   includeQuality: z.preprocess((val) => val === 'false' ? false : true, z.boolean().default(true))
 }).transform(data => {
   // If retrievalMode is provided, use it instead of mode
@@ -78,6 +84,32 @@ router.get('/tags', asyncHandler(async (req: Request, res: Response) => {
     success: true,
     data: tags,
     count: tags.length
+  });
+}));
+
+/**
+ * GET /api/data/tags/:tagName
+ * Get metadata for a specific tag
+ */
+router.get('/tags/:tagName', asyncHandler(async (req: Request, res: Response) => {
+  const { tagName } = req.params;
+
+  if (!tagName) {
+    throw createError('Tag name is required', 400);
+  }
+
+  apiLogger.info('Retrieving tag info', { tagName });
+
+  const dataRetrievalService = cacheManager.getDataRetrievalService();
+  const tagInfo = await dataRetrievalService.getTagInfo(tagName);
+
+  if (!tagInfo) {
+    throw createError(`Tag ${tagName} not found`, 404);
+  }
+
+  res.json({
+    success: true,
+    data: tagInfo
   });
 }));
 
@@ -192,15 +224,42 @@ router.post('/query', asyncHandler(async (req: Request, res: Response) => {
 
   apiLogger.info('Executing custom data query', { timeRange, filter, options, pagination });
 
-  // Execute filtered data query
+  // Execute data query
   const dataRetrievalService = cacheManager.getDataRetrievalService();
   const statisticalAnalysisService = cacheManager.getStatisticalAnalysisService();
-  const result = await dataRetrievalService.getFilteredData(
-    timeRange,
-    filter,
-    pagination?.pageSize || 100,
-    pagination?.cursor
-  );
+
+  let result;
+  if (options && filter.tagNames && filter.tagNames.length > 0) {
+    // If specific options (like mode or limit) are provided, use the optimized multi-tag retriever
+    const rawDataMap = await dataRetrievalService.getMultipleTimeSeriesData(
+      filter.tagNames,
+      timeRange,
+      options
+    );
+
+    // Flatten results to match the expected format (flat array of TimeSeriesData)
+    const flattenedData: TimeSeriesData[] = [];
+    Object.values(rawDataMap).forEach(tagData => {
+      flattenedData.push(...tagData);
+    });
+
+    // Sort by timestamp to ensure consistent display in charts
+    flattenedData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+    result = {
+      data: flattenedData,
+      totalCount: flattenedData.length,
+      hasMore: false
+    };
+  } else {
+    // Default to the standard filtered query
+    result = await dataRetrievalService.getFilteredData(
+      timeRange,
+      filter,
+      pagination?.pageSize || 100,
+      pagination?.cursor
+    );
+  }
 
   // Apply additional filtering if needed
   let processedData = result.data;

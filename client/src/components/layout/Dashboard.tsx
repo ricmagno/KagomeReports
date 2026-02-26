@@ -8,7 +8,6 @@ import {
   Save,
   History,
   Tag,
-  Database,
   LogIn,
   LogOut,
   Activity,
@@ -18,7 +17,8 @@ import {
   Settings,
   Menu,
   X,
-  ChevronRight
+  ChevronRight,
+  Bell
 } from 'lucide-react';
 import { ReportConfig, TagInfo, ReportVersion } from '../../types/api';
 import { Button } from '../ui/Button';
@@ -31,15 +31,20 @@ import { SpecificationLimitsConfig } from '../reports/SpecificationLimitsConfig'
 import { AnalyticsOptions } from '../reports/AnalyticsOptions';
 import { ChartOptions } from '../reports/ChartOptions';
 import { ExportImportControls } from '../reports/ExportImportControls';
+import { FormatSelectionDialog, ExportFormat } from '../reports/FormatSelectionDialog';
 import { StatusDashboard } from '../status/StatusDashboard';
 import { SchedulesList, SchedulesErrorBoundary } from '../schedules';
 import { UserManagement } from '../users';
 import { ConfigurationManagement } from '../configuration/ConfigurationManagement';
 import { AboutSection } from '../about/AboutSection';
+import { DashboardList } from '../dashboards/DashboardList';
+import { DashboardView } from '../dashboards/DashboardView';
+import { DashboardEditor } from '../dashboards/DashboardEditor';
+import { TagSelector } from '../forms/TagSelector';
+import { AlertsManagement } from '../alerts/AlertsManagement';
 import { apiService } from '../../services/api';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
-import { ToastContainer } from '../ui/ToastContainer';
 import { cn } from '../../utils/cn';
 
 interface DashboardProps {
@@ -48,13 +53,15 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const { user, isAuthenticated, login: authLogin, logout: authLogout, isLoading: authLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'schedules' | 'database' | 'users' | 'configuration' | 'about'>('create');
-  const [dbActiveTab, setDbActiveTab] = useState<'status' | 'config'>('status');
+  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'dashboards' | 'schedules' | 'alerts' | 'users' | 'configuration' | 'about'>('create');
+  const [dashboardViewMode, setDashboardViewMode] = useState<'list' | 'view' | 'edit'>('list');
+  const [selectedDashboardId, setSelectedDashboardId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [healthStatus, setHealthStatus] = useState<string>('checking...');
+  const [serverTime, setServerTime] = useState<{ local: string, timezone: string } | null>(null);
   const [loginForm, setLoginForm] = useState({ username: '', password: '' });
   const [loginLoading, setLoginLoading] = useState(false);
-  const { toasts, removeToast, success, error: toastError, warning, info } = useToast();
+  const { success, error: toastError, warning, info } = useToast();
   const [reportConfig, setReportConfig] = useState<Partial<ReportConfig>>({
     name: '',
     description: '',
@@ -67,15 +74,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     },
     chartTypes: ['line'],
     template: 'default',
-    retrievalMode: 'Cyclic',
+    retrievalMode: 'Delta',
     version: undefined, // Track version number
     // Advanced analytics options (default to true)
     includeTrendLines: true,
+    includeMultiTrend: true,
     includeSPCCharts: true,
     includeStatsSummary: true,
+    includeDataTable: false,
     specificationLimits: {},
   });
   const [savedConfig, setSavedConfig] = useState<Partial<ReportConfig> | null>(null);
+  const reportPreviewRef = React.useRef<import('../reports/ReportPreview').ReportPreviewRef>(null);
 
   // Compare current config with saved config to detect changes
   const hasChanges = React.useMemo(() => {
@@ -86,6 +96,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     if (reportConfig.description !== savedConfig.description) return true;
     if (reportConfig.template !== savedConfig.template) return true;
     if (reportConfig.includeTrendLines !== savedConfig.includeTrendLines) return true;
+    if (reportConfig.includeMultiTrend !== savedConfig.includeMultiTrend) return true;
     if (reportConfig.includeSPCCharts !== savedConfig.includeSPCCharts) return true;
     if (reportConfig.includeStatsSummary !== savedConfig.includeStatsSummary) return true;
 
@@ -129,6 +140,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         }
 
         if (response.ok || response.status === 503) {
+          if (data.serverTime) {
+            setServerTime({
+              local: data.serverTime.local,
+              timezone: data.serverTime.timezone
+            });
+          }
           if (data.status === 'healthy') {
             setHealthStatus('✅ Backend');
           } else if (data.connection && data.connection.state === 'retrying' && data.connection.nextRetry) {
@@ -211,28 +228,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const [selectedReportForHistory, setSelectedReportForHistory] = useState<{ id: string; name: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [realTimeEnabled, setRealTimeEnabled] = useState(false);
-  const [tagSearchTerm, setTagSearchTerm] = useState('');
-  const [availableTags, setAvailableTags] = useState<TagInfo[]>([]);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportingReport, setExportingReport] = useState<any>(null);
 
-  // Fetch tags from API when search term changes
-  useEffect(() => {
-    const fetchTags = async () => {
-      try {
-        const response = await apiService.getTags(tagSearchTerm);
-        if (response.success && response.data) {
-          setAvailableTags(response.data);
-        }
-      } catch (error) {
-        console.error('Failed to fetch tags:', error);
-      }
-    };
-
-    const debounceTimer = setTimeout(() => {
-      fetchTags();
-    }, 300);
-
-    return () => clearTimeout(debounceTimer);
-  }, [tagSearchTerm]);
   const [realTimeData, setRealTimeData] = useState({
     connected: false,
     loading: false,
@@ -318,15 +316,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       setIsLoading(true);
 
       // Prepare report generation request
+      let capturedCharts: Record<string, string> = {};
+      try {
+        if (reportPreviewRef.current) {
+          capturedCharts = await reportPreviewRef.current.getCapturedCharts();
+        }
+      } catch (e) {
+        console.warn('Failed to capture charts for report:', e);
+      }
+
       const generateRequest = {
         name: reportConfig.name,
         description: reportConfig.description || '',
         tags: reportConfig.tags,
-        timeRange: {
-          startTime: reportConfig.timeRange!.startTime.toISOString(),
-          endTime: reportConfig.timeRange!.endTime.toISOString(),
-          relativeRange: reportConfig.timeRange!.relativeRange
-        },
+        timeRange: reportConfig.timeRange!,
         chartTypes: reportConfig.chartTypes || ['line'],
         template: reportConfig.template || 'default',
         format: 'pdf' as const,
@@ -335,11 +338,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         includeAnomalies: false,
         // Advanced analytics options
         includeTrendLines: reportConfig.includeTrendLines ?? true,
+        includeMultiTrend: reportConfig.includeMultiTrend ?? true,
         includeSPCCharts: reportConfig.includeSPCCharts ?? true,
         includeStatsSummary: reportConfig.includeStatsSummary ?? true,
+        includeDataTable: reportConfig.includeDataTable ?? false,
         specificationLimits: reportConfig.specificationLimits || {},
         version: reportConfig.version,
-        retrievalMode: reportConfig.retrievalMode || 'Cyclic'
+        retrievalMode: reportConfig.retrievalMode || 'Delta',
+        charts: Object.keys(capturedCharts).length > 0 ? capturedCharts : undefined
       };
 
       console.log('Generating report with config:', generateRequest);
@@ -354,19 +360,19 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
         // Download the generated report using the API service
         try {
-          const blob = await apiService.downloadReport(reportId);
+          const { blob, filename } = await apiService.downloadReport(reportId);
 
-          // Create download link
+          // Create download link using the server-generated filename
           const url = window.URL.createObjectURL(blob);
           const link = document.createElement('a');
           link.href = url;
-          link.download = `${reportConfig.name}_${new Date().toISOString().split('T')[0]}.pdf`;
+          link.download = filename;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
           window.URL.revokeObjectURL(url);
 
-          console.log('Report downloaded successfully');
+          console.log('Report downloaded successfully', { filename });
         } catch (downloadError) {
           console.error('Failed to download report:', downloadError);
           alert('Report generated but download failed. Please try downloading from the Reports tab.');
@@ -403,10 +409,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           template: reportConfig.template || 'default',
           // Advanced analytics options
           includeTrendLines: reportConfig.includeTrendLines ?? true,
+          includeMultiTrend: reportConfig.includeMultiTrend ?? true,
           includeSPCCharts: reportConfig.includeSPCCharts ?? true,
           includeStatsSummary: reportConfig.includeStatsSummary ?? true,
+          includeDataTable: reportConfig.includeDataTable ?? false,
           specificationLimits: reportConfig.specificationLimits || {},
-          retrievalMode: reportConfig.retrievalMode || 'Cyclic'
+          retrievalMode: reportConfig.retrievalMode || 'Delta'
         }
       };
 
@@ -471,6 +479,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           version: loadedReport.version, // Set the version number
           // Advanced analytics options
           includeTrendLines: loadedReport.config.includeTrendLines ?? true,
+          includeMultiTrend: loadedReport.config.includeMultiTrend ?? true,
           includeSPCCharts: loadedReport.config.includeSPCCharts ?? true,
           includeStatsSummary: loadedReport.config.includeStatsSummary ?? true,
           specificationLimits: loadedReport.config.specificationLimits || {}
@@ -506,6 +515,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       version: versionInfo.version, // Set the version number
       // Advanced analytics options
       includeTrendLines: versionInfo.config.includeTrendLines ?? true,
+      includeMultiTrend: versionInfo.config.includeMultiTrend ?? true,
       includeSPCCharts: versionInfo.config.includeSPCCharts ?? true,
       includeStatsSummary: versionInfo.config.includeStatsSummary ?? true,
       specificationLimits: versionInfo.config.specificationLimits || {}
@@ -536,6 +546,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       version: undefined, // Clear version since this is an imported config (not saved yet)
       // Advanced analytics options
       includeTrendLines: importedConfig.includeTrendLines ?? true,
+      includeMultiTrend: importedConfig.includeMultiTrend ?? true,
       includeSPCCharts: importedConfig.includeSPCCharts ?? true,
       includeStatsSummary: importedConfig.includeStatsSummary ?? true,
       specificationLimits: importedConfig.specificationLimits || {},
@@ -552,16 +563,39 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
   /**
    * Handle export report configuration
-   * Opens format selection dialog for the selected report
+   * Opens format selection dialog
    */
-  const handleExportReport = async (report: any) => {
+  const handleExportReport = (report: any) => {
+    setExportingReport(report);
+    setShowExportDialog(true);
+  };
+
+  /**
+   * Handle the actual export after format selection
+   */
+  const handleConfirmExport = async (format: ExportFormat) => {
+    if (!exportingReport) return;
+
+    setShowExportDialog(false);
+    setIsLoading(true);
+
     try {
-      // Load the full report configuration first
-      const reportResponse = await apiService.getReportVersion(report.id, report.version);
+      // Always load the full report from the API to ensure we have the complete config
+      // including tags, chart analytics, and correct date formats
+      const reportResponse = await apiService.loadSavedReport(exportingReport.id);
+
+      if (!reportResponse || !reportResponse.success || !reportResponse.data) {
+        throw new Error('Failed to load report configuration from server');
+      }
+
       const fullConfig = reportResponse.data.config;
 
+      if (!fullConfig) {
+        throw new Error('Report configuration is empty');
+      }
+
       // Export the configuration
-      const { blob, filename } = await apiService.exportConfiguration(fullConfig, 'json');
+      const { blob, filename } = await apiService.exportConfiguration(fullConfig, format);
 
       // Trigger download
       const url = window.URL.createObjectURL(blob);
@@ -573,10 +607,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
 
-      success('Export successful', `Report "${report.name}" has been exported`);
+      success('Export successful', `Report "${exportingReport.name}" has been exported`);
     } catch (err: any) {
       console.error('Export error:', err);
-      toastError('Export failed', err.response?.data?.message || 'Failed to export report configuration');
+      // ApiError has the message from the server in .message
+      const errorMessage = err.message || 'Failed to export report configuration';
+      toastError('Export failed', errorMessage);
+    } finally {
+      setIsLoading(false);
+      setExportingReport(null);
     }
   };
 
@@ -645,6 +684,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               }`}>
               {healthStatus}
             </div>
+            {serverTime && (
+              <div className="hidden lg:flex flex-col text-[10px] text-gray-500 leading-tight border-l border-gray-200 pl-4 py-1">
+                <span className="font-semibold text-gray-700">Server Time:</span>
+                <span className="truncate max-w-[150px]">{serverTime.local}</span>
+                <span className="text-[9px] opacity-75">{serverTime.timezone}</span>
+              </div>
+            )}
             {isAuthenticated && (
               <Button variant="ghost" size="sm" onClick={handleLogout}>
                 <LogOut className="h-4 w-4 mr-2" />
@@ -676,10 +722,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             {[
               { id: 'create', label: 'Create Report', icon: Plus },
               { id: 'reports', label: 'My Reports', icon: FileText },
+              { id: 'dashboards', label: 'Dashboards', icon: Activity },
               { id: 'schedules', label: 'Schedules', icon: Calendar },
+              { id: 'alerts', label: 'Alerts', icon: Bell },
               { id: 'categories', label: 'Categories', icon: Tag },
               { id: 'status', label: 'Status', icon: Activity },
-              { id: 'database', label: 'Database', icon: Database },
               ...(currentUser?.role === 'admin' ? [{ id: 'configuration', label: 'Configuration', icon: Settings }] : []),
               ...(currentUser?.role === 'admin' ? [{ id: 'users', label: 'Users', icon: Users }] : []),
               { id: 'about', label: 'About', icon: Info },
@@ -758,8 +805,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               {[
                 { id: 'create', label: 'Create Report', icon: Plus },
                 { id: 'reports', label: 'My Reports', icon: FileText },
+                { id: 'dashboards', label: 'Dashboards', icon: Activity },
                 { id: 'schedules', label: 'Schedules', icon: Calendar },
-                { id: 'database', label: 'Database', icon: Database },
+                { id: 'alerts', label: 'Alerts', icon: Bell },
                 ...(currentUser?.role === 'admin' ? [{ id: 'configuration', label: 'Configuration', icon: Settings }] : []),
                 ...(currentUser?.role === 'admin' ? [{ id: 'users', label: 'Users', icon: Users }] : []),
               ].map(tab => (
@@ -850,94 +898,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           </label>
                           <select
                             className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                            value={reportConfig.retrievalMode || 'Cyclic'}
+                            value={reportConfig.retrievalMode || 'Delta'}
                             onChange={(e) => setReportConfig(prev => ({ ...prev, retrievalMode: e.target.value as any }))}
                           >
-                            <option value="Cyclic">Cyclic - Interpolated at intervals (Recommended)</option>
-                            <option value="Delta">Delta - Actual stored values</option>
-                            <option value="Average">Average - Average values</option>
-                            <option value="Full">Full - All values (Full)</option>
+                            <option value="Delta">Delta - Actual stored values (Changes only - Recommended)</option>
+                            <option value="Cyclic">Cyclic - Interpolated at intervals</option>
+                            <option value="BestFit">Best Fit - Optimized for visual trends</option>
+                            <option value="Full">Full - All stored values (High detail)</option>
+                            <option value="Average">Average - Time-weighted average</option>
+                            <option value="Minimum">Minimum - Minimum value in period</option>
+                            <option value="Maximum">Maximum - Maximum value in period</option>
+                            <option value="Interpolated">Interpolated - Linear interpolation</option>
+                            <option value="ValueState">Value State - State-based retrieval</option>
                           </select>
-                          <p className="text-xs text-gray-500">
-                            Cyclic mode ensures data points at consistent intervals for accurate reports.
+                          <p className="text-[0.65rem] text-gray-400 mt-1 leading-tight">
+                            Mode defines how Historian samples and returns data points. Delta is recommended for precise reports.
                           </p>
                         </div>
 
-                        {/* Search Tags */}
-                        <div className="space-y-2">
-                          <Input
-                            placeholder="Search tags..."
-                            value={tagSearchTerm}
-                            onChange={(e) => setTagSearchTerm(e.target.value)}
-                          />
-                        </div>
-
-                        {/* Available Tags */}
-                        <div className="space-y-2">
-                          <h4 className="text-sm font-medium text-gray-700">Available Tags:</h4>
-                          <div className="space-y-1 max-h-40 overflow-y-auto">
-                            {availableTags
-                              .filter(tag => tag.name.toLowerCase().includes(tagSearchTerm.toLowerCase()) ||
-                                (tag.description || '').toLowerCase().includes(tagSearchTerm.toLowerCase()))
-                              .map((tag) => (
-                                <button
-                                  key={tag.name}
-                                  onClick={() => handleTagsChange([...(reportConfig.tags || []), tag.name])}
-                                  disabled={reportConfig.tags?.includes(tag.name)}
-                                  className={cn(
-                                    'w-full text-left px-3 py-2 text-sm rounded-md transition-colors',
-                                    reportConfig.tags?.includes(tag.name)
-                                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                      : 'hover:bg-gray-50 text-gray-700'
-                                  )}
-                                >
-                                  <div className="flex flex-col">
-                                    <span className="font-medium">{tag.name}</span>
-                                    {tag.description && (
-                                      <span className="text-xs text-gray-500 truncate">{tag.description}</span>
-                                    )}
-                                  </div>
-                                </button>
-                              ))}
-                            {availableTags.filter(tag => tag.name.toLowerCase().includes(tagSearchTerm.toLowerCase()) ||
-                              tag.description.toLowerCase().includes(tagSearchTerm.toLowerCase())).length === 0 && (
-                                <div className="px-3 py-2 text-sm text-gray-500 italic">No tags found</div>
-                              )}
-                          </div>
-                        </div>
-
-                        {/* Selected Tags */}
-                        {reportConfig.tags && reportConfig.tags.length > 0 && (
-                          <div className="space-y-2">
-                            <h4 className="text-sm font-medium text-gray-700">Selected Tags:</h4>
-                            <div className="flex flex-wrap gap-2">
-                              {reportConfig.tags.map((tagName) => (
-                                <div
-                                  key={tagName}
-                                  className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-primary-100 text-primary-800 border border-primary-200"
-                                >
-                                  <span className="mr-2">{tagName}</span>
-                                  <button
-                                    onClick={() => handleTagsChange(reportConfig.tags?.filter(tag => tag !== tagName) || [])}
-                                    className="ml-1 hover:text-primary-900 focus:outline-none"
-                                    aria-label={`Remove ${tagName}`}
-                                  >
-                                    ×
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Empty state */}
-                        {(!reportConfig.tags || reportConfig.tags.length === 0) && (
-                          <div className="text-center py-8 text-gray-500">
-                            <Tag className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                            <p>No tags selected</p>
-                            <p className="text-sm">Select tags from the list above</p>
-                          </div>
-                        )}
+                        {/* Tag Selection Component */}
+                        <TagSelector
+                          selectedTags={reportConfig.tags || []}
+                          onChange={handleTagsChange}
+                          maxTags={10}
+                          widgetType="report"
+                          className="border-none shadow-none p-0"
+                        />
                       </CardContent>
                     </Card>
 
@@ -957,16 +943,24 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                     <div className="space-y-4">
                       <AnalyticsOptions
                         includeTrendLines={reportConfig.includeTrendLines}
+                        includeMultiTrend={reportConfig.includeMultiTrend}
                         includeSPCCharts={reportConfig.includeSPCCharts}
                         includeStatsSummary={reportConfig.includeStatsSummary}
+                        includeDataTable={reportConfig.includeDataTable}
                         onIncludeTrendLinesChange={(value) =>
                           setReportConfig(prev => ({ ...prev, includeTrendLines: value }))
+                        }
+                        onIncludeMultiTrendChange={(value) =>
+                          setReportConfig(prev => ({ ...prev, includeMultiTrend: value }))
                         }
                         onIncludeSPCChartsChange={(value) =>
                           setReportConfig(prev => ({ ...prev, includeSPCCharts: value }))
                         }
                         onIncludeStatsSummaryChange={(value) =>
                           setReportConfig(prev => ({ ...prev, includeStatsSummary: value }))
+                        }
+                        onIncludeDataTableChange={(value) =>
+                          setReportConfig(prev => ({ ...prev, includeDataTable: value }))
                         }
                         disabled={!reportConfig.tags?.length}
                       />
@@ -1045,6 +1039,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                   reportConfig.name && reportConfig.tags?.length && (
                     <div className="mt-8">
                       <ReportPreview
+                        ref={reportPreviewRef}
                         config={{
                           id: 'preview',
                           name: reportConfig.name,
@@ -1053,7 +1048,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           timeRange: reportConfig.timeRange!,
                           chartTypes: reportConfig.chartTypes as any[],
                           template: reportConfig.template || 'default',
-                          retrievalMode: reportConfig.retrievalMode || 'Delta'
+                          retrievalMode: reportConfig.retrievalMode || 'Delta',
+                          includeTrendLines: reportConfig.includeTrendLines,
+                          includeMultiTrend: reportConfig.includeMultiTrend,
+                          includeSPCCharts: reportConfig.includeSPCCharts,
+                          includeStatsSummary: reportConfig.includeStatsSummary,
+                          includeDataTable: reportConfig.includeDataTable,
+                          specificationLimits: reportConfig.specificationLimits
                         }}
                       />
                     </div>
@@ -1061,6 +1062,43 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 }
               </div>
             )}
+
+            {
+              activeTab === 'dashboards' && (
+                <div className="space-y-6">
+                  {dashboardViewMode === 'list' && (
+                    <DashboardList
+                      onView={(id) => {
+                        setSelectedDashboardId(id);
+                        setDashboardViewMode('view');
+                      }}
+                      onEdit={(id) => {
+                        setSelectedDashboardId(id);
+                        setDashboardViewMode('edit');
+                      }}
+                      onCreate={() => {
+                        setSelectedDashboardId(null);
+                        setDashboardViewMode('edit');
+                      }}
+                    />
+                  )}
+                  {dashboardViewMode === 'view' && selectedDashboardId && (
+                    <DashboardView
+                      dashboardId={selectedDashboardId}
+                      onBack={() => setDashboardViewMode('list')}
+                      onEdit={() => setDashboardViewMode('edit')}
+                    />
+                  )}
+                  {dashboardViewMode === 'edit' && (
+                    <DashboardEditor
+                      dashboardId={selectedDashboardId}
+                      onSave={() => setDashboardViewMode('list')}
+                      onCancel={() => setDashboardViewMode('list')}
+                    />
+                  )}
+                </div>
+              )
+            }
 
             {
               activeTab === 'reports' && (
@@ -1202,59 +1240,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
             }
 
             {
-              activeTab === 'database' && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-3xl font-bold text-gray-900">Database</h2>
-                      <p className="text-gray-600">
-                        Manage connection settings and monitor database health.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Sub-navigation for Database */}
-                  <div className="flex space-x-4 border-b border-gray-100">
-                    <button
-                      onClick={() => setDbActiveTab('status')}
-                      className={cn(
-                        "pb-2 px-1 text-sm font-medium transition-colors border-b-2",
-                        dbActiveTab === 'status'
-                          ? "border-primary-600 text-primary-600"
-                          : "border-transparent text-gray-400 hover:text-gray-600"
-                      )}
-                    >
-                      Status
-                    </button>
-                    <button
-                      onClick={() => setDbActiveTab('config')}
-                      className={cn(
-                        "pb-2 px-1 text-sm font-medium transition-colors border-b-2",
-                        dbActiveTab === 'config'
-                          ? "border-primary-600 text-primary-600"
-                          : "border-transparent text-gray-400 hover:text-gray-600"
-                      )}
-                    >
-                      Configuration
-                    </button>
-                  </div>
-
-                  <div className="mt-6">
-                    {dbActiveTab === 'status' ? (
-                      <StatusDashboard />
-                    ) : (
-                      <div className="bg-white rounded-lg border border-gray-200">
-                        <div className="p-6 text-center text-gray-500">
-                          <Database className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                          <p className="text-lg font-medium">Database Configuration</p>
-                          <p>Current connection: {healthStatus}</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
+              activeTab === 'alerts' && (
+                <AlertsManagement />
               )
             }
+
 
             {
               activeTab === 'users' && currentUser?.role === 'admin' && (
@@ -1276,7 +1266,16 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           </>
         )}
       </main>
-      <ToastContainer toasts={toasts} onClose={id => removeToast(id)} />
+
+      {/* Format Selection Dialog for Saved Reports */}
+      <FormatSelectionDialog
+        isOpen={showExportDialog}
+        onClose={() => {
+          setShowExportDialog(false);
+          setExportingReport(null);
+        }}
+        onSelectFormat={handleConfirmExport}
+      />
     </div>
   );
 };

@@ -24,7 +24,7 @@ WORKDIR /app
 # --- Stage 1: Build Backend ---
 FROM base AS backend-builder
 COPY package*.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 COPY . .
 RUN npm run build
 
@@ -32,14 +32,14 @@ RUN npm run build
 FROM base AS client-builder
 WORKDIR /app/client
 COPY client/package*.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 COPY client/ ./
 RUN npm run build
 
 # --- Stage 3: Production Dependencies ---
 FROM base AS prod-deps
 COPY package*.json ./
-RUN npm install --omit=dev && npm cache clean --force
+RUN npm install --omit=dev --legacy-peer-deps && npm cache clean --force
 
 # --- Stage 4: Final Production Image ---
 FROM node:20-bookworm-slim AS production
@@ -55,6 +55,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     unzip \
     fonts-dejavu-core \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user for security (Debian uses different flags)
@@ -71,7 +72,6 @@ COPY --from=backend-builder --chown=historian:nodejs /app/dist ./dist
 COPY --from=backend-builder --chown=historian:nodejs /app/package.json ./package.json
 COPY --from=backend-builder --chown=historian:nodejs /app/templates ./templates
 COPY --from=backend-builder --chown=historian:nodejs /app/scripts/healthcheck.js ./scripts/healthcheck.js
-COPY --from=backend-builder --chown=historian:nodejs /app/.env ./.env
 
 # Copy client build to be served by the backend
 COPY --from=client-builder --chown=historian:nodejs /app/client/build ./client/build
@@ -88,18 +88,20 @@ USER historian
 EXPOSE 3000
 
 # Environment defaults
+ARG VERSION=unknown
 ENV NODE_ENV=production \
     PORT=3000 \
-    DATA_DIR=/home/historian/data \
-    REPORTS_DIR=/home/historian/reports \
-    LOG_FILE=/home/historian/logs/app.log \
-    TEMP_DIR=/home/historian/temp \
-    IS_DOCKER=true
+    DATA_DIR=/app/data \
+    REPORTS_DIR=/app/reports \
+    LOG_FILE=/app/logs/app.log \
+    TEMP_DIR=/app/temp \
+    IS_DOCKER=true \
+    VERSION=${VERSION}
 
 # Labels for metadata
 LABEL maintainer="Historian Reports Team" \
     description="Professional reporting application for AVEVA Historian database" \
-    version="0.76.0"
+    version="1.2.5"
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

@@ -8,7 +8,7 @@ import Chart from 'react-apexcharts';
 import { ApexOptions } from 'apexcharts';
 import { TimeSeriesData, StatisticsResult } from '../../types/api';
 import { GuideLine } from '../../types/guideLines';
-import { calculateTrendLine, TrendAnalysisResult } from './chartUtils';
+import { calculateTrendLine, TrendAnalysisResult, formatYValue } from './chartUtils';
 
 interface MiniChartProps {
   data: TimeSeriesData[];
@@ -37,7 +37,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
   width = '100%',
   height = 160,
   className = '',
-  showTrend = true,
+  showTrend = false,
   showAxis = false,
   title,
   description,
@@ -111,7 +111,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
             color: '#fff',
             background: l.color,
           },
-          text: `${l.position.toFixed(2)}${units ? ` ${units}` : ''}`,
+          text: formatYValue(l.position, undefined, units),
         }
       }));
 
@@ -183,6 +183,13 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       labels: {
         show: showAxis,
         datetimeUTC: false,
+        datetimeFormatter: {
+          year: 'yyyy',
+          month: "MMM 'yy",
+          day: 'dd MMM',
+          hour: 'HH:mm',
+          minute: 'HH:mm'
+        },
         style: {
           fontSize: '9px',
           colors: '#94a3b8'
@@ -193,12 +200,16 @@ export const MiniChart: React.FC<MiniChartProps> = ({
       },
       axisTicks: {
         show: false
+      },
+      tooltip: {
+        enabled: false
       }
     },
     yaxis: [{
       labels: {
         show: showAxis,
-        formatter: (val) => typeof val === 'number' ? val.toFixed(1) : (val as any),
+        formatter: (val) => typeof val === 'number' ? formatYValue(val) : (val as any),
+        padding: 0,
         style: {
           fontSize: '9px',
           colors: '#94a3b8'
@@ -214,14 +225,14 @@ export const MiniChart: React.FC<MiniChartProps> = ({
     }],
     tooltip: {
       x: {
-        format: 'HH:mm:ss'
+        format: 'HH:mm'
       },
       y: {
         formatter: (val, { seriesIndex }) => {
           if (seriesIndex === 1 && trendResult) {
-            return `${typeof val === 'number' ? val.toFixed(2) : val} [${trendResult.equation}]`;
+            return `${formatYValue(val as number)} [${trendResult.equation}]`;
           }
-          return `${typeof val === 'number' ? val.toFixed(2) : val}${units ? ` ${units}` : ''}`;
+          return formatYValue(val as number, undefined, units);
         }
       },
       theme: 'light'
@@ -229,13 +240,22 @@ export const MiniChart: React.FC<MiniChartProps> = ({
     grid: {
       show: showAxis,
       borderColor: '#f1f5f9',
-      strokeDashArray: 2
+      strokeDashArray: 2,
+      padding: {
+        left: -10,
+        right: 0,
+        top: -10,
+        bottom: 0
+      }
     },
     annotations: annotations,
   };
 
   return (
-    <div className={`relative bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow ${className}`}>
+    <div
+      id={`mini-chart-${tagName}`}
+      className={`relative bg-white border border-gray-200 rounded-lg p-4 shadow-sm hover:shadow-md transition-shadow ${className}`}
+    >
       <div className="mb-2 flex items-start justify-between border-b border-gray-100 pb-2">
         <div className="flex flex-col min-w-0 flex-1">
           <span className="text-sm font-bold text-gray-800 truncate" title={title || tagName}>
@@ -251,8 +271,8 @@ export const MiniChart: React.FC<MiniChartProps> = ({
         {statistics && showAxis && (
           <div className="flex flex-col items-end flex-shrink-0 ml-4">
             <div className="flex items-center space-x-2 text-[10px] font-mono leading-tight">
-              <span className="text-gray-400">AVG: <span className="font-bold text-blue-600">{statistics.average.toFixed(2)}</span></span>
-              <span className="text-gray-400">MAX: <span className="font-bold text-amber-600">{statistics.max.toFixed(2)}</span></span>
+              <span className="text-gray-400">AVG: <span className="font-bold text-blue-600">{formatYValue(statistics.average)}</span></span>
+              <span className="text-gray-400">MAX: <span className="font-bold text-amber-600">{formatYValue(statistics.max)}</span></span>
             </div>
             <span className="text-[9px] text-gray-400 font-mono mt-1">
               {chartData.length} pts

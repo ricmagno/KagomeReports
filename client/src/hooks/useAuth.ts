@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, createContext, useContext } from 'react';
-import { apiService } from '../services/api';
+import { apiService, setAuthToken } from '../services/api';
 
 export interface User {
   id: string;
@@ -76,7 +76,11 @@ export const useAuthState = () => {
         setUser(response.data.user);
         // Store token in localStorage or sessionStorage
         const storage = rememberMe ? localStorage : sessionStorage;
-        storage.setItem('authToken', response.data.token || '');
+        const token = response.data.token || '';
+        storage.setItem('authToken', token);
+
+        // Also update apiService immediately
+        setAuthToken(token);
       } else {
         throw new Error(response.message || 'Login failed');
       }
@@ -97,6 +101,7 @@ export const useAuthState = () => {
       setUser(null);
       localStorage.removeItem('authToken');
       sessionStorage.removeItem('authToken');
+      setAuthToken(null);
     }
   };
 
@@ -111,8 +116,6 @@ export const useAuthState = () => {
         return;
       }
 
-      // Set token for API requests
-      const { setAuthToken } = await import('../services/api');
       setAuthToken(token);
 
       // Verify token and get current user data
@@ -131,7 +134,6 @@ export const useAuthState = () => {
         setUser(null);
         localStorage.removeItem('authToken');
         sessionStorage.removeItem('authToken');
-        const { setAuthToken } = await import('../services/api');
         setAuthToken(null);
       }
     } catch (error) {

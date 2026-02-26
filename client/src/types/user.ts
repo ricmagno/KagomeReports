@@ -9,6 +9,7 @@ export interface User {
   id: string;
   username: string;
   email: string;
+  mobile?: string;
   firstName: string;
   lastName: string;
   role: UserRole;
@@ -25,6 +26,7 @@ export interface User {
 export interface CreateUserData {
   username: string;
   email: string;
+  mobile?: string;
   password: string;
   firstName: string;
   lastName: string;
@@ -34,6 +36,7 @@ export interface CreateUserData {
 
 export interface UpdateUserData {
   email?: string;
+  mobile?: string;
   firstName?: string;
   lastName?: string;
   role?: UserRole;

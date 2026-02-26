@@ -86,6 +86,13 @@ export class StatisticalAnalysisService implements SPCCalculator, TrendLineCalcu
     const sum = validValues.reduce((acc, val) => acc + val, 0);
     const average = sum / validValues.length;
 
+    // Calculate median (50th percentile)
+    const sorted = [...validValues].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 === 0
+      ? (sorted[mid - 1]! + sorted[mid]!) / 2
+      : sorted[mid]!;
+
     // Calculate standard deviation
     const variance = validValues.reduce((acc, val) => acc + Math.pow(val - average, 2), 0) / validValues.length;
     const standardDeviation = Math.sqrt(variance);
@@ -99,6 +106,7 @@ export class StatisticalAnalysisService implements SPCCalculator, TrendLineCalcu
       min,
       max,
       average,
+      median,
       standardDeviation,
       dataQuality
     });
@@ -107,6 +115,7 @@ export class StatisticalAnalysisService implements SPCCalculator, TrendLineCalcu
       min,
       max,
       average,
+      median,
       standardDeviation,
       count: validValues.length,
       dataQuality
@@ -212,10 +221,10 @@ export class StatisticalAnalysisService implements SPCCalculator, TrendLineCalcu
       };
     }
 
-    // Convert timestamps to numeric x values (seconds from start)
+    // Convert timestamps to numeric x values (relative milliseconds from start)
     const startTime = validData[0]!.timestamp.getTime();
     const points = validData.map(d => ({
-      x: (d.timestamp.getTime() - startTime) / 1000, // seconds from start
+      x: d.timestamp.getTime() - startTime, // relative milliseconds
       y: d.value
     }));
 
@@ -274,10 +283,10 @@ export class StatisticalAnalysisService implements SPCCalculator, TrendLineCalcu
     return {
       slope: Number(slope.toFixed(6)),
       intercept: Number(intercept.toFixed(4)),
-      rSquared: Number(rSquared.toFixed(3)),
+      rSquared: Number(rSquared.toFixed(6)),
       equation: this.formatTrendEquation(slope, intercept),
-      correlation: Number((Math.sqrt(rSquared) * (slope >= 0 ? 1 : -1)).toFixed(3)),
-      confidence: Number(rSquared.toFixed(3))
+      correlation: Number((Math.sqrt(rSquared) * (slope >= 0 ? 1 : -1)).toFixed(6)),
+      confidence: Number(rSquared.toFixed(6))
     };
   }
 
@@ -1579,6 +1588,7 @@ export class StatisticalAnalysisService implements SPCCalculator, TrendLineCalcu
           min: 0,
           max: 0,
           average: 0,
+          median: 0,
           standardDeviation: 0,
           count: 0,
           dataQuality: 0
@@ -1600,6 +1610,7 @@ export class StatisticalAnalysisService implements SPCCalculator, TrendLineCalcu
         min: 0,
         max: 0,
         average: 0,
+        median: 0,
         standardDeviation: 0,
         count: 0,
         dataQuality: 0

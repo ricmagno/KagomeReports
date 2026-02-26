@@ -47,7 +47,8 @@ const reportConfigBaseSchema = z.object({
   timeRange: z.object({
     startTime: z.string().datetime().transform(str => new Date(str)),
     endTime: z.string().datetime().transform(str => new Date(str)),
-    relativeRange: z.enum(['last1h', 'last2h', 'last6h', 'last12h', 'last24h', 'last7d', 'last30d']).optional()
+    relativeRange: z.enum(['last1h', 'last2h', 'last6h', 'last12h', 'last24h', 'last7d', 'last30d']).optional(),
+    timezone: z.string().optional()
   }),
   chartTypes: z.array(z.enum(['line', 'bar', 'trend', 'scatter'])).default(['line']),
   template: z.string().default('default'),
@@ -58,6 +59,11 @@ const reportConfigBaseSchema = z.object({
     if (val === 'Cyclic') return RetrievalMode.Cyclic;
     if (val === 'AVG' || val === 'Average') return RetrievalMode.Average;
     if (val === 'RoundTrip' || val === 'Full') return RetrievalMode.Full;
+    if (val === 'BestFit') return RetrievalMode.BestFit;
+    if (val === 'Minimum') return RetrievalMode.Minimum;
+    if (val === 'Maximum') return RetrievalMode.Maximum;
+    if (val === 'Interpolated') return RetrievalMode.Interpolated;
+    if (val === 'ValueState') return RetrievalMode.ValueState;
     return val as RetrievalMode; // Pass through if it's already a valid enum value
   }),
   filters: z.object({
@@ -91,7 +97,9 @@ const reportConfigBaseSchema = z.object({
   })).optional().transform(val => val as Record<string, SpecificationLimits> | undefined),
   includeSPCCharts: z.boolean().default(false),
   includeTrendLines: z.boolean().default(true),
+  includeMultiTrend: z.boolean().default(true),
   includeStatsSummary: z.boolean().default(true),
+  includeDataTable: z.boolean().default(false),
   version: z.number().int().positive().optional()
 });
 
@@ -153,7 +161,8 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
   const config = configResult.data;
   const reportId = `report_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  // Create full report config
+  // Create full report config — include ALL analytics flags so the PDF generator
+  // can render conditional sections (Statistics Summary, Trend Lines, SPC, etc.)
   const reportConfig: any = {
     id: reportId,
     name: config.name,
@@ -166,7 +175,17 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
     branding: config.branding,
     metadata: config.metadata,
     version: config.version,
-    retrievalMode: config.retrievalMode
+    retrievalMode: config.retrievalMode,
+    // Advanced Analytics flags — conditional section rendering
+    includeStatsSummary: config.includeStatsSummary,
+    includeTrendLines: config.includeTrendLines,
+    includeMultiTrend: config.includeMultiTrend,
+    includeSPCCharts: config.includeSPCCharts,
+    specificationLimits: config.specificationLimits,
+    includeStatistics: config.includeStatistics,
+    includeTrends: config.includeTrends,
+    includeAnomalies: config.includeAnomalies,
+    includeDataTable: config.includeDataTable,
   };
 
   apiLogger.info('Starting end-to-end report generation', {
@@ -197,7 +216,16 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
       reportConfig,
       includeStatistics: config.includeStatistics,
       includeTrends: config.includeTrends,
-      includeAnomalies: config.includeAnomalies
+      includeAnomalies: config.includeAnomalies,
+      preGeneratedCharts: req.body.charts ? Object.entries(req.body.charts as Record<string, string>).reduce((acc, [name, base64]) => {
+        if (base64 && base64.startsWith('data:image/')) {
+          const parts = base64.split(',');
+          if (parts.length > 1 && parts[1]) {
+            acc[name] = Buffer.from(parts[1], 'base64');
+          }
+        }
+        return acc;
+      }, {} as Record<string, Buffer>) : undefined
     });
 
     if (!result.success) {
@@ -690,7 +718,8 @@ router.post('/export', authenticateToken, requirePermission('reports', 'read'), 
     } else if (errorMessage.includes('Unsupported export format')) {
       throw createError(errorMessage, 400); // Bad Request
     } else {
-      throw createError('Failed to export configuration', 500);
+      // Include the actual error message for better troubleshooting
+      throw createError(`Failed to export configuration: ${errorMessage}`, 500);
     }
   }
 }));
@@ -717,38 +746,9 @@ router.post('/import', authenticateToken, requirePermission('reports', 'write'),
     // Call import service
     const result = await configImportService.importConfiguration(fileContent);
 
-    if (result.success) {
-      apiLogger.info('Import completed successfully', {
-        configName: result.config?.name,
-        tags: result.config?.tags?.length || 0,
-        warnings: result.warnings?.length || 0,
-      });
-
-      // Return success response with config and warnings
-      res.json({
-        success: true,
-        data: result.config,
-        warnings: result.warnings,
-        metadata: {
-          schemaVersion: result.config?.importMetadata?.schemaVersion,
-        },
-      });
-    } else {
-      apiLogger.warn('Import validation failed', {
-        errorCount: result.errors?.length || 0,
-      });
-
-      // Return validation errors
-      res.status(400).json({
-        success: false,
-        error: {
-          code: 'VALIDATION_FAILED',
-          message: 'Configuration validation failed',
-          validationErrors: result.errors,
-        },
-      });
-    }
-
+    // Return the import result directly (matches client ImportResult type)
+    // We return 200 even for validation failures so the client can show the detailed dialog
+    res.json(result);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     apiLogger.error('Import failed with exception', {

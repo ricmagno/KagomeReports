@@ -8,7 +8,8 @@ import Chart from 'react-apexcharts';
 import { ApexOptions } from 'apexcharts';
 import { TimeSeriesData } from '../../types/api';
 import { GuideLine, ChartBounds, ChartScale } from '../../types/guideLines';
-import { CHART_COLORS, getTagColor, getTagIndex, calculateTrendLine, TrendAnalysisResult } from './chartUtils';
+import { CHART_COLORS, getTagColor, getTagIndex, calculateTrendLine, TrendAnalysisResult, formatYValue } from './chartUtils';
+import { cn } from '../../utils/cn';
 
 interface MultiTrendChartProps {
     dataPoints: Record<string, TimeSeriesData[]>;
@@ -42,7 +43,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
     width = '100%',
     height = 320,
     className = '',
-    title = 'Combined Data Preview',
+    title,
     description,
     guideLines = [],
     units,
@@ -121,7 +122,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
                         color: '#fff',
                         background: l.color,
                     },
-                    text: `${l.position.toFixed(2)}${units ? ` ${units}` : ''}`,
+                    text: formatYValue(l.position, undefined, units),
                 }
             }));
 
@@ -136,7 +137,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
                         color: '#fff',
                         background: l.color,
                     },
-                    text: new Date(l.position).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                    text: new Date(l.position).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                 }
             }));
 
@@ -191,6 +192,13 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
             type: 'datetime',
             labels: {
                 datetimeUTC: false,
+                datetimeFormatter: {
+                    year: 'yyyy',
+                    month: "MMM 'yy",
+                    day: 'dd MMM',
+                    hour: 'HH:mm',
+                    minute: 'HH:mm'
+                },
                 style: {
                     colors: '#64748b',
                     fontSize: '10px'
@@ -201,11 +209,15 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
             },
             axisTicks: {
                 show: false
+            },
+            tooltip: {
+                enabled: false
             }
         },
         yaxis: [{
             labels: {
-                formatter: (val) => typeof val === 'number' ? val.toFixed(1) : (val as any),
+                formatter: (val) => typeof val === 'number' ? formatYValue(val) : (val as any),
+                padding: 0,
                 style: {
                     colors: '#64748b',
                     fontSize: '10px'
@@ -222,6 +234,12 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
         grid: {
             borderColor: '#f1f5f9',
             strokeDashArray: 4,
+            padding: {
+                left: -10,
+                right: 0,
+                top: 0,
+                bottom: 0
+            },
             xaxis: {
                 lines: {
                     show: true
@@ -230,29 +248,27 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
         },
         tooltip: {
             x: {
-                format: 'dd MMM HH:mm:ss'
+                format: 'dd MMM HH:mm'
             },
             theme: 'light',
             shared: true,
             intersect: false,
             y: {
                 formatter: (val, { seriesIndex, w }) => {
-                    if (seriesIndex === undefined || !w.config.series[seriesIndex]) {
-                        return typeof val === 'number' ? val.toFixed(2) : '';
-                    }
-                    const seriesName = w.config.series[seriesIndex].name;
+                    const seriesName = w.config.series[seriesIndex]?.name;
                     if (seriesName && typeof seriesName === 'string' && seriesName.endsWith('(Trend)')) {
                         const originalTag = seriesName.replace(' (Trend)', '');
                         const meta = trendMetadata[originalTag];
                         if (meta) {
-                            return `${val.toFixed(2)} [${meta.equation}]`;
+                            return `${formatYValue(val)} [${meta.equation}]`;
                         }
                     }
-                    return `${typeof val === 'number' ? val.toFixed(2) : val}${units ? ` ${units}` : ''}`;
+                    return formatYValue(val as number, undefined, units);
                 }
             }
         },
         legend: {
+            show: true,
             position: 'bottom',
             horizontalAlign: 'center',
             fontSize: '12px',
@@ -269,25 +285,30 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
     };
 
     return (
-        <div className={`bg-white border border-gray-200 rounded-lg p-6 shadow-sm ${className}`}>
-            <div className="mb-4 border-b border-gray-100 pb-2">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h3 className="text-lg font-bold text-gray-900">{title}</h3>
-                        <p className="text-xs text-gray-500 italic">
-                            {description || `Comparison of ${Object.keys(dataPoints).length} tags`}
-                        </p>
+        <div
+            id="multi-trend-chart"
+            className={cn("bg-white border border-gray-200 rounded-lg p-6 shadow-sm flex flex-col h-full", className)}
+        >
+            {(title || description) && (
+                <div className="mb-4 border-b border-gray-100 pb-2">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            {title && <h3 className="text-lg font-bold text-gray-900">{title}</h3>}
+                            <p className="text-xs text-gray-500 italic">
+                                {description || `Comparison of ${Object.keys(dataPoints).length} tags`}
+                            </p>
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
 
-            <div className="relative min-h-[320px]">
+            <div className="relative flex-1 min-h-[200px]">
                 <Chart
                     options={options}
                     series={series}
                     type="line"
                     width={width}
-                    height={height}
+                    height={height || '100%'}
                 />
             </div>
 

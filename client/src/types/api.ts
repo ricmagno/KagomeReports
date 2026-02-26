@@ -4,6 +4,7 @@ export interface TimeSeriesData {
   value: number;
   quality: 'Good' | 'Bad' | 'Uncertain' | number;
   tagName: string;
+  description?: string;
 }
 
 export interface TagInfo {
@@ -12,6 +13,10 @@ export interface TagInfo {
   units: string;
   dataType: 'analog' | 'discrete' | 'string';
   lastUpdate: Date;
+  minValue?: number;
+  maxValue?: number;
+  dataSource?: 'historian' | 'opcua';
+  opcuaNodeId?: string;
 }
 
 export interface SpecificationLimits {
@@ -28,7 +33,7 @@ export interface ReportConfig {
   chartTypes: ChartType[];
   template: string;
   format?: 'pdf' | 'docx';
-  retrievalMode?: 'Delta' | 'Cyclic' | 'AVG' | 'RoundTrip';
+  retrievalMode?: 'Delta' | 'Cyclic' | 'Full' | 'BestFit' | 'Average' | 'Minimum' | 'Maximum' | 'Interpolated' | 'ValueState' | 'AVG' | 'RoundTrip' | 'Live';
   filters?: DataFilter[];
   createdBy?: string;
   createdAt?: Date;
@@ -39,8 +44,10 @@ export interface ReportConfig {
   // Advanced Chart Analytics options
   specificationLimits?: Record<string, SpecificationLimits>;
   includeTrendLines?: boolean;
+  includeMultiTrend?: boolean;
   includeSPCCharts?: boolean;
   includeStatsSummary?: boolean;
+  includeDataTable?: boolean;
 }
 
 export interface ReportVersion {
@@ -80,6 +87,7 @@ export interface StatisticsResult {
   min: number;
   max: number;
   average: number;
+  median: number;
   standardDeviation: number;
   count: number;
   dataQuality: number;

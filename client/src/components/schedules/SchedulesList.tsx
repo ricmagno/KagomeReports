@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useReducer } from 'react';
 import { Schedule, ScheduleConfig, ExecutionHistoryParams } from '../../types/schedule';
 import { ReportConfig } from '../../types/api';
 import { apiService } from '../../services/api';
@@ -14,411 +14,305 @@ import { cn } from '../../utils/cn';
 import { useToast } from '../../hooks/useToast';
 import { handleApiError } from '../../utils/apiErrorHandler';
 
-/**
- * Props for the SchedulesList component
- */
 interface SchedulesListProps {
-  /** Additional CSS classes */
   className?: string;
 }
 
-/**
- * Filter status type
- */
 type FilterStatus = 'all' | 'enabled' | 'disabled';
-
-/**
- * Filter last status type
- */
 type FilterLastStatus = 'all' | 'success' | 'failed';
 
-/**
- * Custom hook for debouncing values
- * 
- * @param value - Value to debounce
- * @param delay - Delay in milliseconds
- * @returns Debounced value
- */
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
-
   useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
   }, [value, delay]);
-
   return debouncedValue;
 }
 
-/**
- * SchedulesList Component
- * 
- * Main container component that displays all schedules with comprehensive
- * management capabilities including search, filtering, pagination, and CRUD operations.
- * 
- * Features:
- * - Grid/list view of all schedules
- * - Real-time search by name/description (debounced)
- * - Filter by enabled/disabled status
- * - Filter by last execution status
- * - Pagination with configurable page size
- * - Create new schedule button
- * - Refresh schedules button
- * - Loading states with skeleton loaders
- * - Error handling with retry capability
- * - Empty state with call-to-action
- * - Toast notifications for actions
- * - Confirmation dialogs for destructive actions
- * 
- * State Management:
- * - Schedules list with pagination
- * - Loading and error states
- * - Search query (debounced for performance)
- * - Filter states (status, last execution)
- * - UI state (form visibility, history visibility)
- * - Action loading states (toggling, running, deleting)
- * 
- * Performance Optimizations:
- * - Debounced search input (300ms delay)
- * - Memoized callbacks to prevent unnecessary re-renders
- * - Optimistic UI updates for toggle actions
- * - Efficient pagination
- * - Skeleton loaders for better perceived performance
- * 
- * Accessibility:
- * - WCAG 2.1 AA compliant
- * - Keyboard navigation support
- * - Screen reader compatible
- * - ARIA labels and live regions
- * - Focus management
- * 
- * @example
- * ```tsx
- * <SchedulesList className="custom-class" />
- * ```
- */
+interface SchedulesState {
+  schedules: Schedule[];
+  reportConfigs: ReportConfig[];
+  loading: boolean;
+  error: string | null;
+  searchQuery: string;
+  filterStatus: FilterStatus;
+  filterLastStatus: FilterLastStatus;
+  page: number;
+  limit: number;
+  totalPages: number;
+  totalCount: number;
+  selectedSchedule: Schedule | null;
+  showForm: boolean;
+  showHistory: boolean;
+  scheduleToDelete: Schedule | null;
+  togglingSchedules: Set<string>;
+  runningSchedules: Set<string>;
+  deletingSchedule: string | null;
+}
+
+type SchedulesAction =
+  | { type: 'FETCH_START' }
+  | { type: 'FETCH_SUCCESS'; payload: { schedules: Schedule[]; totalPages: number; totalCount: number } }
+  | { type: 'FETCH_ERROR'; payload: string }
+  | { type: 'SET_SEARCH_QUERY'; payload: string }
+  | { type: 'SET_FILTER_STATUS'; payload: FilterStatus }
+  | { type: 'SET_FILTER_LAST_STATUS'; payload: FilterLastStatus }
+  | { type: 'SET_PAGE'; payload: number }
+  | { type: 'SET_REPORT_CONFIGS'; payload: ReportConfig[] }
+  | { type: 'SHOW_FORM'; payload: Schedule | null }
+  | { type: 'HIDE_FORM' }
+  | { type: 'SHOW_HISTORY'; payload: Schedule }
+  | { type: 'HIDE_HISTORY' }
+  | { type: 'SET_DELETE_TARGET'; payload: Schedule | null }
+  | { type: 'TOGGLE_START'; payload: string }
+  | { type: 'TOGGLE_END'; payload: string }
+  | { type: 'RUN_START'; payload: string }
+  | { type: 'RUN_END'; payload: string }
+  | { type: 'DELETE_START'; payload: string }
+  | { type: 'DELETE_END' }
+  | { type: 'UPDATE_SCHEDULE_ENABLED'; payload: { id: string; enabled: boolean } };
+
+const initialState: SchedulesState = {
+  schedules: [],
+  reportConfigs: [],
+  loading: true,
+  error: null,
+  searchQuery: '',
+  filterStatus: 'all',
+  filterLastStatus: 'all',
+  page: 1,
+  limit: 10,
+  totalPages: 1,
+  totalCount: 0,
+  selectedSchedule: null,
+  showForm: false,
+  showHistory: false,
+  scheduleToDelete: null,
+  togglingSchedules: new Set(),
+  runningSchedules: new Set(),
+  deletingSchedule: null,
+};
+
+function schedulesReducer(state: SchedulesState, action: SchedulesAction): SchedulesState {
+  switch (action.type) {
+    case 'FETCH_START':
+      return { ...state, loading: true, error: null };
+    case 'FETCH_SUCCESS':
+      return {
+        ...state,
+        loading: false,
+        schedules: action.payload.schedules,
+        totalPages: action.payload.totalPages,
+        totalCount: action.payload.totalCount,
+      };
+    case 'FETCH_ERROR':
+      return { ...state, loading: false, error: action.payload, schedules: [], totalPages: 1, totalCount: 0 };
+    case 'SET_SEARCH_QUERY':
+      return { ...state, searchQuery: action.payload, page: 1 };
+    case 'SET_FILTER_STATUS':
+      return { ...state, filterStatus: action.payload, page: 1 };
+    case 'SET_FILTER_LAST_STATUS':
+      return { ...state, filterLastStatus: action.payload, page: 1 };
+    case 'SET_PAGE':
+      return { ...state, page: action.payload };
+    case 'SET_REPORT_CONFIGS':
+      return { ...state, reportConfigs: action.payload };
+    case 'SHOW_FORM':
+      return { ...state, showForm: true, selectedSchedule: action.payload };
+    case 'HIDE_FORM':
+      return { ...state, showForm: false, selectedSchedule: null };
+    case 'SHOW_HISTORY':
+      return { ...state, showHistory: true, selectedSchedule: action.payload };
+    case 'HIDE_HISTORY':
+      return { ...state, showHistory: false, selectedSchedule: null };
+    case 'SET_DELETE_TARGET':
+      return { ...state, scheduleToDelete: action.payload };
+    case 'TOGGLE_START':
+      return { ...state, togglingSchedules: new Set(state.togglingSchedules).add(action.payload) };
+    case 'TOGGLE_END': {
+      const next = new Set(state.togglingSchedules);
+      next.delete(action.payload);
+      return { ...state, togglingSchedules: next };
+    }
+    case 'RUN_START':
+      return { ...state, runningSchedules: new Set(state.runningSchedules).add(action.payload) };
+    case 'RUN_END': {
+      const next = new Set(state.runningSchedules);
+      next.delete(action.payload);
+      return { ...state, runningSchedules: next };
+    }
+    case 'DELETE_START':
+      return { ...state, deletingSchedule: action.payload };
+    case 'DELETE_END':
+      return { ...state, deletingSchedule: null, scheduleToDelete: null };
+    case 'UPDATE_SCHEDULE_ENABLED':
+      return {
+        ...state,
+        schedules: state.schedules.map(s =>
+          s.id === action.payload.id ? { ...s, enabled: action.payload.enabled } : s
+        ),
+      };
+    default:
+      return state;
+  }
+}
 
 export const SchedulesList: React.FC<SchedulesListProps> = ({ className }) => {
-  // Toast notifications
   const { toasts, success, error: showError, removeToast } = useToast();
+  const [state, dispatch] = useReducer(schedulesReducer, initialState);
+  const {
+    schedules,
+    reportConfigs,
+    loading,
+    error,
+    searchQuery,
+    filterStatus,
+    filterLastStatus,
+    page,
+    limit,
+    totalPages,
+    totalCount,
+    selectedSchedule,
+    showForm,
+    showHistory,
+    scheduleToDelete,
+    togglingSchedules,
+    runningSchedules,
+    deletingSchedule
+  } = state;
 
-  // State management
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [reportConfigs, setReportConfigs] = useState<ReportConfig[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
-  const [filterLastStatus, setFilterLastStatus] = useState<FilterLastStatus>('all');
-  const [page, setPage] = useState(1);
-  const [limit] = useState(10);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-
-  // UI state
-  const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
-  const [scheduleToDelete, setScheduleToDelete] = useState<Schedule | null>(null);
-
-  // Loading states for individual actions
-  const [togglingSchedules, setTogglingSchedules] = useState<Set<string>>(new Set());
-  const [runningSchedules, setRunningSchedules] = useState<Set<string>>(new Set());
-  const [deletingSchedule, setDeletingSchedule] = useState<string | null>(null);
-
-  // Debounce search query with 300ms delay
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
 
-  // Fetch schedules on mount and when filters change
-  useEffect(() => {
-    fetchSchedules();
-  }, [page, filterStatus, debouncedSearchQuery]); // Use debounced value
-
-  // Fetch report configs on mount
-  useEffect(() => {
-    fetchReportConfigs();
-  }, []);
-
-  // Memoize fetchSchedules to prevent unnecessary recreations
   const fetchSchedules = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
+    dispatch({ type: 'FETCH_START' });
     try {
-      const params: any = {
-        page,
-        limit,
-      };
-
-      // Add enabled filter if not 'all'
-      if (filterStatus !== 'all') {
-        params.enabled = filterStatus === 'enabled';
-      }
-
-      // Add search query if present (use debounced value)
-      if (debouncedSearchQuery.trim()) {
-        params.search = debouncedSearchQuery.trim();
-      }
+      const params: Record<string, string | number | boolean> = { page, limit };
+      if (filterStatus !== 'all') params.enabled = filterStatus === 'enabled';
+      if (debouncedSearchQuery.trim()) params.search = debouncedSearchQuery.trim();
 
       const response = await apiService.getSchedules(params);
-
       if (response.success && response.data) {
-        // Handle both possible response structures
-        const schedulesData = response.data.schedules || [];
-        let filteredSchedules = Array.isArray(schedulesData) ? schedulesData : [];
-
-        // Convert date strings to Date objects
-        filteredSchedules = filteredSchedules.map(schedule => ({
-          ...schedule,
-          nextRun: schedule.nextRun ? new Date(schedule.nextRun) : undefined,
-          lastRun: schedule.lastRun ? new Date(schedule.lastRun) : undefined,
-          createdAt: schedule.createdAt ? new Date(schedule.createdAt) : new Date(),
-          updatedAt: schedule.updatedAt ? new Date(schedule.updatedAt) : new Date(),
+        let schedulesData = response.data.schedules || [];
+        schedulesData = schedulesData.map((s: any) => ({
+          ...s,
+          nextRun: s.nextRun ? new Date(s.nextRun) : undefined,
+          lastRun: s.lastRun ? new Date(s.lastRun) : undefined,
+          createdAt: s.createdAt ? new Date(s.createdAt) : new Date(),
+          updatedAt: s.updatedAt ? new Date(s.updatedAt) : new Date(),
         }));
 
-        // Apply last status filter client-side
         if (filterLastStatus !== 'all') {
-          filteredSchedules = filteredSchedules.filter(
-            (schedule) => schedule.lastStatus === filterLastStatus
-          );
+          schedulesData = schedulesData.filter((s: any) => s.lastStatus === filterLastStatus);
         }
 
-        setSchedules(filteredSchedules);
-
-        // Safely access pagination data with defaults
-        const pagination = response.data.pagination || { totalPages: 1, total: 0 };
-        setTotalPages(pagination.totalPages || 1);
-        setTotalCount(pagination.total || 0);
+        dispatch({
+          type: 'FETCH_SUCCESS',
+          payload: {
+            schedules: schedulesData,
+            totalPages: response.data.pagination.totalPages || 1,
+            totalCount: response.data.pagination.total || 0,
+          }
+        });
       } else {
-        // Set empty array if no data
-        setSchedules([]);
-        setTotalPages(1);
-        setTotalCount(0);
+        dispatch({ type: 'FETCH_SUCCESS', payload: { schedules: [], totalPages: 1, totalCount: 0 } });
       }
     } catch (err) {
-      const errorMessage = handleApiError(err, 'Failed to load schedules', {
-        logToConsole: true,
-        showNotification: false,
-      });
-      setError(errorMessage);
-      // Ensure schedules is always an array
-      setSchedules([]);
-      setTotalPages(1);
-      setTotalCount(0);
-    } finally {
-      setLoading(false);
+      const msg = handleApiError(err, 'Failed to load schedules', { logToConsole: true, showNotification: false });
+      dispatch({ type: 'FETCH_ERROR', payload: msg });
     }
   }, [page, limit, filterStatus, debouncedSearchQuery, filterLastStatus]);
 
-  const fetchReportConfigs = useCallback(async () => {
+  useEffect(() => {
+    fetchSchedules();
+  }, [fetchSchedules]);
+
+  useEffect(() => {
+    const fetchConfigs = async () => {
+      try {
+        const response = await apiService.getSavedReports();
+        if (response.success && response.data) {
+          const configs = response.data.map((r: any) => ({
+            ...r.config, id: r.id, name: r.name, description: r.description
+          }));
+          dispatch({ type: 'SET_REPORT_CONFIGS', payload: configs });
+        }
+      } catch (err) {
+        console.error('Error fetching report configs:', err);
+      }
+    };
+    fetchConfigs();
+  }, []);
+
+  const handleCreateSchedule = () => dispatch({ type: 'SHOW_FORM', payload: null });
+  const handleEditSchedule = (s: Schedule) => dispatch({ type: 'SHOW_FORM', payload: s });
+  const handleViewHistory = (s: Schedule) => dispatch({ type: 'SHOW_HISTORY', payload: s });
+
+  const handleSaveSchedule = async (config: ScheduleConfig) => {
     try {
-      const response = await apiService.getSavedReports();
-      if (response.success && response.data) {
-        // Map saved reports to ReportConfig format
-        const configs: ReportConfig[] = response.data.map((report: any) => ({
-          ...report.config,
-          id: report.id,
-          name: report.name,
-          description: report.description,
-        }));
-        setReportConfigs(configs);
+      const response = selectedSchedule
+        ? await apiService.updateSchedule(selectedSchedule.id, config)
+        : await apiService.createSchedule(config);
+
+      if (response.success) {
+        success(`Schedule ${selectedSchedule ? 'updated' : 'created'} successfully`);
+        dispatch({ type: 'HIDE_FORM' });
+        fetchSchedules();
       }
     } catch (err) {
-      console.error('Error fetching report configs:', err);
+      const msg = handleApiError(err, 'Failed to save schedule', { logToConsole: true, showNotification: false });
+      showError(msg);
     }
-  }, []);
+  };
 
-  // Memoize callback functions to prevent unnecessary re-renders
-  const handleCreateSchedule = useCallback(() => {
-    setSelectedSchedule(null);
-    setShowForm(true);
-  }, []);
-
-  const handleEditSchedule = useCallback((schedule: Schedule) => {
-    setSelectedSchedule(schedule);
-    setShowForm(true);
-  }, []);
-
-  const handleSaveSchedule = useCallback(async (config: ScheduleConfig) => {
-    try {
-      if (selectedSchedule) {
-        // Update existing schedule
-        console.log('[SchedulesList] Updating schedule:', selectedSchedule.id, config);
-        const response = await apiService.updateSchedule(selectedSchedule.id, config);
-        console.log('[SchedulesList] Update response:', response);
-        if (response.success) {
-          success('Schedule updated successfully');
-          setShowForm(false);
-          console.log('[SchedulesList] Fetching updated schedules...');
-          await fetchSchedules();
-          console.log('[SchedulesList] Schedules refreshed');
-        }
-      } else {
-        // Create new schedule
-        console.log('[SchedulesList] Creating schedule:', config);
-        const response = await apiService.createSchedule(config);
-        console.log('[SchedulesList] Create response:', response);
-        if (response.success) {
-          success('Schedule created successfully');
-          setShowForm(false);
-          console.log('[SchedulesList] Fetching updated schedules...');
-          await fetchSchedules();
-          console.log('[SchedulesList] Schedules refreshed');
-        }
-      }
-    } catch (err: any) {
-      console.error('[SchedulesList] Save error:', err);
-      const errorMessage = handleApiError(
-        err,
-        selectedSchedule ? 'Failed to update schedule' : 'Failed to create schedule',
-        {
-          logToConsole: true,
-          showNotification: false,
-        }
-      );
-      showError(errorMessage);
-      throw err;
-    }
-  }, [selectedSchedule, success, showError, fetchSchedules]);
-
-  const handleDeleteSchedule = useCallback((schedule: Schedule) => {
-    setScheduleToDelete(schedule);
-  }, []);
-
-  const confirmDelete = useCallback(async () => {
+  const confirmDelete = async () => {
     if (!scheduleToDelete) return;
-
-    setDeletingSchedule(scheduleToDelete.id);
-
+    dispatch({ type: 'DELETE_START', payload: scheduleToDelete.id });
     try {
       const response = await apiService.deleteSchedule(scheduleToDelete.id);
       if (response.success) {
         success('Schedule deleted successfully');
-        setScheduleToDelete(null);
+        dispatch({ type: 'DELETE_END' });
         fetchSchedules();
       }
-    } catch (err: any) {
-      const errorMessage = handleApiError(err, 'Failed to delete schedule', {
-        logToConsole: true,
-        showNotification: false,
-      });
-      showError(errorMessage);
+    } catch (err) {
+      showError(handleApiError(err, 'Failed to delete schedule'));
     } finally {
-      setDeletingSchedule(null);
+      dispatch({ type: 'DELETE_END' });
     }
-  }, [scheduleToDelete, success, showError, fetchSchedules]);
+  };
 
-  const handleToggleEnabled = useCallback(async (scheduleId: string, enabled: boolean) => {
-    // Optimistic update
-    setTogglingSchedules(prev => new Set(prev).add(scheduleId));
-
-    // Update UI immediately
-    setSchedules(prevSchedules =>
-      prevSchedules.map(schedule =>
-        schedule.id === scheduleId
-          ? { ...schedule, enabled }
-          : schedule
-      )
-    );
-
+  const handleToggleEnabled = async (id: string, enabled: boolean) => {
+    dispatch({ type: 'TOGGLE_START', payload: id });
+    dispatch({ type: 'UPDATE_SCHEDULE_ENABLED', payload: { id, enabled } });
     try {
-      const response = enabled
-        ? await apiService.enableSchedule(scheduleId)
-        : await apiService.disableSchedule(scheduleId);
-
+      const response = enabled ? await apiService.enableSchedule(id) : await apiService.disableSchedule(id);
       if (response.success) {
-        success(
-          `Schedule ${enabled ? 'enabled' : 'disabled'} successfully`
-        );
-        // Fetch fresh data to get updated nextRun time
+        success(`Schedule ${enabled ? 'enabled' : 'disabled'} successfully`);
         fetchSchedules();
       }
-    } catch (err: any) {
-      const errorMessage = handleApiError(err, 'Failed to update schedule', {
-        logToConsole: true,
-        showNotification: false,
-      });
-      showError(errorMessage);
-      // Revert optimistic update on error
-      setSchedules(prevSchedules =>
-        prevSchedules.map(schedule =>
-          schedule.id === scheduleId
-            ? { ...schedule, enabled: !enabled }
-            : schedule
-        )
-      );
+    } catch (err) {
+      showError(handleApiError(err, 'Failed to update schedule'));
+      dispatch({ type: 'UPDATE_SCHEDULE_ENABLED', payload: { id, enabled: !enabled } });
     } finally {
-      setTogglingSchedules(prev => {
-        const next = new Set(prev);
-        next.delete(scheduleId);
-        return next;
-      });
+      dispatch({ type: 'TOGGLE_END', payload: id });
     }
-  }, [success, showError, fetchSchedules]);
+  };
 
-  const handleRunNow = useCallback(async (scheduleId: string) => {
-    setRunningSchedules(prev => new Set(prev).add(scheduleId));
-
+  const handleRunNow = async (id: string) => {
+    dispatch({ type: 'RUN_START', payload: id });
     try {
-      const response = await apiService.executeSchedule(scheduleId);
-      if (response.success) {
-        success('Schedule execution queued successfully');
-      }
-    } catch (err: any) {
-      const errorMessage = handleApiError(err, 'Failed to execute schedule', {
-        logToConsole: true,
-        showNotification: false,
-      });
-      showError(errorMessage);
+      const response = await apiService.executeSchedule(id);
+      if (response.success) success('Schedule execution queued');
+    } catch (err) {
+      showError(handleApiError(err, 'Failed to execute schedule'));
     } finally {
-      setRunningSchedules(prev => {
-        const next = new Set(prev);
-        next.delete(scheduleId);
-        return next;
-      });
+      dispatch({ type: 'RUN_END', payload: id });
     }
-  }, [success, showError]);
+  };
 
-  const handleViewHistory = useCallback((schedule: Schedule) => {
-    setSelectedSchedule(schedule);
-    setShowHistory(true);
-  }, []);
-
-  const handleFetchHistory = useCallback(async (
-    scheduleId: string,
-    params: ExecutionHistoryParams
-  ) => {
-    const response = await apiService.getExecutionHistory(scheduleId, params);
-    if (response.success && response.data) {
-      return {
-        executions: response.data.executions,
-        total: response.data.pagination.total,
-        page: response.data.pagination.page,
-        totalPages: response.data.pagination.totalPages,
-      };
-    }
-    throw new Error('Failed to fetch execution history');
-  }, []);
-
-  const handlePageChange = useCallback((newPage: number) => {
-    if (newPage >= 1 && newPage <= totalPages) {
-      setPage(newPage);
-    }
-  }, [totalPages]);
-
-  const handleRefresh = useCallback(() => {
-    fetchSchedules();
-  }, [fetchSchedules]);
-
-  // Calculate filtered count - memoize to avoid recalculation
   const filteredCount = useMemo(() => schedules.length, [schedules.length]);
 
-  // Show form view
   if (showForm) {
     return (
       <div className={cn('p-3 sm:p-6', className)}>
@@ -426,371 +320,165 @@ export const SchedulesList: React.FC<SchedulesListProps> = ({ className }) => {
           schedule={selectedSchedule || undefined}
           reportConfigs={reportConfigs}
           onSave={handleSaveSchedule}
-          onCancel={() => setShowForm(false)}
+          onCancel={() => dispatch({ type: 'HIDE_FORM' })}
         />
       </div>
     );
   }
 
-  // Show history view
   if (showHistory && selectedSchedule) {
     return (
       <div className={cn('p-3 sm:p-6', className)}>
         <ExecutionHistory
           scheduleId={selectedSchedule.id}
           scheduleName={selectedSchedule.name}
-          onClose={() => {
-            setShowHistory(false);
-            setSelectedSchedule(null);
+          onClose={() => dispatch({ type: 'HIDE_HISTORY' })}
+          onFetchHistory={async (id, params) => {
+            const res = await apiService.getExecutionHistory(id, params);
+            if (res.success && res.data) {
+              return {
+                executions: res.data.executions,
+                total: res.data.pagination.total,
+                page: res.data.pagination.page,
+                totalPages: res.data.pagination.totalPages,
+              };
+            }
+            throw new Error('Failed to fetch history');
           }}
-          onFetchHistory={handleFetchHistory}
         />
       </div>
     );
   }
 
-  // Main list view
   return (
-    <div className={cn('p-3 sm:p-6', className)} role="main" aria-label="Scheduled reports management">
-      {/* Header */}
+    <div className={cn('p-3 sm:p-6', className)} role="main">
       <div className="mb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Scheduled Reports</h1>
-            <p className="text-sm text-gray-600 mt-1" id="page-description">
-              Manage automated report generation and delivery
-            </p>
+            <p className="text-sm text-gray-600 mt-1">Manage automated report generation and delivery</p>
           </div>
-          <div className="flex gap-2 sm:gap-3" role="group" aria-label="Schedule actions">
-            <Button
-              variant="outline"
-              onClick={handleRefresh}
-              disabled={loading}
-              aria-label="Refresh schedules list"
-              className="flex-shrink-0"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
+          <div className="flex gap-2 sm:gap-3">
+            <Button variant="outline" onClick={() => fetchSchedules()} disabled={loading}>
+              <RefreshCw className={cn("w-5 h-5", loading && "animate-spin")} />
             </Button>
-            <Button
-              variant="primary"
-              onClick={handleCreateSchedule}
-              className="flex-shrink-0"
-              aria-label="Create new schedule"
-            >
-              <svg
-                className="w-5 h-5 sm:mr-2"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
+            <Button variant="primary" onClick={handleCreateSchedule}>
+              <Plus className="w-5 h-5 sm:mr-2" />
               <span className="hidden sm:inline">New Schedule</span>
-              <span className="sm:hidden">New</span>
             </Button>
           </div>
         </div>
 
-        {/* Search and Filters */}
         <div className="flex flex-col gap-3 sm:gap-4">
-          {/* Search */}
-          <div className="w-full">
-            <label htmlFor="schedule-search" className="sr-only">
-              Search schedules by name or description
-            </label>
-            <Input
-              id="schedule-search"
-              type="text"
-              placeholder="Search schedules..."
-              value={searchQuery}
-              onChange={(e) => {
-                setSearchQuery(e.target.value);
-                setPage(1); // Reset to first page on search
-              }}
-              className="w-full"
-              aria-label="Search schedules by name or description"
-            />
-          </div>
-
-          {/* Filters Row */}
+          <Input
+            placeholder="Search schedules..."
+            value={searchQuery}
+            onChange={(e) => dispatch({ type: 'SET_SEARCH_QUERY', payload: e.target.value })}
+            className="w-full"
+          />
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
-            {/* Status Filter */}
-            <div className="flex gap-2 flex-wrap" role="group" aria-label="Filter by schedule status">
-              <span className="text-sm font-medium text-gray-700 self-center hidden sm:inline" id="status-filter-label">Status:</span>
-              <Button
-                variant={filterStatus === 'all' ? 'primary' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setFilterStatus('all');
-                  setPage(1);
-                }}
-                aria-label="Show all schedules"
-                aria-pressed={filterStatus === 'all'}
-              >
-                All
-              </Button>
-              <Button
-                variant={filterStatus === 'enabled' ? 'primary' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setFilterStatus('enabled');
-                  setPage(1);
-                }}
-                aria-label="Show only enabled schedules"
-                aria-pressed={filterStatus === 'enabled'}
-              >
-                Enabled
-              </Button>
-              <Button
-                variant={filterStatus === 'disabled' ? 'primary' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setFilterStatus('disabled');
-                  setPage(1);
-                }}
-                aria-label="Show only disabled schedules"
-                aria-pressed={filterStatus === 'disabled'}
-              >
-                Disabled
-              </Button>
-            </div>
-
-            {/* Last Status Filter */}
-            <div className="flex gap-2 flex-wrap" role="group" aria-label="Filter by last execution status">
-              <span className="text-sm font-medium text-gray-700 self-center hidden sm:inline" id="last-status-filter-label">Last Run:</span>
-              <Button
-                variant={filterLastStatus === 'all' ? 'primary' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setFilterLastStatus('all');
-                  setPage(1);
-                }}
-                aria-label="Show all execution statuses"
-                aria-pressed={filterLastStatus === 'all'}
-              >
-                All
-              </Button>
-              <Button
-                variant={filterLastStatus === 'success' ? 'primary' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setFilterLastStatus('success');
-                  setPage(1);
-                }}
-                aria-label="Show only successful executions"
-                aria-pressed={filterLastStatus === 'success'}
-              >
-                Success
-              </Button>
-              <Button
-                variant={filterLastStatus === 'failed' ? 'primary' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  setFilterLastStatus('failed');
-                  setPage(1);
-                }}
-                aria-label="Show only failed executions"
-                aria-pressed={filterLastStatus === 'failed'}
-              >
-                Failed
-              </Button>
+            <div className="flex gap-2 flex-wrap">
+              <span className="text-sm font-medium text-gray-700 self-center hidden sm:inline">Status:</span>
+              {(['all', 'enabled', 'disabled'] as FilterStatus[]).map(s => (
+                <Button
+                  key={s}
+                  variant={filterStatus === s ? 'primary' : 'outline'}
+                  size="sm"
+                  onClick={() => dispatch({ type: 'SET_FILTER_STATUS', payload: s })}
+                >
+                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                </Button>
+              ))}
             </div>
           </div>
         </div>
 
-        {/* Results Count */}
         {(searchQuery || filterStatus !== 'all' || filterLastStatus !== 'all') && (
-          <p className="text-sm text-gray-600 mt-3" role="status" aria-live="polite">
-            Showing {filteredCount} of {totalCount} schedules
-          </p>
+          <p className="text-sm text-gray-600 mt-3">Showing {filteredCount} of {totalCount} schedules</p>
         )}
       </div>
 
-      {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onClose={removeToast} />
 
-      {/* Loading State with Skeleton Loaders */}
       {loading && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6" role="status" aria-live="polite" aria-label="Loading schedules">
-          <span className="sr-only">Loading schedules...</span>
-          {Array.from({ length: limit }).map((_, index) => (
-            <ScheduleCardSkeleton key={index} />
-          ))}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {Array.from({ length: limit }).map((_, i) => <ScheduleCardSkeleton key={i} />)}
         </div>
       )}
 
-      {/* Error State */}
       {error && !loading && (
-        <div className="p-6 bg-red-50 border border-red-200 rounded-md" role="alert" aria-live="assertive">
+        <div className="p-6 bg-red-50 border border-red-200 rounded-md">
           <p className="text-sm text-red-800">{error}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            className="mt-3"
-            aria-label="Retry loading schedules"
-          >
-            Try Again
-          </Button>
+          <Button variant="outline" size="sm" onClick={() => fetchSchedules()} className="mt-3">Try Again</Button>
         </div>
       )}
 
-      {/* Empty State */}
       {!loading && !error && schedules.length === 0 && (
-        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300" role="status">
-          <svg
-            className="mx-auto h-12 w-12 text-gray-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <h3 className="mt-4 text-lg font-medium text-gray-900">
-            No schedules found
-          </h3>
-          <p className="mt-2 text-sm text-gray-600">
-            {searchQuery || filterStatus !== 'all' || filterLastStatus !== 'all'
-              ? 'Try adjusting your filters or search query'
-              : 'Get started by creating your first scheduled report'}
-          </p>
-          {!searchQuery && filterStatus === 'all' && filterLastStatus === 'all' && (
-            <Button
-              variant="primary"
-              onClick={handleCreateSchedule}
-              className="mt-4"
-              aria-label="Create your first schedule"
-            >
-              Create Schedule
-            </Button>
-          )}
+        <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+          <Clock className="mx-auto h-12 w-12 text-gray-400" />
+          <h3 className="mt-4 text-lg font-medium text-gray-900">No schedules found</h3>
+          <Button variant="primary" onClick={handleCreateSchedule} className="mt-4">Create Schedule</Button>
         </div>
       )}
 
-      {/* Schedules Grid */}
       {!loading && !error && schedules.length > 0 && (
         <>
-          <div
-            className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-4 sm:gap-6"
-            role="list"
-            aria-label="Scheduled reports"
-          >
-            {schedules.map((schedule) => (
-              <div key={schedule.id} role="listitem">
-                <ScheduleCard
-                  schedule={schedule}
-                  onEdit={handleEditSchedule}
-                  onDelete={() => handleDeleteSchedule(schedule)}
-                  onToggleEnabled={handleToggleEnabled}
-                  onRunNow={handleRunNow}
-                  onViewHistory={handleViewHistory}
-                  isTogglingEnabled={togglingSchedules.has(schedule.id)}
-                  isRunning={runningSchedules.has(schedule.id)}
-                />
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 sm:gap-6">
+            {schedules.map((s) => (
+              <ScheduleCard
+                key={s.id}
+                schedule={s}
+                onEdit={handleEditSchedule}
+                onDelete={() => dispatch({ type: 'SET_DELETE_TARGET', payload: s })}
+                onToggleEnabled={handleToggleEnabled}
+                onRunNow={handleRunNow}
+                onViewHistory={handleViewHistory}
+                isTogglingEnabled={togglingSchedules.has(s.id)}
+                isRunning={runningSchedules.has(s.id)}
+              />
             ))}
           </div>
 
-          {/* Pagination */}
           {totalPages > 1 && (
-            <nav
-              className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-6 sm:mt-8 pt-4 sm:pt-6 border-t border-gray-200"
-              role="navigation"
-              aria-label="Pagination"
-            >
-              <p className="text-sm text-gray-600" aria-live="polite">
-                Page {page} of {totalPages}
-              </p>
-              <div className="flex gap-2" role="group" aria-label="Pagination controls">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(page - 1)}
-                  disabled={page === 1}
-                  aria-label="Go to previous page"
-                >
-                  <svg
-                    className="w-5 h-5 sm:mr-1"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 19l-7-7 7-7"
-                    />
-                  </svg>
-                  <span className="hidden sm:inline">Previous</span>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(page + 1)}
-                  disabled={page === totalPages}
-                  aria-label="Go to next page"
-                >
-                  <span className="hidden sm:inline">Next</span>
-                  <svg
-                    className="w-5 h-5 sm:ml-1"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
-                  </svg>
-                </Button>
+            <nav className="flex items-center justify-between mt-6 pt-6 border-t border-gray-200">
+              <p className="text-sm text-gray-600">Page {page} of {totalPages}</p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => dispatch({ type: 'SET_PAGE', payload: page - 1 })} disabled={page === 1}>Previous</Button>
+                <Button variant="outline" size="sm" onClick={() => dispatch({ type: 'SET_PAGE', payload: page + 1 })} disabled={page === totalPages}>Next</Button>
               </div>
             </nav>
           )}
         </>
       )}
 
-      {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         isOpen={scheduleToDelete !== null}
         title="Delete Schedule"
-        message={`Are you sure you want to delete "${scheduleToDelete?.name}"? This action cannot be undone and will stop all future executions.`}
+        message={`Are you sure you want to delete "${scheduleToDelete?.name}"?`}
         confirmLabel="Delete"
-        cancelLabel="Cancel"
         variant="danger"
         loading={deletingSchedule !== null}
         onConfirm={confirmDelete}
-        onCancel={() => setScheduleToDelete(null)}
+        onCancel={() => dispatch({ type: 'SET_DELETE_TARGET', payload: null })}
       />
     </div>
   );
 };
+
+const RefreshCw = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+  </svg>
+);
+
+const Plus = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+  </svg>
+);
+
+const Clock = ({ className }: { className?: string }) => (
+  <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);

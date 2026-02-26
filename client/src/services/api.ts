@@ -12,6 +12,11 @@ import {
   ImportResult
 } from '../types/api';
 import {
+  OpcuaConfig,
+  OpcuaConfiguration,
+  OpcuaTagInfo
+} from '../types/opcuaConfig';
+import {
   DatabaseConfig,
   DatabaseConfigSummary,
   ConnectionTestResult
@@ -61,7 +66,11 @@ export function getAuthToken(): string | null {
 
 // Enhanced fetch with retry logic and better error handling
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
+  // Add cache-busting for GET requests to prevent stale data
+  const isGet = !options?.method || options.method === 'GET';
+  const url = isGet
+    ? `${API_BASE_URL}${endpoint}${endpoint.includes('?') ? '&' : '?'}_t=${Date.now()}`
+    : `${API_BASE_URL}${endpoint}`;
 
   const defaultHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -159,6 +168,26 @@ async function fetchWithRetry<T>(
 }
 
 export const apiService = {
+  // Generic HTTP methods
+  async get<T>(endpoint: string): Promise<T> {
+    return fetchWithRetry<T>(endpoint);
+  },
+  async post<T>(endpoint: string, data?: any): Promise<T> {
+    return fetchWithRetry<T>(endpoint, {
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined
+    });
+  },
+  async put<T>(endpoint: string, data?: any): Promise<T> {
+    return fetchWithRetry<T>(endpoint, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined
+    });
+  },
+  async delete<T>(endpoint: string): Promise<T> {
+    return fetchWithRetry<T>(endpoint, { method: 'DELETE' });
+  },
+
   // Health check endpoints
   async checkHealth(): Promise<ApiResponse<{ status: string }>> {
     return fetchWithRetry('/health');
@@ -407,6 +436,123 @@ export const apiService = {
     });
   },
 
+  // Export/Import Configuration
+  async exportConfiguration(config: ReportConfig, format: ExportFormat): Promise<{ blob: Blob; filename: string }> {
+    const response = await fetch(`${API_BASE_URL}/reports/export`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+      },
+      body: JSON.stringify({ config, format }),
+    });
+
+    if (!response.ok) {
+      throw new ApiError(response.status, `Failed to export configuration: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = `report_config.${format === 'json' ? 'json' : 'yaml'}`;
+
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1];
+      }
+    }
+
+    return { blob, filename };
+  },
+
+  async importConfiguration(fileContent: string): Promise<ImportResult> {
+    return fetchWithRetry<ImportResult>('/reports/import', {
+      method: 'POST',
+      body: JSON.stringify({ fileContent }),
+    });
+  },
+
+  // Dashboards API
+  async getDashboards(): Promise<ApiResponse<any[]>> {
+    return fetchWithRetry('/dashboards');
+  },
+
+  async loadDashboard(id: string): Promise<ApiResponse<any>> {
+    return fetchWithRetry(`/dashboards/${encodeURIComponent(id)}`);
+  },
+
+  async saveDashboard(dashboard: any): Promise<ApiResponse<any>> {
+    return fetchWithRetry('/dashboards/save', {
+      method: 'POST',
+      body: JSON.stringify(dashboard),
+    });
+  },
+
+  async deleteDashboard(id: string): Promise<ApiResponse<void>> {
+    return fetchWithRetry(`/dashboards/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async getDashboardVersions(id: string): Promise<ApiResponse<any>> {
+    return fetchWithRetry(`/dashboards/${encodeURIComponent(id)}/versions`);
+  },
+
+  async exportDashboard(id: string): Promise<{ blob: Blob; filename: string }> {
+    const response = await fetch(`${API_BASE_URL}/dashboards/export`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+      },
+      body: JSON.stringify({ id }),
+    });
+
+    if (!response.ok) {
+      throw new ApiError(response.status, `Failed to export dashboard: ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    return { blob, filename: `dashboard_${id}.json` };
+  },
+
+  async importDashboard(file: File): Promise<ApiResponse<any>> {
+    const text = await file.text();
+    const data = JSON.parse(text);
+
+    return fetchWithRetry<ApiResponse<any>>('/dashboards/import', {
+      method: 'POST',
+      body: JSON.stringify({ data }),
+    });
+  },
+
+  async getHistorianData(params: {
+    tagNames: string[];
+    startTime: string;
+    endTime: string;
+    mode?: string;
+    interval?: number;
+    limit?: number;
+  }): Promise<ApiResponse<any[]>> {
+    return fetchWithRetry(`/data/query`, {
+      method: 'POST',
+      body: JSON.stringify({
+        timeRange: {
+          startTime: params.startTime,
+          endTime: params.endTime
+        },
+        filter: {
+          tagNames: params.tagNames
+        },
+        options: {
+          retrievalMode: params.mode || 'Delta',
+          interval: params.interval,
+          limit: params.limit
+        }
+      })
+    });
+  },
+
   async generateReport(config: any): Promise<ApiResponse<any>> {
     const response = await fetch(`${API_BASE_URL}/reports/generate`, {
       method: 'POST',
@@ -430,18 +576,29 @@ export const apiService = {
     };
   },
 
-  async downloadReport(id: string): Promise<Blob> {
+  async downloadReport(id: string): Promise<{ blob: Blob; filename: string }> {
+    const token = getAuthToken();
     const response = await fetch(`${API_BASE_URL}/reports/${encodeURIComponent(id)}/download`, {
       headers: {
-        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
+        'Authorization': `Bearer ${token}`,
       },
     });
 
     if (!response.ok) {
-      throw new ApiError(response.status, `Failed to download report: ${response.status}`);
+      throw new Error('Failed to download report');
     }
 
-    return response.blob();
+    // Extract server-generated filename from Content-Disposition header
+    const contentDisposition = response.headers.get('Content-Disposition');
+    let filename = `report_${id}.pdf`;
+    if (contentDisposition) {
+      const match = contentDisposition.match(/filename="([^"]+)"/);
+      if (match && match[1]) {
+        filename = match[1];
+      }
+    }
+
+    return { blob: await response.blob(), filename };
   },
 
   // Schedule endpoints
@@ -796,47 +953,39 @@ export const apiService = {
     return fetchWithRetry(`/filesystem/validate-path?${params.toString()}`);
   },
 
-  // Export/Import Configuration
-  async exportConfiguration(config: ReportConfig, format: ExportFormat): Promise<{ blob: Blob; filename: string }> {
-    // We use raw fetch here because we need both the blob and the headers
-    const response = await fetch(`${API_BASE_URL}/reports/export`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(authToken && { 'Authorization': `Bearer ${authToken}` }),
-      },
-      body: JSON.stringify({ config, format }),
-    });
-
-    if (!response.ok) {
-      let errorMessage = `Export failed with status ${response.status}`;
-      try {
-        const errorData = await response.json();
-        errorMessage = errorData.message || errorData.error || errorMessage;
-      } catch {
-        // Not a JSON error
-      }
-      throw new ApiError(response.status, errorMessage);
-    }
-
-    const contentDisposition = response.headers.get('Content-Disposition');
-    let filename = `report-config-${Date.now()}.${format === 'json' ? 'json' : 'm'}`;
-
-    if (contentDisposition) {
-      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
-      if (filenameMatch && filenameMatch[1]) {
-        filename = filenameMatch[1].replace(/['"]/g, '');
-      }
-    }
-
-    const blob = await response.blob();
-    return { blob, filename };
+  // OPC UA Configuration endpoints
+  async getOpcuaConfigs(): Promise<ApiResponse<OpcuaConfiguration[]>> {
+    return fetchWithRetry('/opcua/configs');
   },
 
-  async importConfiguration(fileContent: string): Promise<ImportResult> {
-    return fetchWithRetry<ImportResult>('/reports/import', {
+  async saveOpcuaConfig(config: OpcuaConfig): Promise<ApiResponse<{ id: string }>> {
+    return fetchWithRetry('/opcua/configs', {
       method: 'POST',
-      body: JSON.stringify({ fileContent }),
+      body: JSON.stringify(config),
+    });
+  },
+
+  async testOpcuaConnection(config: OpcuaConfig): Promise<ApiResponse<{ success: boolean; message: string }>> {
+    return fetchApi('/opcua/test-connection', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    });
+  },
+
+  async browseOpcuaTags(nodeId?: string): Promise<ApiResponse<OpcuaTagInfo[]>> {
+    const params = nodeId ? `?nodeId=${encodeURIComponent(nodeId)}` : '';
+    return fetchWithRetry(`/opcua/browse${params}`);
+  },
+
+  async activateOpcuaConfig(configId: string): Promise<ApiResponse<void>> {
+    return fetchWithRetry(`/opcua/activate/${encodeURIComponent(configId)}`, {
+      method: 'POST',
+    });
+  },
+
+  async deleteOpcuaConfig(configId: string): Promise<ApiResponse<void>> {
+    return fetchWithRetry(`/opcua/configs/${encodeURIComponent(configId)}`, {
+      method: 'DELETE',
     });
   },
 };

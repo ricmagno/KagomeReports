@@ -61,6 +61,7 @@ jspm_packages/
 
 # Reports and temp directories
 /reports/
+/pdfReports/
 temp/
 @temp/**
 @test-reports/**
@@ -106,3 +107,9 @@ build.zip
 dockerimages/
 *.tar
 *.zip
+
+# Local data
+data/*.json
+
+# scadaSMS
+scadaSMS/

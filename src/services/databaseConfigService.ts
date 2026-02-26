@@ -290,7 +290,7 @@ export class DatabaseConfigService {
             testedAt: new Date()
           };
         },
-        RetryHandler.createDatabaseRetryOptions({ maxAttempts: 2 }),
+        RetryHandler.createDatabaseRetryOptions({ maxAttempts: 3 }),
         'database-connection-test'
       );
 
@@ -418,6 +418,14 @@ export class DatabaseConfigService {
       throw error;
     }
   }
+
+  /**
+   * Get total number of configurations
+   */
+  getConfigurationsCount(): number {
+    return this.configurations.size;
+  }
+
 
   /**
    * Activate a database configuration
@@ -562,8 +570,8 @@ export class DatabaseConfigService {
       connectionTimeout: config.connectionTimeout,
       requestTimeout: config.requestTimeout,
       pool: {
-        min: 2,
-        max: 10,
+        min: env.DB_POOL_MIN,
+        max: env.DB_POOL_MAX,
         idleTimeoutMillis: 30000
       }
     });

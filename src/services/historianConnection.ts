@@ -5,7 +5,6 @@
  */
 
 import { ConnectionPool, Request, IResult } from 'mssql';
-import { getDatabase, testDatabaseConnection } from '@/config/database';
 import { dbLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
 import { RetryHandler, RetryOptions } from '@/utils/retryHandler';
@@ -16,6 +15,7 @@ export class HistorianConnection {
   private isConnected: boolean = false;
   private connectionAttempts: number = 0;
   private currentConfigId: string | null = null;
+  private connectionPromise: Promise<void> | null = null;
 
   // New state properties for UI feedback
   private nextRetryTime: Date | null = null;
@@ -32,90 +32,98 @@ export class HistorianConnection {
    */
   async connect(options: Partial<RetryOptions> = {}): Promise<void> {
     // Return existing connection if valid
-    if (this.isConnected && this.pool) {
+    if (this.isConnected && this.pool && this.pool.connected) {
       return;
     }
 
-    // Prevent multiple concurrent connection attempts
-    if (this.connectionState === 'connecting' || this.connectionState === 'retrying') {
-      // If already connecting, returning the promise would require tracking the active promise
-      // For now, let's just log and return (caller effectively joins the wait if they await something else)
-      dbLogger.info('Connection attempt already in progress');
-      return;
+    // If a connection attempt is already in progress, wait for it
+    if (this.connectionPromise) {
+      dbLogger.info('Waiting for existing connection attempt to complete...');
+      return this.connectionPromise;
     }
 
     this.connectionState = 'connecting';
     this.nextRetryTime = null;
     this.lastError = null;
 
-    return RetryHandler.executeWithRetry(
-      async () => {
-        if (this.isConnected && this.pool) {
-          return;
-        }
+    // Create the connection promise
+    this.connectionPromise = (async () => {
+      try {
+        await RetryHandler.executeWithRetry(
+          async () => {
+            // Re-check if connected during retry loop
+            if (this.isConnected && this.pool && this.pool.connected) {
+              return;
+            }
 
-        dbLogger.info('Attempting to connect to AVEVA Historian database...');
+            dbLogger.info('Attempting to connect to AVEVA Historian database...');
 
-        // Try to get active database configuration first
-        const activeConfig = databaseConfigService.getActiveConfiguration();
+            // Try to get active database configuration first
+            const activeConfig = databaseConfigService.getActiveConfiguration();
 
-        if (activeConfig) {
-          dbLogger.info('Using active database configuration', {
-            configId: activeConfig.id,
-            configName: activeConfig.name,
-            host: activeConfig.host,
-            database: activeConfig.database
-          });
+            if (activeConfig) {
+              dbLogger.info('Using active database configuration', {
+                configId: activeConfig.id,
+                configName: activeConfig.name,
+                host: activeConfig.host,
+                database: activeConfig.database
+              });
 
-          // Use the active configuration's connection pool
-          this.pool = await databaseConfigService.getActiveConnectionPool();
-          this.currentConfigId = activeConfig.id;
-        } else {
-          dbLogger.info('No active database configuration found, using environment configuration');
+              // Use the active configuration's connection pool
+              this.pool = await databaseConfigService.getActiveConnectionPool();
+              this.currentConfigId = activeConfig.id;
+            } else {
+              const configCount = databaseConfigService.getConfigurationsCount();
 
-          // Fall back to environment-based configuration
-          this.pool = getDatabase();
-          this.currentConfigId = null;
+              dbLogger.warn('No active database configuration found.', {
+                configCount,
+                hint: configCount > 0
+                  ? 'There are saved configurations but none are active. Please activate one in the UI.'
+                  : 'No configurations saved. Please create one in the Historian configuration tab.'
+              });
 
-          // Test the connection
-          const isHealthy = await testDatabaseConnection();
-          if (!isHealthy) {
-            throw createError('Database connection test failed', 503);
-          }
-        }
+              // Without an active configuration, we can't connect
+              throw createError('No active database configuration found. Historian connection required.', 503);
+            }
 
-        this.isConnected = true;
-        this.connectionAttempts = 0;
-        this.connectionState = 'connected';
+            this.isConnected = true;
+            this.connectionAttempts = 0;
+            this.connectionState = 'connected';
+            this.nextRetryTime = null;
+            this.lastError = null;
+            dbLogger.info('Successfully connected to AVEVA Historian database');
+          },
+          RetryHandler.createDatabaseRetryOptions({
+            maxAttempts: Number.MAX_SAFE_INTEGER, // Default to unlimited unless overridden
+            baseDelay: 5000, // Reduced from 30s for better responsiveness
+            maxDelay: 30000,
+            backoffFactor: 2, // Use exponential backoff instead of constant
+            logCountdown: true,
+            onRetry: (attempt, delay) => {
+              this.connectionAttempts = attempt;
+              this.connectionState = 'retrying';
+              this.nextRetryTime = new Date(Date.now() + delay);
+              this.lastError = `Connection failed. Retrying in ${Math.round(delay / 1000)}s...`;
+            },
+            ...options // Allow overrides (e.g. for startup validation)
+          }),
+          'database-connection'
+        );
+      } catch (error: any) {
+        this.isConnected = false;
+        this.pool = null;
+        this.currentConfigId = null;
+        this.connectionState = 'disconnected';
         this.nextRetryTime = null;
-        this.lastError = null;
-        dbLogger.info('Successfully connected to AVEVA Historian database');
-      },
-      RetryHandler.createDatabaseRetryOptions({
-        maxAttempts: Number.MAX_SAFE_INTEGER, // Default to unlimited unless overridden
-        baseDelay: 30000,
-        maxDelay: 30000,
-        backoffFactor: 1, // Constant delay
-        logCountdown: true,
-        onRetry: (attempt, delay) => {
-          this.connectionAttempts = attempt;
-          this.connectionState = 'retrying';
-          this.nextRetryTime = new Date(Date.now() + delay);
-          this.lastError = `Connection failed. Retrying in ${Math.round(delay / 1000)}s...`;
-        },
-        ...options // Allow overrides (e.g. for startup validation)
-      }),
-      'database-connection'
-    ).catch(error => {
-      this.isConnected = false;
-      this.pool = null;
-      this.currentConfigId = null;
-      this.connectionState = 'disconnected';
-      this.nextRetryTime = null;
-      this.lastError = error.message;
-      dbLogger.error('Database connection failed:', error);
-      throw error;
-    });
+        this.lastError = error.message;
+        dbLogger.error('Database connection failed:', error);
+        throw error;
+      } finally {
+        this.connectionPromise = null;
+      }
+    })();
+
+    return this.connectionPromise;
   }
 
   /**
@@ -224,7 +232,6 @@ export class HistorianConnection {
         dbLogger.debug('Executing query:', { query: this.sanitizeQueryForLogging(query), params });
 
         const request = this.pool.request();
-        // ... (rest of method same as original)
         // Add parameters if provided
         if (params) {
           Object.entries(params).forEach(([key, value]) => {
@@ -247,17 +254,34 @@ export class HistorianConnection {
 
         return result;
       },
-      RetryHandler.createDatabaseRetryOptions({ maxAttempts: 2 }),
+      RetryHandler.createDatabaseRetryOptions({ maxAttempts: 5 }),
       'database-query'
     ).catch(error => {
-      dbLogger.error('Query execution failed:', { query: this.sanitizeQueryForLogging(query), error });
+      // Deeper diagnostic logging
+      dbLogger.error('Query execution failed after retries:', {
+        query: this.sanitizeQueryForLogging(query),
+        error: error instanceof Error ? {
+          message: error.message,
+          stack: error.stack,
+          // @ts-ignore - capture SQL specific properties if they exist
+          code: error.code,
+          // @ts-ignore
+          number: error.number,
+          // @ts-ignore
+          state: error.state
+        } : error
+      });
 
       // Handle specific database errors
       if (error instanceof Error) {
         if (error.message.includes('timeout')) {
           throw createError('Database query timeout', 408);
         }
-        if (error.message.includes('connection')) {
+
+        // Sense connection drops to force re-activation on next attempt
+        const msg = error.message.toLowerCase();
+        if (msg.includes('connection') || msg.includes('closed') || msg.includes('broken') || msg.includes('reset')) {
+          dbLogger.warn('Connection drop sensed in executeQuery, resetting state');
           this.isConnected = false;
           throw createError('Database connection lost', 503);
         }

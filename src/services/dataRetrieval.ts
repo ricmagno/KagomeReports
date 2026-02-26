@@ -22,6 +22,7 @@ import {
   QualityCode,
   StatisticsResult
 } from '@/types/historian';
+import { opcuaService } from './opcuaService';
 
 export class DataRetrievalService {
   private cacheService: CacheService | undefined;
@@ -50,6 +51,11 @@ export class DataRetrievalService {
     options?: HistorianQueryOptions,
     operationId?: string
   ): Promise<TimeSeriesData[]> {
+    // 1. Check for OPC UA tags
+    if (tagName.startsWith('opcua:')) {
+      return this.getOpcuaTimeSeriesData(tagName, timeRange, options);
+    }
+
     try {
       dbLogger.info('Retrieving time-series data', { tagName, timeRange, options });
 
@@ -80,13 +86,15 @@ export class DataRetrievalService {
         }
       }
 
-      // Estimate data size and use streaming for large datasets
+      /* 
+      // Optimized: Skip size estimation to avoid redundant query as requested
       const estimatedSize = await this.estimateDataSize(tagName, timeRange);
 
       if (estimatedSize > this.LARGE_DATASET_THRESHOLD) {
         dbLogger.info(`Large dataset detected (${estimatedSize} points), using streaming approach`);
         return this.getTimeSeriesDataStreaming(tagName, timeRange, options, operationId);
       }
+      */
 
       if (operationId) {
         progressTracker.updateProgress(operationId, 'querying', 20, 'Executing optimized query');
@@ -299,6 +307,7 @@ export class DataRetrievalService {
           average: 0,
           min: 0,
           max: 0,
+          median: 0,
           standardDeviation: 0,
           count: 0,
           dataQuality: 0
@@ -313,6 +322,7 @@ export class DataRetrievalService {
         average: Number(row.average),
         min: Number(row.min),
         max: Number(row.max),
+        median: 0, // SQL aggregates don't support median; compute client-side if needed
         standardDeviation: Number(row.standardDeviation) || 0,
         count: totalCount,
         dataQuality
@@ -327,21 +337,30 @@ export class DataRetrievalService {
     }
   }
 
-  /**
-   * Build optimized time-series query with indexing hints
-   */
   private buildOptimizedTimeSeriesQuery(
     tagName: string,
     timeRange: TimeRange,
     options?: HistorianQueryOptions
   ): string {
     const includeQuality = options?.includeQuality !== false;
+    const mode = options?.mode || RetrievalMode.Full;
 
-    const mode = options?.mode || RetrievalMode.Cyclic;
+    if (mode === RetrievalMode.Live) {
+      return `
+        SELECT 
+          DateTime as timestamp,
+          TagName as tagName,
+          Value as value,
+          ${includeQuality ? 'Quality as quality' : 'NULL as quality'}
+        FROM Live
+        WHERE TagName = @tagName
+      `;
+    }
+
     const isCyclic = mode === RetrievalMode.Cyclic || mode === RetrievalMode.Average;
 
     let query = `
-      SELECT 
+      SELECT ${options?.limit ? `TOP ${options.limit}` : ''}
         DateTime as timestamp,
         TagName as tagName,
         Value as value,
@@ -431,66 +450,53 @@ export class DataRetrievalService {
     try {
       dbLogger.info('Retrieving multiple time-series data', { tagNames, timeRange });
 
-      // Validate inputs
-      this.validateTimeRange(timeRange);
-      if (tagNames.length === 0) {
-        throw createError('At least one tag name is required', 400);
-      }
+      // Split Historian and OPC UA tags
+      const historianTags = tagNames.filter(t => !t.startsWith('opcua:'));
+      const opcuaTags = tagNames.filter(t => t.startsWith('opcua:'));
 
-      if (operationId) {
-        progressTracker.updateProgress(operationId, 'preparation', 5, `Preparing to query ${tagNames.length} tags`);
-      }
+      const results: Record<string, TimeSeriesData[]> = {};
 
-      // Execute queries with progress tracking
-      const promises = tagNames.map((tagName, index) =>
-        this.getTimeSeriesData(tagName, timeRange, options)
-          .then(data => {
-            if (operationId) {
-              const progress = 10 + ((index + 1) / tagNames.length) * 80;
-              progressTracker.updateProgress(
-                operationId,
-                'querying',
-                progress,
-                `Completed ${index + 1}/${tagNames.length} tags`
-              );
-            }
-            return { tagName, data };
-          })
-          .catch(error => ({ tagName, error }))
-      );
-
-      const results = await Promise.all(promises);
-
-      if (operationId) {
-        progressTracker.updateProgress(operationId, 'processing', 95, 'Finalizing results');
-      }
-
-      // Process results and handle errors
-      const successfulResults: Record<string, TimeSeriesData[]> = {};
-      const errors: string[] = [];
-
-      results.forEach(result => {
-        if ('error' in result) {
-          errors.push(`${result.tagName}: ${result.error.message}`);
-        } else {
-          successfulResults[result.tagName] = result.data;
-        }
-      });
-
-      if (errors.length > 0) {
-        dbLogger.warn('Some tag queries failed:', errors);
-      }
-
-      if (operationId) {
-        const successCount = Object.keys(successfulResults).length;
-        progressTracker.completeOperation(
-          operationId,
-          `Retrieved data for ${successCount}/${tagNames.length} tags`
+      // Handle Historian tags if any
+      if (historianTags.length > 0) {
+        const historianPromises = historianTags.map((tagName, index) =>
+          this.getTimeSeriesData(tagName, timeRange, options)
+            .then(data => ({ tagName, data }))
+            .catch(error => ({ tagName, error }))
         );
+
+        const historianResults = await Promise.all(historianPromises);
+        historianResults.forEach(result => {
+          if ('error' in result) {
+            dbLogger.warn(`Historian tag query failed: ${result.tagName}`, { error: result.error });
+          } else {
+            results[result.tagName] = result.data;
+          }
+        });
       }
 
-      return successfulResults;
+      // Handle OPC UA tags if any
+      if (opcuaTags.length > 0) {
+        const opcuaPromises = opcuaTags.map(async (tagName) => {
+          try {
+            const data = await this.getOpcuaTimeSeriesData(tagName, timeRange, options);
+            return { tagName, data };
+          } catch (error) {
+            dbLogger.warn(`OPC UA tag query failed: ${tagName}`, { error });
+            return { tagName, data: [] };
+          }
+        });
 
+        const opcuaResults = await Promise.all(opcuaPromises);
+        opcuaResults.forEach(result => {
+          results[result.tagName] = result.data;
+        });
+      }
+
+      if (operationId) {
+        progressTracker.completeOperation(operationId, `Retrieved data for ${Object.keys(results).length}/${tagNames.length} tags`);
+      }
+
+      return results;
     } catch (error) {
       if (operationId) {
         progressTracker.failOperation(operationId, error instanceof Error ? error.message : 'Unknown error');
@@ -585,6 +591,99 @@ export class DataRetrievalService {
   }
 
   /**
+   * Get metadata for a specific tag
+   */
+  async getTagInfo(tagName: string): Promise<TagInfo | null> {
+    if (tagName.startsWith('opcua:')) {
+      try {
+        const nodeId = tagName.replace('opcua:', '');
+        const data = await opcuaService.readVariable(nodeId);
+        let description = data.description;
+        let units = '';
+
+        // Fallback to Historian if description or units are empty
+        const fallback = await this.getHistorianMetadataFallback(nodeId);
+        if (fallback) {
+          if (!description || description.trim() === '') {
+            description = fallback.description;
+          }
+          if (fallback.units) {
+            units = fallback.units;
+          }
+        }
+
+        return {
+          name: tagName,
+          description: description || data.displayName || '',
+          units: units,
+          dataType: 'analog',
+          lastUpdate: new Date(),
+          minValue: 0,
+          maxValue: 100,
+          dataSource: 'opcua',
+          opcuaNodeId: nodeId
+        };
+      } catch (error) {
+        dbLogger.warn('Failed to fetch OPC UA tag info', { tagName, error: error instanceof Error ? error.message : 'Unknown error' });
+        return {
+          name: tagName,
+          description: '',
+          units: '',
+          dataType: 'analog',
+          lastUpdate: new Date(),
+          minValue: 0,
+          maxValue: 100,
+          dataSource: 'opcua'
+        };
+      }
+    }
+    try {
+      dbLogger.info('Retrieving info for tag', { tagName });
+
+      const query = `
+        SELECT 
+          t.TagName as name,
+          t.Description as description,
+          eu.Unit as units,
+          CASE 
+            WHEN t.TagType = 1 THEN 'analog'
+            WHEN t.TagType = 2 THEN 'discrete'
+            WHEN t.TagType = 3 THEN 'string'
+            ELSE 'unknown'
+          END as dataType,
+          t.DateCreated as lastUpdate,
+          at.MinEU as minValue,
+          at.MaxEU as maxValue
+        FROM Tag t
+        LEFT JOIN AnalogTag at ON t.TagName = at.TagName
+        LEFT JOIN EngineeringUnit eu ON at.EUKey = eu.EUKey
+        WHERE t.TagName = @tagName
+      `;
+
+      const result = await this.getConnection().executeQuery<any>(query, { tagName });
+
+      if (result.recordset.length === 0) {
+        return null;
+      }
+
+      const row = result.recordset[0];
+      return {
+        name: row.name,
+        description: row.description || '',
+        units: row.units || '',
+        dataType: row.dataType,
+        lastUpdate: new Date(row.lastUpdate),
+        minValue: row.minValue,
+        maxValue: row.maxValue
+      };
+
+    } catch (error) {
+      dbLogger.error('Failed to retrieve tag info:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get filtered time-series data with pagination
    */
   async getFilteredData(
@@ -641,6 +740,101 @@ export class DataRetrievalService {
   }
 
   /**
+   * Helper to retrieve Historian metadata fallback (Description, Units) for an OPC UA tag
+   */
+  private async getHistorianMetadataFallback(nodeId: string): Promise<{ description?: string; units?: string } | null> {
+    try {
+      // Extract base name after the last dot
+      const lastDotIndex = nodeId.lastIndexOf('.');
+      const baseName = lastDotIndex !== -1 ? nodeId.substring(lastDotIndex + 1) : nodeId;
+
+      if (!baseName || baseName.trim() === '') return null;
+
+      dbLogger.debug(`Searching Historian fallback for base name: ${baseName}`);
+
+      // We search for tags ending with the same base name
+      // Join with EngineeringUnit via AnalogTag to get units
+      const query = `
+        SELECT TOP 1 t.Description, eu.Unit
+        FROM Tag t
+        LEFT JOIN AnalogTag at ON t.TagName = at.TagName
+        LEFT JOIN EngineeringUnit eu ON at.EUKey = eu.EUKey
+        WHERE (t.TagName LIKE @pattern1 OR t.TagName = @pattern2)
+        AND (t.Description IS NOT NULL AND t.Description <> '' OR eu.Unit IS NOT NULL AND eu.Unit <> '')
+      `;
+
+      const result = await this.getConnection().executeQuery<any>(query, {
+        pattern1: `%.${baseName}`,
+        pattern2: baseName
+      });
+
+      if (result.recordset && result.recordset.length > 0) {
+        return {
+          description: result.recordset[0].Description || undefined,
+          units: result.recordset[0].Unit || undefined
+        };
+      }
+
+      return null;
+    } catch (error) {
+      dbLogger.warn('Failed to fetch Historian metadata fallback', {
+        nodeId,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Helper to retrieve OPC UA data for time-series format
+   */
+  private async getOpcuaTimeSeriesData(
+    tagName: string,
+    timeRange: TimeRange,
+    options?: HistorianQueryOptions
+  ): Promise<TimeSeriesData[]> {
+    try {
+      const nodeId = tagName.replace('opcua:', '');
+      const currentData = await opcuaService.readVariable(nodeId);
+
+      const timestamp = new Date();
+      const rawValue = currentData.value;
+
+      // Try to parse as number if it's numeric, otherwise keep as is
+      let value = rawValue;
+      if (typeof rawValue === 'string' && !isNaN(Number(rawValue))) {
+        value = Number(rawValue);
+      } else if (typeof rawValue === 'boolean') {
+        value = rawValue ? 1 : 0;
+      }
+
+      let description = currentData.description;
+
+      // Fallback to Historian if description is empty
+      if (!description || description.trim() === '') {
+        const fallback = await this.getHistorianMetadataFallback(nodeId);
+        if (fallback && fallback.description) {
+          description = fallback.description;
+        }
+      }
+
+      // Stage 1: Only current value is supported for OPC UA
+      // We return it as a single point at the current time
+      return [{
+        timestamp,
+        value: value as any, // Cast to any because TimeSeriesData expects number but we support strings in ValueBlocks
+        quality: currentData.quality === 'Good' ? QualityCode.Good : QualityCode.Bad,
+        tagName: tagName,
+        description: description || currentData.displayName || '',
+        dataSource: 'opcua'
+      }];
+    } catch (error) {
+      dbLogger.warn('Failed to read OPC UA value', { tagName, error: error instanceof Error ? error.message : 'Unknown error' });
+      return [];
+    }
+  }
+
+  /**
    * Format date for AVEVA Historian in UTC
    */
   private formatDateForHistorian(date: Date): string {
@@ -664,7 +858,12 @@ export class DataRetrievalService {
     timeRange: TimeRange,
     options?: HistorianQueryOptions
   ): Record<string, any> {
-    const mode = options?.mode || RetrievalMode.Cyclic;
+    const mode = options?.mode || RetrievalMode.Full;
+
+    if (mode === RetrievalMode.Live) {
+      return { tagName };
+    }
+
     const params: Record<string, any> = {
       tagName,
       startTime: this.formatDateForHistorian(timeRange.startTime),
@@ -678,10 +877,10 @@ export class DataRetrievalService {
     } else if (options?.interval) {
       params.resolution = options.interval * 1000; // Convert seconds to milliseconds
     } else if (mode === RetrievalMode.Cyclic || mode === RetrievalMode.Average) {
-      // Default resolution: Calculate based on time range to get roughly 100 points if not specified
+      // Default to 1000 points for resolution calculation if not specified (safe performance default)
       const durationMs = timeRange.endTime.getTime() - timeRange.startTime.getTime();
-      const defaultPoints = options?.maxPoints || 100;
-      params.resolution = Math.max(1000, Math.floor(durationMs / defaultPoints)); // At least 1 second
+      const defaultPoints = options?.maxPoints || 1000;
+      params.resolution = Math.max(1, Math.floor(durationMs / defaultPoints));
     }
 
     if (options?.maxPoints) {

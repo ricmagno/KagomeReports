@@ -46,7 +46,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
     }
 
     const verification = await authService.verifyToken(token);
-    
+
     if (!verification.valid || !verification.user) {
       throw createError(verification.error || 'Invalid token', 401);
     }
@@ -66,7 +66,7 @@ export const authenticateToken = async (req: Request, res: Response, next: NextF
 
     next();
   } catch (error) {
-    apiLogger.warn('Authentication failed', { 
+    apiLogger.warn('Authentication failed', {
       error: error instanceof Error ? error.message : 'Unknown error',
       path: req.path,
       method: req.method,
@@ -123,8 +123,14 @@ export const requirePermission = (resource: string, action: string) => {
         throw createError('Authentication required', 401);
       }
 
+      // Admin has access to everything
+      if (req.user.role === 'admin') {
+        next();
+        return;
+      }
+
       const hasPermission = await authService.hasPermission(req.user.id, resource, action);
-      
+
       if (!hasPermission) {
         apiLogger.warn('Permission denied', {
           userId: req.user.id,
@@ -172,7 +178,7 @@ export const auditMiddleware = async (req: Request, res: Response, next: NextFun
     // Log API access for audit purposes
     const userId = req.user?.id || null;
     const action = `${req.method.toLowerCase()}_${req.path.replace(/\//g, '_')}`;
-    
+
     await authService.logAuditEvent(
       userId,
       action,
@@ -199,9 +205,9 @@ export const rateLimitPerUser = (maxRequests: number = 100, windowMs: number = 1
   return (req: Request, res: Response, next: NextFunction): void => {
     const userId = req.user?.id || req.ip || 'anonymous';
     const now = Date.now();
-    
+
     const userLimit = userRequests.get(userId);
-    
+
     if (!userLimit || now > userLimit.resetTime) {
       // Reset or initialize counter
       userRequests.set(userId, {
@@ -219,7 +225,7 @@ export const rateLimitPerUser = (maxRequests: number = 100, windowMs: number = 1
         path: req.path,
         count: userLimit.count
       });
-      
+
       res.status(429).json({
         success: false,
         error: 'Too many requests',
@@ -279,7 +285,7 @@ export const checkPasswordChangeRequired = (req: Request, res: Response, next: N
       userId: req.user.id,
       path: req.path
     });
-    
+
     res.status(403).json({
       success: false,
       error: 'Password change required',

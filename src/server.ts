@@ -5,7 +5,13 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import { env } from '@/config/environment';
-import { initializeDatabase, closeDatabase, testDatabaseConnection } from '@/config/database';
+
+// Set global timezone for the process to ensure consistency
+if (env.DEFAULT_TIMEZONE) {
+  process.env.TZ = env.DEFAULT_TIMEZONE;
+}
+
+
 import { logger } from '@/utils/logger';
 import { errorHandler } from '@/middleware/errorHandler';
 import { requestLogger } from '@/middleware/requestLogger';
@@ -51,11 +57,13 @@ app.use(requestLogger);
 // Health check endpoint
 app.get('/health', async (req, res) => {
   const cacheHealth = await cacheManager.healthCheck();
+  const { versionManager } = await import('@/services/versionManager');
+  const versionInfo = versionManager.getCurrentVersion();
 
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
-    version: '0.65.2',
+    version: versionInfo.version,
     environment: env.NODE_ENV,
     cache: cacheHealth,
   });
@@ -111,6 +119,23 @@ interface SystemHealth {
 }
 
 /**
+ * Helper to check if a directory is writable by creating and deleting a temp file
+ */
+function checkDirectoryWritability(dirPath: string): { writable: boolean; error?: string } {
+  try {
+    const tempFile = path.join(dirPath, `.write_test_${Date.now()}`);
+    fs.writeFileSync(tempFile, 'test');
+    fs.unlinkSync(tempFile);
+    return { writable: true };
+  } catch (error) {
+    return {
+      writable: false,
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+/**
  * Validate all system dependencies during startup
  */
 async function validateStartupDependencies(): Promise<SystemHealth> {
@@ -122,6 +147,49 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
   // Setup database configuration integration
   setupDatabaseConfigIntegration();
   logger.info('✓ Database configuration integration setup completed');
+
+  // 0. Directory existence validation
+  const directoriesStart = Date.now();
+  try {
+    const requiredDirs = [
+      { path: env.DATA_DIR, name: 'Data Directory' },
+      { path: env.REPORTS_DIR, name: 'Reports Directory' },
+      { path: env.TEMP_DIR, name: 'Temporary Directory' }
+    ];
+
+    for (const dir of requiredDirs) {
+      const absolutePath = path.resolve(dir.path);
+      if (!fs.existsSync(absolutePath)) {
+        logger.info(`Creating missing directory: ${dir.name} (${absolutePath})`);
+        fs.mkdirSync(absolutePath, { recursive: true });
+      } else {
+        logger.info(`Validating existing directory: ${dir.name} (${absolutePath})`);
+      }
+
+      // Perform writability check
+      const writeTest = checkDirectoryWritability(absolutePath);
+      if (!writeTest.writable) {
+        throw new Error(`Directory ${dir.name} (${absolutePath}) is NOT WRITABLE: ${writeTest.error}`);
+      }
+    }
+
+    components.push({
+      name: 'FileSystem Directories',
+      status: 'healthy',
+      required: true,
+      duration: Date.now() - directoriesStart
+    });
+    logger.info('✓ Required file system directories validated/created');
+  } catch (error) {
+    components.push({
+      name: 'FileSystem Directories',
+      status: 'unhealthy',
+      required: true,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      duration: Date.now() - directoriesStart
+    });
+    logger.error('✗ File system directory validation failed:', error);
+  }
 
   // Seed initial users
   try {
@@ -188,35 +256,7 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
     logger.warn('⚠ Cache system initialization failed, continuing without cache:', error);
   }
 
-  // 3. Database Connection Validation
-  let dbStart = Date.now();
-  try {
-    dbStart = Date.now();
-    await initializeDatabase();
-    const dbHealthy = await testDatabaseConnection();
-
-    components.push({
-      name: 'Application Database',
-      status: dbHealthy ? 'healthy' : 'unhealthy',
-      required: true,
-      duration: Date.now() - dbStart
-    });
-
-    if (dbHealthy) {
-      logger.info('✓ Application database connection established and validated');
-    } else {
-      logger.error('✗ Application database connection validation failed');
-    }
-  } catch (error) {
-    components.push({
-      name: 'Application Database',
-      status: 'unhealthy',
-      required: true,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      duration: Date.now() - dbStart
-    });
-    logger.error('✗ Application database initialization failed:', error);
-  }
+  // Application database initialization is handled by individual services (Auth, Scheduler, etc.)
 
   // 4. Historian Database Connection Validation
   let historianStart = Date.now();
@@ -334,6 +374,30 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
     logger.warn('⚠ Update checker initialization failed:', error);
   }
 
+  // 8. OPC UA Integration Initialization
+  try {
+    const { setupOpcuaConfigIntegration } = await import('@/services/opcuaConfigService');
+    setupOpcuaConfigIntegration();
+
+    const { alertEvalService } = await import('@/services/alertEvalService');
+    alertEvalService.start(5000); // Poll every 5 seconds
+
+    components.push({
+      name: 'OPC UA Integration',
+      status: 'healthy',
+      required: false
+    });
+    logger.info('✓ OPC UA integration and Alert Eval Service initialized');
+  } catch (error) {
+    components.push({
+      name: 'OPC UA Integration',
+      status: 'degraded',
+      required: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+    logger.warn('⚠ OPC UA integration initialization failed:', error);
+  }
+
   // Determine overall system health
   const requiredComponents = components.filter(c => c.required);
   const requiredHealthy = requiredComponents.every(c => c.status === 'healthy');
@@ -443,26 +507,7 @@ async function performGracefulShutdown(signal: string): Promise<void> {
     logger.error('✗ Historian database shutdown failed:', error);
   }
 
-  // 5. Close application database connections
-  let dbStart = Date.now();
-  try {
-    dbStart = Date.now();
-    await closeDatabase();
-    shutdownSteps.push({
-      name: 'Application Database',
-      success: true,
-      duration: Date.now() - dbStart
-    });
-    logger.info('✓ Application database connections closed');
-  } catch (error) {
-    shutdownSteps.push({
-      name: 'Application Database',
-      success: false,
-      duration: Date.now() - dbStart,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-    logger.error('✗ Application database shutdown failed:', error);
-  }
+  // Application database shutdown is handled by individual services
 
   // 6. Stop User Management Service
   try {
@@ -524,6 +569,15 @@ async function performGracefulShutdown(signal: string): Promise<void> {
       error: error instanceof Error ? error.message : 'Unknown error'
     });
     logger.error('✗ Update checker shutdown failed:', error);
+  }
+
+  // 9. Stop Alert Eval Service
+  try {
+    const { alertEvalService } = await import('@/services/alertEvalService');
+    alertEvalService.stop();
+    logger.info('✓ Alert evaluation service stopped');
+  } catch (error) {
+    logger.error('✗ Alert evaluation service shutdown failed:', error);
   }
 
   // Log shutdown summary

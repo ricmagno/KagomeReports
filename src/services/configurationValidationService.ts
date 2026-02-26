@@ -36,58 +36,6 @@ export interface ValidationSchema {
  * Validation schemas for known configurations
  */
 const VALIDATION_SCHEMAS: Record<string, ValidationSchema> = {
-  // Database Configuration
-  DB_HOST: {
-    dataType: 'string',
-    rules: [
-      { type: 'required', message: 'Database host is required' },
-      { type: 'minLength', value: 1, message: 'Database host cannot be empty' },
-      { type: 'maxLength', value: 255, message: 'Database host must be less than 255 characters' }
-    ]
-  },
-  DB_PORT: {
-    dataType: 'number',
-    rules: [
-      { type: 'required', message: 'Database port is required' },
-      { type: 'min', value: 1, message: 'Port must be at least 1' },
-      { type: 'max', value: 65535, message: 'Port must be at most 65535' }
-    ]
-  },
-  DB_NAME: {
-    dataType: 'string',
-    rules: [
-      { type: 'required', message: 'Database name is required' },
-      { type: 'minLength', value: 1, message: 'Database name cannot be empty' },
-      { type: 'maxLength', value: 128, message: 'Database name must be less than 128 characters' }
-    ]
-  },
-  DB_USER: {
-    dataType: 'string',
-    rules: [
-      { type: 'required', message: 'Database user is required' },
-      { type: 'minLength', value: 1, message: 'Database user cannot be empty' },
-      { type: 'maxLength', value: 128, message: 'Database user must be less than 128 characters' }
-    ]
-  },
-  DB_PASSWORD: {
-    dataType: 'string',
-    rules: [
-      { type: 'required', message: 'Database password is required' },
-      { type: 'minLength', value: 1, message: 'Database password cannot be empty' }
-    ]
-  },
-  DB_ENCRYPT: {
-    dataType: 'boolean',
-    rules: [
-      { type: 'required', message: 'Database encryption setting is required' }
-    ]
-  },
-  DB_TRUST_SERVER_CERTIFICATE: {
-    dataType: 'boolean',
-    rules: [
-      { type: 'required', message: 'Trust server certificate setting is required' }
-    ]
-  },
 
   // Application Configuration
   NODE_ENV: {
@@ -242,30 +190,6 @@ const VALIDATION_SCHEMAS: Record<string, ValidationSchema> = {
     dataType: 'number',
     rules: [
       { type: 'min', value: 0, message: 'Cache TTL must be at least 0 seconds' }
-    ]
-  },
-  DB_POOL_MIN: {
-    dataType: 'number',
-    rules: [
-      { type: 'required', message: 'Database pool minimum is required' },
-      { type: 'min', value: 1, message: 'Database pool minimum must be at least 1' },
-      { type: 'max', value: 50, message: 'Database pool minimum must be at most 50' }
-    ]
-  },
-  DB_POOL_MAX: {
-    dataType: 'number',
-    rules: [
-      { type: 'required', message: 'Database pool maximum is required' },
-      { type: 'min', value: 2, message: 'Database pool maximum must be at least 2' },
-      { type: 'max', value: 100, message: 'Database pool maximum must be at most 100' }
-    ]
-  },
-  DB_TIMEOUT_MS: {
-    dataType: 'number',
-    rules: [
-      { type: 'required', message: 'Database timeout is required' },
-      { type: 'min', value: 5000, message: 'Database timeout must be at least 5000 ms' },
-      { type: 'max', value: 300000, message: 'Database timeout must be at most 300000 ms' }
     ]
   },
   CACHE_TTL_SECONDS: {

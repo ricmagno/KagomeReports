@@ -36,6 +36,7 @@ export class RetryHandler {
       const retryableErrors = [
         'connection',
         'timeout',
+        'timed out',
         'network',
         'temporary',
         'unavailable',
@@ -232,7 +233,18 @@ export class RetryHandler {
         'busy',
         'deadlock',
         'lock timeout',
-        'transport-level error'
+        'transport-level error',
+        'failed to connect',
+        'econnreset',
+        'econnrefused',
+        'enotfound',
+        'read econnreset',
+        'timed out',
+        'the connection is closed',
+        'invalid state',
+        'broken pipe',
+        'reset by peer',
+        'server is not responding'
       ]),
       ...overrides
     };

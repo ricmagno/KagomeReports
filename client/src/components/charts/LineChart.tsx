@@ -80,7 +80,7 @@ export const LineChart: React.FC<LineChartProps> = ({
         mode: 'index' as const,
         intersect: false,
         callbacks: {
-          label: function(context: any) {
+          label: function (context: any) {
             return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}`;
           },
         },
@@ -91,7 +91,8 @@ export const LineChart: React.FC<LineChartProps> = ({
         type: 'time' as const,
         time: {
           displayFormats: {
-            hour: 'MMM dd HH:mm',
+            minute: 'HH:mm',
+            hour: 'HH:mm',
             day: 'MMM dd',
           },
         },
