@@ -253,43 +253,43 @@ export const DatabaseConfigForm: React.FC<DatabaseConfigFormProps> = ({
               disabled={!canModify}
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Input
-                label="Username"
-                value={formData.username}
-                onChange={(e) => handleInputChange('username', e.target.value)}
-                error={errors.username}
-                placeholder="Database username"
-                required
-                disabled={!canModify}
-                autoComplete="off"
-              />
+            <Input
+              label="Username"
+              value={formData.username}
+              onChange={(e) => handleInputChange('username', e.target.value)}
+              error={errors.username}
+              placeholder="Database username"
+              required
+              disabled={!canModify}
+              autoComplete="off"
+            />
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input
                 label="Password"
                 type="password"
                 value={formData.password}
                 onChange={(e) => handleInputChange('password', e.target.value)}
                 error={errors.password}
-                placeholder={canModify ? "Database password" : "••••••••"}
-                required
+                placeholder={isEditing ? "Leave empty to keep current" : "Database password"}
+                required={!isEditing}
                 disabled={!canModify}
                 autoComplete="new-password"
               />
-            </div>
 
-            {!isEditing && canModify && (
-              <Input
-                label="Confirm Password"
-                type="password"
-                value={formData.confirmPassword || ''}
-                onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                error={errors.confirmPassword}
-                placeholder="Confirm password"
-                required
-                disabled={!canModify}
-              />
-            )}
+              {(canModify) && (
+                <Input
+                  label="Confirm Password"
+                  type="password"
+                  value={formData.confirmPassword || ''}
+                  onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                  error={errors.confirmPassword}
+                  placeholder="Confirm password"
+                  required={!isEditing && formData.password.length > 0}
+                  disabled={!canModify}
+                />
+              )}
+            </div>
           </div>
 
           {/* Security Settings */}
@@ -390,8 +390,8 @@ export const DatabaseConfigForm: React.FC<DatabaseConfigFormProps> = ({
 
             {testResult && (
               <div className={`p-4 rounded-md ${testResult.success
-                  ? 'bg-green-50 border border-green-200'
-                  : 'bg-red-50 border border-red-200'
+                ? 'bg-green-50 border border-green-200'
+                : 'bg-red-50 border border-red-200'
                 }`}>
                 <div className="flex items-start space-x-3">
                   <div className={`flex-shrink-0 h-5 w-5 ${testResult.success ? 'text-green-400' : 'text-red-400'

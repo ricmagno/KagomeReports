@@ -1,5 +1,24 @@
 {
-  "configurations": [],
-  "activeConfigId": null,
-  "lastUpdated": "2026-02-19T23:06:07.614Z"
+  "configurations": [
+    {
+      "id": "433d3112-d6d3-4280-b790-73f1c946a387",
+      "name": "AVEVA Historian",
+      "host": "192.168.235.17",
+      "port": 1433,
+      "database": "Runtime",
+      "username": "historian",
+      "encryptedPassword": "{\"data\":\"2ce3ecc20fa99ceb07ac3db57c720e9e695ed3c210907248ceab66cb6845252b1431e6228e7b0b273d05505cfd0dbe9a\",\"iv\":\"00a39d6a6e3cb96fccf1813d43d1602d\",\"tag\":\"a7cb50e88791da939575b1d2e1755361223e25f93a0c713cffe0db5e53ac51b9\",\"algorithm\":\"aes-256-cbc\"}",
+      "encrypt": true,
+      "trustServerCertificate": true,
+      "connectionTimeout": 30000,
+      "requestTimeout": 30000,
+      "isActive": true,
+      "createdBy": "user_1768034309867_admin",
+      "createdAt": "2026-02-26T02:30:29.617Z",
+      "status": "connected",
+      "lastTested": "2026-02-26T02:30:41.385Z"
+    }
+  ],
+  "activeConfigId": "433d3112-d6d3-4280-b790-73f1c946a387",
+  "lastUpdated": "2026-02-26T02:30:41.391Z"
 }

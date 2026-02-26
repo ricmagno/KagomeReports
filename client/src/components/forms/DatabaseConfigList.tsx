@@ -4,10 +4,23 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import {
+  Play,
+  Pencil,
+  Trash2,
+  CheckCircle2,
+  Activity,
+  Database,
+  RefreshCw,
+  Globe,
+  Server,
+  AlertTriangle
+} from 'lucide-react';
 import { Button } from '../ui/Button';
-import { Card } from '../ui/Card';
+import { Card, CardContent } from '../ui/Card';
 import { DatabaseConfigSummary } from '../../types/databaseConfig';
 import { apiService } from '../../services/api';
+import { cn } from '../../utils/cn';
 
 interface DatabaseConfigListProps {
   onEdit: (config: DatabaseConfigSummary) => void;
@@ -90,7 +103,7 @@ export const DatabaseConfigList: React.FC<DatabaseConfigListProps> = ({
 
   const formatLastTested = (date?: Date) => {
     if (!date) return 'Never';
-    
+
     const now = new Date();
     const tested = new Date(date);
     const diffMs = now.getTime() - tested.getTime();
@@ -102,7 +115,7 @@ export const DatabaseConfigList: React.FC<DatabaseConfigListProps> = ({
     if (diffMins < 60) return `${diffMins} minutes ago`;
     if (diffHours < 24) return `${diffHours} hours ago`;
     if (diffDays < 7) return `${diffDays} days ago`;
-    
+
     return tested.toLocaleDateString();
   };
 
@@ -177,101 +190,103 @@ export const DatabaseConfigList: React.FC<DatabaseConfigListProps> = ({
           </Button>
         </div>
 
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-4">
           {configurations.map((config) => (
-            <div
+            <Card
               key={config.id}
-              className={`border rounded-lg p-4 transition-colors ${
-                config.isActive 
-                  ? 'border-blue-200 bg-blue-50' 
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
+              className={cn(
+                "border-l-4 transition-shadow hover:shadow-md",
+                config.isActive ? "border-l-green-500" : "border-l-gray-300"
+              )}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3">
-                    <h3 className="text-lg font-medium text-gray-900">
-                      {config.name}
-                    </h3>
-                    {config.isActive && (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        Active
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    <div className="flex items-center space-x-2">
+                      <h4 className="font-bold text-gray-900">{config.name}</h4>
+                      {config.isActive && (
+                        <span className="flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-800">
+                          <Activity className="h-2.5 w-2.5 mr-1" /> ACTIVE
+                        </span>
+                      )}
+                      <span className={cn(
+                        "flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold",
+                        config.status === 'connected' ? "bg-green-100 text-green-800" :
+                          config.status === 'error' ? "bg-red-100 text-red-800" :
+                            "bg-gray-100 text-gray-800"
+                      )}>
+                        {getStatusText(config.status).toUpperCase()}
                       </span>
-                    )}
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(config.status)}`}>
-                      {getStatusText(config.status)}
-                    </span>
+                    </div>
+                    <p className="text-sm text-gray-500 font-mono flex items-center">
+                      <Globe className="h-3 w-3 mr-1" /> {config.host}
+                    </p>
+                    <div className="flex items-center space-x-4 mt-2 text-xs text-gray-400">
+                      <span className="flex items-center">
+                        <Database className="h-3 w-3 mr-1" />
+                        {config.database}
+                      </span>
+                      <span className="flex items-center">
+                        <RefreshCw className="h-3 w-3 mr-1" />
+                        Last tested: {formatLastTested(config.lastTested)}
+                      </span>
+                    </div>
                   </div>
-                  
-                  <div className="mt-2 text-sm text-gray-600">
-                    <div className="flex items-center space-x-4">
-                      <span>
-                        <span className="font-medium">Host:</span> {config.host}
-                      </span>
-                      <span>
-                        <span className="font-medium">Database:</span> {config.database}
-                      </span>
-                    </div>
-                    <div className="mt-1">
-                      <span className="font-medium">Last tested:</span> {formatLastTested(config.lastTested)}
-                    </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleActivate(config)} // Reusing handleActivate which calls onActivate and reloads
+                      disabled={activatingId === config.id}
+                      title="Test Connection"
+                    >
+                      <Play className={cn("h-4 w-4", activatingId === config.id && "animate-spin")} />
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onEdit(config)}
+                      title={canModify ? "Edit Configuration" : "View Configuration"}
+                    >
+                      {canModify ? <Pencil className="h-4 w-4" /> : <Globe className="h-4 w-4" />}
+                    </Button>
+
+                    {!config.isActive && canModify && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleActivate(config)}
+                        title="Activate Connection"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                      </Button>
+                    )}
+
+                    {canModify && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => onDelete(config)}
+                        disabled={config.isActive}
+                        title="Delete Configuration"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
 
-                <div className="flex items-center space-x-2">
-                  {!config.isActive && canModify && (
-                    <Button
-                      onClick={() => handleActivate(config)}
-                      disabled={activatingId === config.id}
-                      size="sm"
-                      className="min-w-[80px]"
-                    >
-                      {activatingId === config.id ? 'Activating...' : 'Activate'}
-                    </Button>
-                  )}
-                  
-                  {canModify ? (
-                    <Button
-                      onClick={() => onEdit(config)}
-                      variant="outline"
-                      size="sm"
-                    >
-                      <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                      Edit
-                    </Button>
-                  ) : (
-                    <Button
-                      onClick={() => onEdit(config)}
-                      variant="outline"
-                      size="sm"
-                    >
-                      <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                      </svg>
-                      View
-                    </Button>
-                  )}
-                  
-                  {canModify && (
-                    <Button
-                      onClick={() => onDelete(config)}
-                      variant="outline"
-                      size="sm"
-                      disabled={config.isActive}
-                      className={config.isActive ? 'opacity-50 cursor-not-allowed' : 'text-red-600 hover:text-red-700 hover:border-red-300'}
-                    >
-                      <svg className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                      Delete
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </div>
+                {config.status === 'error' && (
+                  <div className="mt-3 p-2 bg-red-50 border border-red-100 rounded text-xs text-red-700 flex items-start">
+                    <AlertTriangle className="h-3.5 w-3.5 mr-2 mt-0.5 flex-shrink-0" />
+                    <span>Connection failed. Please check your credentials and network settings.</span>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           ))}
         </div>
       </div>
