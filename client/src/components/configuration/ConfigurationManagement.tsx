@@ -17,6 +17,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { CategorySection } from './CategorySection';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { OpcuaConfiguration } from './OpcuaConfiguration';
+import { HistorianConfiguration } from './HistorianConfiguration';
 import { cn } from '../../utils/cn';
 import './ConfigurationManagement.css';
 
@@ -356,105 +357,7 @@ export const ConfigurationManagement: React.FC = () => {
       </div>
 
       {state.configTab === 'historian' ? (
-        <>
-          {/* Read-Only Notice */}
-          <div className="read-only-notice">
-            <Lock size={20} />
-            <div className="notice-content">
-              <h3>Read-Only Configuration</h3>
-              <p>
-                Configurations are displayed in read-only mode. To modify settings, edit the <code>.env</code> file
-                directly and restart the application.
-              </p>
-            </div>
-          </div>
-
-          {/* Instructions */}
-          <div className="configuration-instructions">
-            <h3>How to Change Configurations</h3>
-            <ol>
-              <li>Edit the <code>.env</code> file in the application root directory</li>
-              <li>Update the desired configuration values</li>
-              <li>Save the file</li>
-              <li>Restart the application for changes to take effect</li>
-            </ol>
-            <p className="instruction-note">
-              For detailed configuration documentation, refer to the <code>.env.example</code> file or the application documentation.
-            </p>
-          </div>
-
-          {/* Error Message */}
-          {state.error && (
-            <div className="error-message">
-              <AlertCircle size={20} />
-              <div>
-                <h4>Error</h4>
-                <p>{state.error}</p>
-              </div>
-              <button
-                className="error-dismiss"
-                onClick={() => setState(prev => ({ ...prev, error: null }))}
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
-          {/* Success Message */}
-          {state.successMessage && (
-            <div className="success-message">
-              <div>
-                <h4>Success</h4>
-                <p>{state.successMessage}</p>
-              </div>
-              <button
-                className="success-dismiss"
-                onClick={() => setState(prev => ({ ...prev, successMessage: null }))}
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
-          {/* Configuration Categories */}
-          <div className="configuration-categories">
-            {state.configurations.length === 0 ? (
-              <div className="no-configurations">
-                <p>No configurations available</p>
-              </div>
-            ) : (
-              state.configurations.map(group => (
-                <CategorySection
-                  key={group.category}
-                  category={group.category}
-                  configurations={group.configurations}
-                  isExpanded={state.expandedCategories.has(group.category)}
-                  onToggleExpand={handleToggleCategory}
-                  revealedValues={state.revealedValues}
-                  onRevealValue={handleRevealValue}
-                  isEditable={isAdmin}
-                  onEditConfiguration={handleEditConfiguration}
-                />
-              ))
-            )}
-          </div>
-
-          {/* Footer */}
-          <div className="configuration-footer">
-            <p className="footer-text">
-              Total configurations: <strong>{state.configurations.reduce((sum, g) => sum + g.configurations.length, 0)}</strong>
-            </p>
-          </div>
-
-          {/* Confirmation Dialog */}
-          <ConfirmationDialog
-            isOpen={state.confirmationDialog.isOpen}
-            changes={state.confirmationDialog.changes}
-            isConfirming={state.confirmationDialog.isConfirming}
-            onConfirm={handleConfirmChanges}
-            onCancel={handleCancelChanges}
-          />
-        </>
+        <HistorianConfiguration />
       ) : (
         <div className="mt-6">
           <OpcuaConfiguration />

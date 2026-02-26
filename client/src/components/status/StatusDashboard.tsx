@@ -17,6 +17,7 @@ import { PerformanceMetricsCard } from './PerformanceMetricsCard';
 interface StatusDashboardProps {
   autoRefresh?: boolean;
   refreshInterval?: number; // seconds, default 30
+  hideHeader?: boolean;
 }
 
 interface StatusDashboardState {
@@ -76,7 +77,8 @@ const statusReducer = (state: StatusDashboardState, action: StatusAction): Statu
 
 export const StatusDashboard: React.FC<StatusDashboardProps> = ({
   autoRefresh = true,
-  refreshInterval = 30
+  refreshInterval = 30,
+  hideHeader = false
 }) => {
   const [state, dispatch] = useReducer(statusReducer, {
     statusData: null,
@@ -212,99 +214,100 @@ export const StatusDashboard: React.FC<StatusDashboardProps> = ({
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Database Status</h1>
-              <p className="text-sm sm:text-base text-gray-600 mt-1">
-                Real-time monitoring of AVEVA Historian system
-              </p>
-            </div>
+        {!hideHeader && (
+          <div className="mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Database Status</h1>
+                <p className="text-sm sm:text-base text-gray-600 mt-1">
+                  Real-time monitoring of AVEVA Historian system
+                </p>
+              </div>
 
-            {/* Controls */}
-            <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-              {/* Auto-refresh toggle */}
-              <button
-                onClick={toggleAutoRefresh}
-                className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors touch-manipulation ${autoRefreshEnabled
-                  ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300 active:bg-gray-400'
-                  }`}
-              >
-                {autoRefreshEnabled ? 'Auto-refresh On' : 'Auto-refresh Off'}
-              </button>
-
-              {/* Countdown timer */}
-              {autoRefreshEnabled && (
-                <div className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">
-                  Next refresh in {countdown}s
-                </div>
-              )}
-
-              {/* Export button with dropdown */}
-              <div className="relative" ref={exportMenuRef}>
+              {/* Controls */}
+              <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+                {/* Auto-refresh toggle */}
                 <button
-                  onClick={toggleExportMenu}
-                  disabled={exporting || !statusData}
-                  className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+                  onClick={toggleAutoRefresh}
+                  className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors touch-manipulation ${autoRefreshEnabled
+                    ? 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
+                    : 'bg-gray-200 text-gray-700 hover:bg-gray-300 active:bg-gray-400'
+                    }`}
                 >
-                  <Download className="w-4 h-4" />
-                  <span className="hidden sm:inline">{exporting ? 'Exporting...' : 'Export'}</span>
+                  {autoRefreshEnabled ? 'Auto-refresh On' : 'Auto-refresh Off'}
                 </button>
 
-                {/* Export dropdown menu */}
-                {showExportMenu && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
-                    <button
-                      onClick={() => handleExport('json')}
-                      className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 active:bg-gray-100 rounded-t-lg transition-colors touch-manipulation"
-                    >
-                      Export as JSON
-                    </button>
-                    <button
-                      onClick={() => handleExport('csv')}
-                      className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 active:bg-gray-100 rounded-b-lg transition-colors touch-manipulation"
-                    >
-                      Export as CSV
-                    </button>
+                {/* Countdown timer */}
+                {autoRefreshEnabled && (
+                  <div className="text-xs sm:text-sm text-gray-600 whitespace-nowrap">
+                    Next refresh in {countdown}s
+                  </div>
+                )}
+
+                {/* Export button with dropdown */}
+                <div className="relative" ref={exportMenuRef}>
+                  <button
+                    onClick={toggleExportMenu}
+                    disabled={exporting || !statusData}
+                    className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span className="hidden sm:inline">{exporting ? 'Exporting...' : 'Export'}</span>
+                  </button>
+
+                  {/* Export dropdown menu */}
+                  {showExportMenu && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                      <button
+                        onClick={() => handleExport('json')}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 active:bg-gray-100 rounded-t-lg transition-colors touch-manipulation"
+                      >
+                        Export as JSON
+                      </button>
+                      <button
+                        onClick={() => handleExport('csv')}
+                        className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 active:bg-gray-100 rounded-b-lg transition-colors touch-manipulation"
+                      >
+                        Export as CSV
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Manual refresh button */}
+                <button
+                  onClick={handleManualRefresh}
+                  disabled={loading}
+                  className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                  <span className="hidden sm:inline">Refresh</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Last update time */}
+            {statusData && (
+              <div className="flex flex-col gap-1 mt-2">
+                <div className="text-xs sm:text-sm text-gray-500">
+                  Last updated: {new Date(statusData.data.timestamp).toLocaleString()}
+                </div>
+                {statusData.serverTime && (
+                  <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg inline-flex items-center gap-4 text-xs sm:text-sm">
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-blue-900">Current Server Local Time:</span>
+                      <span className="text-blue-700">{statusData.serverTime.local}</span>
+                    </div>
+                    <div className="flex flex-col border-l border-blue-200 pl-4">
+                      <span className="font-semibold text-blue-900">Timezone:</span>
+                      <span className="text-blue-700">{statusData.serverTime.timezone} (UTC{statusData.serverTime.offset > 0 ? '-' : '+'}{Math.abs(statusData.serverTime.offset / 60)})</span>
+                    </div>
                   </div>
                 )}
               </div>
-
-              {/* Manual refresh button */}
-              <button
-                onClick={handleManualRefresh}
-                disabled={loading}
-                className="flex items-center gap-2 px-3 sm:px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50 active:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors touch-manipulation"
-              >
-                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                <span className="hidden sm:inline">Refresh</span>
-              </button>
-            </div>
+            )}
           </div>
-
-          {/* Last update time */}
-          {statusData && (
-            <div className="flex flex-col gap-1 mt-2">
-              <div className="text-xs sm:text-sm text-gray-500">
-                Last updated: {new Date(statusData.data.timestamp).toLocaleString()}
-              </div>
-              {statusData.serverTime && (
-                <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg inline-flex items-center gap-4 text-xs sm:text-sm">
-                  <div className="flex flex-col">
-                    <span className="font-semibold text-blue-900">Current Server Local Time:</span>
-                    <span className="text-blue-700">{statusData.serverTime.local}</span>
-                  </div>
-                  <div className="flex flex-col border-l border-blue-200 pl-4">
-                    <span className="font-semibold text-blue-900">Timezone:</span>
-                    <span className="text-blue-700">{statusData.serverTime.timezone} (UTC{statusData.serverTime.offset > 0 ? '-' : '+'}{Math.abs(statusData.serverTime.offset / 60)})</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Error message */}
         {error && (

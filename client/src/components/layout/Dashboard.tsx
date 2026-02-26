@@ -52,7 +52,7 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const { user, isAuthenticated, login: authLogin, logout: authLogout, isLoading: authLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'dashboards' | 'schedules' | 'database' | 'users' | 'configuration' | 'about'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'dashboards' | 'schedules' | 'users' | 'configuration' | 'about'>('create');
   const [dashboardViewMode, setDashboardViewMode] = useState<'list' | 'view' | 'edit'>('list');
   const [selectedDashboardId, setSelectedDashboardId] = useState<string | null>(null);
   const [dbActiveTab, setDbActiveTab] = useState<'status' | 'config'>('status');
@@ -1239,60 +1239,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               )
             }
 
-            {
-              activeTab === 'database' && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h2 className="text-3xl font-bold text-gray-900">Database</h2>
-                      <p className="text-gray-600">
-                        Manage connection settings and monitor database health.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Sub-navigation for Database */}
-                  <div className="flex space-x-4 border-b border-gray-100">
-                    <button
-                      onClick={() => setDbActiveTab('status')}
-                      className={cn(
-                        "pb-2 px-1 text-sm font-medium transition-colors border-b-2",
-                        dbActiveTab === 'status'
-                          ? "border-primary-600 text-primary-600"
-                          : "border-transparent text-gray-400 hover:text-gray-600"
-                      )}
-                    >
-                      Status
-                    </button>
-                    <button
-                      onClick={() => setDbActiveTab('config')}
-                      className={cn(
-                        "pb-2 px-1 text-sm font-medium transition-colors border-b-2",
-                        dbActiveTab === 'config'
-                          ? "border-primary-600 text-primary-600"
-                          : "border-transparent text-gray-400 hover:text-gray-600"
-                      )}
-                    >
-                      Configuration
-                    </button>
-                  </div>
-
-                  <div className="mt-6">
-                    {dbActiveTab === 'status' ? (
-                      <StatusDashboard />
-                    ) : (
-                      <div className="bg-white rounded-lg border border-gray-200">
-                        <div className="p-6 text-center text-gray-500">
-                          <Database className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                          <p className="text-lg font-medium">Database Configuration</p>
-                          <p>Current connection: {healthStatus}</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )
-            }
 
             {
               activeTab === 'users' && currentUser?.role === 'admin' && (
