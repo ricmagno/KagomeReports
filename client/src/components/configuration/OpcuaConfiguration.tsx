@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Server,
     Plus,
@@ -29,7 +29,7 @@ export const OpcuaConfiguration: React.FC = () => {
     const [isTesting, setIsTesting] = useState<string | null>(null);
     const [isSaving, setIsSaving] = useState(false);
     const [editingConfigId, setEditingConfigId] = useState<string | null>(null);
-    const { success, error: toastError, info } = useToast();
+    const { success, error: toastError } = useToast();
 
     const [newConfig, setNewConfig] = useState<OpcuaConfig>({
         name: '',
@@ -39,11 +39,7 @@ export const OpcuaConfiguration: React.FC = () => {
         authenticationMode: 'Anonymous'
     });
 
-    useEffect(() => {
-        loadConfigs();
-    }, []);
-
-    const loadConfigs = async () => {
+    const loadConfigs = useCallback(async () => {
         try {
             setIsLoading(true);
             const response = await apiService.getOpcuaConfigs();
@@ -56,7 +52,11 @@ export const OpcuaConfiguration: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [toastError]);
+
+    useEffect(() => {
+        loadConfigs();
+    }, [loadConfigs]);
 
     const handleTestConnection = async (config: OpcuaConfig, id?: string) => {
         try {
