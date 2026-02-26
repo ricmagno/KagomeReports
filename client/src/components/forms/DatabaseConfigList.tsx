@@ -13,7 +13,6 @@ import {
   Database,
   RefreshCw,
   Globe,
-  Server,
   AlertTriangle
 } from 'lucide-react';
 import { Button } from '../ui/Button';
@@ -73,19 +72,6 @@ export const DatabaseConfigList: React.FC<DatabaseConfigListProps> = ({
     }
   };
 
-  const getStatusColor = (status: DatabaseConfigSummary['status']) => {
-    switch (status) {
-      case 'connected':
-        return 'text-green-600 bg-green-100';
-      case 'error':
-        return 'text-red-600 bg-red-100';
-      case 'disconnected':
-        return 'text-yellow-600 bg-yellow-100';
-      case 'untested':
-      default:
-        return 'text-gray-600 bg-gray-100';
-    }
-  };
 
   const getStatusText = (status: DatabaseConfigSummary['status']) => {
     switch (status) {
