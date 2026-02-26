@@ -1,6 +1,6 @@
 {
   "name": "historian-reports",
-  "version": "1.2.12",
+  "version": "1.2.13",
   "description": "Professional reporting application for AVEVA Historian database",
   "main": "electron.js",
   "scripts": {

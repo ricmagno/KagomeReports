@@ -39,6 +39,8 @@ jobs:
 
       - name: Build frontend
         run: npm run build:client
+        env:
+          CI: false
 
       - name: Build Electron (Windows)
         if: runner.os == 'Windows'
