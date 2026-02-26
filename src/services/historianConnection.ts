@@ -73,7 +73,14 @@ export class HistorianConnection {
               this.pool = await databaseConfigService.getActiveConnectionPool();
               this.currentConfigId = activeConfig.id;
             } else {
-              dbLogger.warn('No active database configuration found. Please configure and activate a connection in the Historian configuration tab.');
+              const configCount = databaseConfigService.getConfigurationsCount();
+
+              dbLogger.warn('No active database configuration found.', {
+                configCount,
+                hint: configCount > 0
+                  ? 'There are saved configurations but none are active. Please activate one in the UI.'
+                  : 'No configurations saved. Please create one in the Historian configuration tab.'
+              });
 
               // Without an active configuration, we can't connect
               throw createError('No active database configuration found. Historian connection required.', 503);

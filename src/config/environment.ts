@@ -37,7 +37,7 @@ const envSchema = z.object({
 
   // Performance Configuration
   DB_POOL_MIN: z.coerce.number().int().min(1).max(50).default(2),
-  DB_POOL_MAX: z.coerce.number().int().min(2).max(100).default(10),
+  DB_POOL_MAX: z.coerce.number().int().min(2).max(100).default(25),
   DB_TIMEOUT_MS: z.coerce.number().int().min(5000).max(300000).default(30000),
   CACHE_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(300),
   MAX_CONCURRENT_REPORTS: z.coerce.number().int().min(1).max(20).default(5),

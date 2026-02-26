@@ -420,6 +420,14 @@ export class DatabaseConfigService {
   }
 
   /**
+   * Get total number of configurations
+   */
+  getConfigurationsCount(): number {
+    return this.configurations.size;
+  }
+
+
+  /**
    * Activate a database configuration
    */
   async activateConfiguration(configId: string, userId?: string): Promise<void> {
@@ -562,8 +570,8 @@ export class DatabaseConfigService {
       connectionTimeout: config.connectionTimeout,
       requestTimeout: config.requestTimeout,
       pool: {
-        min: 2,
-        max: 10,
+        min: env.DB_POOL_MIN,
+        max: env.DB_POOL_MAX,
         idleTimeoutMillis: 30000
       }
     });

@@ -91,10 +91,10 @@ EXPOSE 3000
 ARG VERSION=unknown
 ENV NODE_ENV=production \
     PORT=3000 \
-    DATA_DIR=/home/historian/data \
-    REPORTS_DIR=/home/historian/reports \
-    LOG_FILE=/home/historian/logs/app.log \
-    TEMP_DIR=/home/historian/temp \
+    DATA_DIR=/app/data \
+    REPORTS_DIR=/app/reports \
+    LOG_FILE=/app/logs/app.log \
+    TEMP_DIR=/app/temp \
     IS_DOCKER=true \
     VERSION=${VERSION}
 

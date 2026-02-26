@@ -36,6 +36,7 @@ export class RetryHandler {
       const retryableErrors = [
         'connection',
         'timeout',
+        'timed out',
         'network',
         'temporary',
         'unavailable',
