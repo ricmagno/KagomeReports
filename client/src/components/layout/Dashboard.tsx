@@ -8,7 +8,6 @@ import {
   Save,
   History,
   Tag,
-  Database,
   LogIn,
   LogOut,
   Activity,
@@ -725,7 +724,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               { id: 'schedules', label: 'Schedules', icon: Calendar },
               { id: 'categories', label: 'Categories', icon: Tag },
               { id: 'status', label: 'Status', icon: Activity },
-              { id: 'database', label: 'Database', icon: Database },
               ...(currentUser?.role === 'admin' ? [{ id: 'configuration', label: 'Configuration', icon: Settings }] : []),
               ...(currentUser?.role === 'admin' ? [{ id: 'users', label: 'Users', icon: Users }] : []),
               { id: 'about', label: 'About', icon: Info },
@@ -806,7 +804,6 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 { id: 'reports', label: 'My Reports', icon: FileText },
                 { id: 'dashboards', label: 'Dashboards', icon: Activity },
                 { id: 'schedules', label: 'Schedules', icon: Calendar },
-                { id: 'database', label: 'Database', icon: Database },
                 ...(currentUser?.role === 'admin' ? [{ id: 'configuration', label: 'Configuration', icon: Settings }] : []),
                 ...(currentUser?.role === 'admin' ? [{ id: 'users', label: 'Users', icon: Users }] : []),
               ].map(tab => (

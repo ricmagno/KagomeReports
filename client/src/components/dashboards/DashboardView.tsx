@@ -184,12 +184,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <div className="flex items-center bg-gray-50 border border-gray-200 rounded-md px-3 py-1.5 mr-2">
-                        <RefreshCw className={`h-3.5 w-3.5 mr-2 text-primary-600 ${refreshEnabled ? 'animate-spin-slow' : ''}`} />
-                        <span className="text-xs font-medium text-gray-700 w-16">
-                            {refreshEnabled ? `Next in ${secondsUntilRefresh}s` : 'Paused'}
+                    <button
+                        onClick={forceRefresh}
+                        className="flex items-center bg-gray-50 border border-gray-200 rounded-md px-3 py-1.5 mr-2 hover:bg-gray-100 hover:border-gray-300 transition-colors group"
+                        title="Refresh Now"
+                    >
+                        <RefreshCw className={`h-3.5 w-3.5 mr-2 text-primary-600 ${refreshEnabled ? 'animate-spin-slow' : ''} group-hover:rotate-180 transition-transform duration-500`} />
+                        <span className="text-xs font-medium text-gray-700 w-10 text-left">
+                            {refreshEnabled ? `${secondsUntilRefresh}s` : 'Paused'}
                         </span>
-                    </div>
+                    </button>
 
                     <Button
                         variant="ghost"
@@ -200,10 +204,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         {refreshEnabled ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                     </Button>
 
-                    <Button variant="outline" size="sm" onClick={forceRefresh}>
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Refresh Now
-                    </Button>
+
 
                     <Button variant="outline" size="sm" onClick={onEdit}>
                         <Settings className="h-4 w-4 mr-2" />
