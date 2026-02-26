@@ -110,3 +110,6 @@ dockerimages/
 
 # Local data
 data/*.json
+
+# scadaSMS
+scadaSMS/

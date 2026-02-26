@@ -23,6 +23,7 @@ import versionRoutes from './version';
 import updatesRoutes from './updates';
 import configurationRoutes from './configuration';
 import dashboardRoutes from './dashboards';
+import alertRoutes from './alerts';
 
 const router = Router();
 
@@ -46,6 +47,7 @@ router.use('/auth/auto-login', autoLoginRoutes);
 router.use('/version', versionRoutes);
 router.use('/updates', updatesRoutes);
 router.use('/configuration', configurationRoutes);
+router.use('/alerts', alertRoutes);
 
 // API info endpoint
 router.get('/', async (_req, res) => {

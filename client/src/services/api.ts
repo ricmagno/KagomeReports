@@ -168,6 +168,26 @@ async function fetchWithRetry<T>(
 }
 
 export const apiService = {
+  // Generic HTTP methods
+  async get<T>(endpoint: string): Promise<T> {
+    return fetchWithRetry<T>(endpoint);
+  },
+  async post<T>(endpoint: string, data?: any): Promise<T> {
+    return fetchWithRetry<T>(endpoint, {
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined
+    });
+  },
+  async put<T>(endpoint: string, data?: any): Promise<T> {
+    return fetchWithRetry<T>(endpoint, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined
+    });
+  },
+  async delete<T>(endpoint: string): Promise<T> {
+    return fetchWithRetry<T>(endpoint, { method: 'DELETE' });
+  },
+
   // Health check endpoints
   async checkHealth(): Promise<ApiResponse<{ status: string }>> {
     return fetchWithRetry('/health');

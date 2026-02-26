@@ -112,6 +112,7 @@ export class AuthService {
               id TEXT PRIMARY KEY,
               username TEXT UNIQUE NOT NULL COLLATE NOCASE,
               email TEXT UNIQUE NOT NULL COLLATE NOCASE,
+              mobile TEXT,
               first_name TEXT NOT NULL,
               last_name TEXT NOT NULL,
               role TEXT NOT NULL DEFAULT 'user',
@@ -172,6 +173,20 @@ export class AuthService {
               apiLogger.error('Failed to create tables', { error: err });
               reject(err);
             } else {
+              // Check and add mobile column if it doesn't exist
+              this.db.all("PRAGMA table_info(users)", (err, columns: any[]) => {
+                const hasMobile = columns?.some(col => col.name === 'mobile');
+                if (!hasMobile) {
+                  this.db.run('ALTER TABLE users ADD COLUMN mobile TEXT', (alterErr) => {
+                    if (alterErr) {
+                      apiLogger.error('Failed to add mobile column to users table', { error: alterErr });
+                    } else {
+                      apiLogger.info('Added mobile column to users table');
+                    }
+                  });
+                }
+              });
+
               // Insert default permissions
               this.createDefaultPermissions().then(() => {
                 apiLogger.info('Authentication database initialized and tables created');

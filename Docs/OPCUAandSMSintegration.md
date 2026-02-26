@@ -3,7 +3,7 @@ Some time ago we develop this simple app that sends a text message to a user gro
 The tag values were provided by an opc ua server.
 Tag names were hard coded and the user groups were defined externally
 The sms was send using an api. Api description is on the code and the API code is available with the source code.
-The source code is at `/Users/ricmagno/Documents/Projects/scadaSMS`
+The source code is at `/Users/ricmagno/Documents/Projects/KagomeReports/scadaSMS` NO Twilio.
 
 # Goal
 Using scadaSMS as a base, we will create a feature on KagomeReport (`/Users/ricmagno/Documents/Projects/KagomeReports`) 
@@ -39,11 +39,11 @@ The new feature will be name Alerts.
     The analog tag structure is as follows:
         - PLC_TAG (PLC is an arbitrary name of the source plc. TAG is in the format 2 or 3 letters that identify the P&ID equipment using ISA code followed by a 3 digit numbers that identify the equipment (the first digit on the left indicate the subsystem and the other two are sequential identification), e.g., NV11_FT001 means NV11 system 0 (or main system) flow transducer number 01.
             - .PV (float) process value, e.g., NV11_FT001.PV
-            - .HighHigh (float) high high limit defined on SCADA, e.g., NV11_FT001.HighHigh
-            - .High (float) high limit defined on SCADA, e.g., NV11_FT001.High
-            - .Low (float) low limit defined on SCADA, e.g., NV11_FT001.Low
-            - .LowLow (float) low low limit defined on SCADA, e.g., NV11_FT001.LowLow
-            - .HH (boolean) high high alarm (0: no alarm, 1: alarm). Explanation: The .PV is higher than .HighHigh and this alarming function is enabled (in the SCADA), e.g., NV11_FT001.HH
-            - .H (boolean) high alarm (0: no alarm, 1: alarm). Explanation: The .PV is higher than .High and this alarming function is enabled (in the SCADA), e.g., NV11_FT001.H
-            - .L (boolean) low alarm (0: no alarm, 1: alarm). Explanation: The .PV is lower than .Low and this alarming function is enabled (in the SCADA), e.g., NV11_FT001.L
-            - .LL (boolean) low low alarm (0: no alarm, 1: alarm). Explanation: The .PV is lower than .LowLow and this alarming function is enabled (in the SCADA), e.g., NV11_FT001.LL
+            - .HighHigh (float) high high limit alarm value defined on SCADA, e.g., NV11_FT001.HighHigh
+            - .High (float) high limit alarm value defined on SCADA, e.g., NV11_FT001.High
+            - .Low (float) low limit alarm value defined on SCADA, e.g., NV11_FT001.Low
+            - .LowLow (float) low low limit alarm value defined on SCADA, e.g., NV11_FT001.LowLow
+            - .HH (boolean) high high alarm event (0: no alarm, 1: alarm). Explanation: The .PV is higher than .HighHigh and this alarming function is enabled (in the SCADA), e.g., NV11_FT001.HH
+            - .H (boolean) high alarm event (0: no alarm, 1: alarm). Explanation: The .PV is higher than .High and this alarming function is enabled (in the SCADA), e.g., NV11_FT001.H
+            - .L (boolean) low alarm event (0: no alarm, 1: alarm). Explanation: The .PV is lower than .Low and this alarming function is enabled (in the SCADA), e.g., NV11_FT001.L
+            - .LL (boolean) low low alarm event (0: no alarm, 1: alarm). Explanation: The .PV is lower than .LowLow and this alarming function is enabled (in the SCADA), e.g., NV11_FT001.LL

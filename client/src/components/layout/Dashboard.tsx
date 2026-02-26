@@ -17,7 +17,8 @@ import {
   Settings,
   Menu,
   X,
-  ChevronRight
+  ChevronRight,
+  Bell
 } from 'lucide-react';
 import { ReportConfig, TagInfo, ReportVersion } from '../../types/api';
 import { Button } from '../ui/Button';
@@ -40,6 +41,7 @@ import { DashboardList } from '../dashboards/DashboardList';
 import { DashboardView } from '../dashboards/DashboardView';
 import { DashboardEditor } from '../dashboards/DashboardEditor';
 import { TagSelector } from '../forms/TagSelector';
+import { AlertsManagement } from '../alerts/AlertsManagement';
 import { apiService } from '../../services/api';
 import { useAuth } from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
@@ -51,7 +53,7 @@ interface DashboardProps {
 
 export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const { user, isAuthenticated, login: authLogin, logout: authLogout, isLoading: authLoading } = useAuth();
-  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'dashboards' | 'schedules' | 'users' | 'configuration' | 'about'>('create');
+  const [activeTab, setActiveTab] = useState<'create' | 'reports' | 'dashboards' | 'schedules' | 'alerts' | 'users' | 'configuration' | 'about'>('create');
   const [dashboardViewMode, setDashboardViewMode] = useState<'list' | 'view' | 'edit'>('list');
   const [selectedDashboardId, setSelectedDashboardId] = useState<string | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -722,6 +724,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
               { id: 'reports', label: 'My Reports', icon: FileText },
               { id: 'dashboards', label: 'Dashboards', icon: Activity },
               { id: 'schedules', label: 'Schedules', icon: Calendar },
+              { id: 'alerts', label: 'Alerts', icon: Bell },
               { id: 'categories', label: 'Categories', icon: Tag },
               { id: 'status', label: 'Status', icon: Activity },
               ...(currentUser?.role === 'admin' ? [{ id: 'configuration', label: 'Configuration', icon: Settings }] : []),
@@ -804,6 +807,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 { id: 'reports', label: 'My Reports', icon: FileText },
                 { id: 'dashboards', label: 'Dashboards', icon: Activity },
                 { id: 'schedules', label: 'Schedules', icon: Calendar },
+                { id: 'alerts', label: 'Alerts', icon: Bell },
                 ...(currentUser?.role === 'admin' ? [{ id: 'configuration', label: 'Configuration', icon: Settings }] : []),
                 ...(currentUser?.role === 'admin' ? [{ id: 'users', label: 'Users', icon: Users }] : []),
               ].map(tab => (
@@ -1232,6 +1236,12 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                 <SchedulesErrorBoundary>
                   <SchedulesList />
                 </SchedulesErrorBoundary>
+              )
+            }
+
+            {
+              activeTab === 'alerts' && (
+                <AlertsManagement />
               )
             }
 

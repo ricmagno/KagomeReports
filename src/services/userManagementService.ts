@@ -16,6 +16,7 @@ export interface UserManagementUser {
   id: string;
   username: string;
   email: string;
+  mobile?: string;
   firstName: string;
   lastName: string;
   role: 'admin' | 'user' | 'view-only';
@@ -33,6 +34,7 @@ export interface UserManagementUser {
 export interface CreateUserRequest {
   username: string;
   email: string;
+  mobile?: string | undefined;
   firstName: string;
   lastName: string;
   password: string;
@@ -42,6 +44,7 @@ export interface CreateUserRequest {
 
 export interface UpdateUserRequest {
   email?: string | undefined;
+  mobile?: string | undefined;
   firstName?: string | undefined;
   lastName?: string | undefined;
   role?: 'admin' | 'user' | 'view-only' | undefined;
@@ -52,6 +55,7 @@ export interface UserResponse {
   id: string;
   username: string;
   email: string;
+  mobile?: string;
   firstName: string;
   lastName: string;
   role: 'admin' | 'user' | 'view-only';
@@ -112,13 +116,14 @@ export class UserManagementService {
       await new Promise<void>((resolve, reject) => {
         this.db.run(
           `INSERT INTO users (
-            id, username, email, first_name, last_name, role, password_hash,
+            id, username, email, mobile, first_name, last_name, role, password_hash,
             is_active, is_view_only, parent_user_id, auto_login_enabled, require_password_change
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             userId,
             userData.username,
             userData.email,
+            userData.mobile || null,
             userData.firstName,
             userData.lastName,
             userData.role,
@@ -280,6 +285,10 @@ export class UserManagementService {
       if (userData.email !== undefined) {
         updates.push('email = ?');
         params.push(userData.email);
+      }
+      if (userData.mobile !== undefined) {
+        updates.push('mobile = ?');
+        params.push(userData.mobile || null);
       }
       if (userData.firstName !== undefined) {
         updates.push('first_name = ?');
@@ -703,6 +712,7 @@ export class UserManagementService {
       id: row.id,
       username: row.username,
       email: row.email,
+      mobile: row.mobile || undefined,
       firstName: row.first_name,
       lastName: row.last_name,
       role: row.role,
@@ -729,6 +739,7 @@ export class UserManagementService {
       id: row.id,
       username: row.username,
       email: row.email,
+      mobile: row.mobile || undefined,
       firstName: row.first_name,
       lastName: row.last_name,
       role: row.role,

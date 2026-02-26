@@ -169,6 +169,35 @@ export class OpcuaService {
             throw createError('Failed to read OPC UA variable', 500);
         }
     }
+
+    async readValues(nodeIds: string[]): Promise<any[]> {
+        if (!this.session) {
+            throw createError('No active OPC UA session', 500);
+        }
+
+        if (!nodeIds || nodeIds.length === 0) {
+            return [];
+        }
+
+        try {
+            const nodesToRead = nodeIds.map(nodeId => ({
+                nodeId,
+                attributeId: AttributeIds.Value,
+            }));
+
+            const dataValues = await this.session.read(nodesToRead);
+
+            return dataValues.map(dv => {
+                if (dv.statusCode?.name !== 'Good' && dv.statusCode?.name !== 'Uncertain') {
+                    return null;
+                }
+                return dv.value?.value;
+            });
+        } catch (error) {
+            logger.error(`Error reading OPC UA variables batch:`, error);
+            throw createError('Failed to read OPC UA variables', 500);
+        }
+    }
 }
 
 export const opcuaService = new OpcuaService();

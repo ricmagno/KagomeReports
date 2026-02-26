@@ -378,12 +378,16 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
   try {
     const { setupOpcuaConfigIntegration } = await import('@/services/opcuaConfigService');
     setupOpcuaConfigIntegration();
+
+    const { alertEvalService } = await import('@/services/alertEvalService');
+    alertEvalService.start(5000); // Poll every 5 seconds
+
     components.push({
       name: 'OPC UA Integration',
       status: 'healthy',
       required: false
     });
-    logger.info('✓ OPC UA integration initialized');
+    logger.info('✓ OPC UA integration and Alert Eval Service initialized');
   } catch (error) {
     components.push({
       name: 'OPC UA Integration',
@@ -565,6 +569,15 @@ async function performGracefulShutdown(signal: string): Promise<void> {
       error: error instanceof Error ? error.message : 'Unknown error'
     });
     logger.error('✗ Update checker shutdown failed:', error);
+  }
+
+  // 9. Stop Alert Eval Service
+  try {
+    const { alertEvalService } = await import('@/services/alertEvalService');
+    alertEvalService.stop();
+    logger.info('✓ Alert evaluation service stopped');
+  } catch (error) {
+    logger.error('✗ Alert evaluation service shutdown failed:', error);
   }
 
   // Log shutdown summary

@@ -67,7 +67,7 @@ export const DatabaseConfigManager: React.FC<DatabaseConfigManagerProps> = ({ cl
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete the configuration "${config.name}"?`)) {
+    if (!window.confirm(`Are you sure you want to delete the configuration "${config.name}"?`)) {
       return;
     }
 
