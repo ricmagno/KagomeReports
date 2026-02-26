@@ -233,7 +233,13 @@ export class RetryHandler {
         'busy',
         'deadlock',
         'lock timeout',
-        'transport-level error'
+        'transport-level error',
+        'failed to connect',
+        'econnreset',
+        'econnrefused',
+        'enotfound',
+        'read econnreset',
+        'timed out'
       ]),
       ...overrides
     };
