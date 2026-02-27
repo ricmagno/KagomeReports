@@ -9,6 +9,7 @@ This repository is optimized for AI coding agents. If you are using an AI assist
 - [AGENTS.md](./AGENTS.md): Coding conventions and architectural guardrails.
 - [MEMORY.md](./MEMORY.md): Permanent project knowledge and learned technical behaviors.
 - [CONTRIBUTING.md](./CONTRIBUTING.md): Workflow guidelines for the team.
+- [spec/](./spec/): Authoritative technical specifications (API, Database, Use Cases).
 
 ## Goals
 
@@ -192,7 +193,7 @@ The Electron build follows a 3-step sequence:
 | **Dev Mode** | `npm run electron:dev` | Interactive Window |
 
 > **Note**: For a deep dive into Electron configuration, code signing, and troubleshooting, refer to the [ELECTRON_SETUP_GUIDE.md](./ELECTRON_SETUP_GUIDE.md).
-> For the **authoritative deployment architecture** (Docker & Kubernetes), see [spec/deployment.md](./spec/deployment.md).
+> For the **authoritative specifications** (API, Database, Use Cases), see the [spec/](./spec/) directory.
 
 ### 3. Docker Deployment
 To build and run the application using Docker:
