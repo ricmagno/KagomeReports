@@ -76,6 +76,25 @@ export class OpcuaService {
                                 userPolicies: policies
                             });
                         });
+
+                        // Check if current config matches any discovered endpoint
+                        const targetSecurityMode = (MessageSecurityMode as any)[config.securityMode];
+                        const targetSecurityPolicy = (SecurityPolicy as any)[config.securityPolicy];
+
+                        const matchingEndpoint = endpoints.find(ep =>
+                            ep.securityMode === targetSecurityMode &&
+                            ep.securityPolicyUri === targetSecurityPolicy
+                        );
+
+                        if (!matchingEndpoint) {
+                            logger.warn('WARNING: No exact matching endpoint found for current configuration in server discovery data.');
+                        } else {
+                            logger.info('Matching server endpoint found for current configuration.');
+                            const supportsUsername = matchingEndpoint.userIdentityTokens?.some(p => p.tokenType === UserTokenType.UserName);
+                            if (!supportsUsername) {
+                                logger.error('CRITICAL: The selected endpoint DOES NOT appear to support Username/Password authentication according to server discovery data!');
+                            }
+                        }
                     } catch (discoveryError: any) {
                         logger.warn(`Endpoint discovery failed: ${discoveryError.message}. Proceeding with direct connection...`);
                     }
@@ -136,9 +155,10 @@ export class OpcuaService {
             if (error.message.includes('BadUserAccessDenied')) {
                 logger.error('CRITICAL: ACCESS DENIED. Possible reasons:');
                 logger.error('1. Wrong username/password (double check case sensitivity)');
-                logger.error('2. Account locked or disabled on OPC UA server');
-                logger.error('3. Server requires encryption for username/password login, but current mode is None');
-                logger.error('4. Client certificate is NOT trusted on the server (check server trust list)');
+                logger.error('2. Username format: try "DOMAIN\\username" or ".\\username" if using Windows-based server');
+                logger.error('3. Account locked or disabled on OPC UA server');
+                logger.error('4. Server requires encryption for username/password login, but current mode is None');
+                logger.error('5. Client certificate is NOT trusted on the server (check server trust list)');
             }
 
             // Cleanup on failure
