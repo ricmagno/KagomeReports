@@ -61,6 +61,25 @@ export class OpcuaService {
                         throw new Error('OPC UA client is not initialized');
                     }
 
+                    // Advanced Discovery before connecting
+                    try {
+                        logger.info(`Discovering server endpoints: ${config.endpointUrl}`);
+                        const endpoints = await this.client.getEndpoints({ endpointUrl: config.endpointUrl });
+
+                        logger.info(`Server discovered with ${endpoints.length} endpoints`);
+                        endpoints.forEach((ep, i) => {
+                            const policies = ep.userIdentityTokens?.map(p => `${p.policyId} (${UserTokenType[p.tokenType as any]})`).join(', ');
+                            logger.info(`Endpoint ${i + 1}:`, {
+                                endpointUrl: ep.endpointUrl,
+                                securityMode: MessageSecurityMode[ep.securityMode],
+                                securityPolicy: ep.securityPolicyUri,
+                                userPolicies: policies
+                            });
+                        });
+                    } catch (discoveryError: any) {
+                        logger.warn(`Endpoint discovery failed: ${discoveryError.message}. Proceeding with direct connection...`);
+                    }
+
                     // Attempt connection
                     await this.client.connect(config.endpointUrl);
                     logger.info(`Connected to OPC UA server: ${config.endpointUrl}`);
@@ -112,6 +131,15 @@ export class OpcuaService {
                 stack: error.stack
             };
             logger.error('Failed to connect to OPC UA server after retries:', errorDetails);
+
+            // Provide helpful hint for BadUserAccessDenied
+            if (error.message.includes('BadUserAccessDenied')) {
+                logger.error('CRITICAL: ACCESS DENIED. Possible reasons:');
+                logger.error('1. Wrong username/password (double check case sensitivity)');
+                logger.error('2. Account locked or disabled on OPC UA server');
+                logger.error('3. Server requires encryption for username/password login, but current mode is None');
+                logger.error('4. Client certificate is NOT trusted on the server (check server trust list)');
+            }
 
             // Cleanup on failure
             if (this.client) {
