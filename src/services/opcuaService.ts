@@ -8,10 +8,14 @@ import {
     NodeId,
     BrowseDirection,
     ReferenceDescription,
+    UserTokenType,
+    OPCUACertificateManager,
 } from 'node-opcua';
 import { OpcuaConfig, OpcuaTagInfo } from '@/types/opcuaConfig';
 import { logger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
+import { RetryHandler } from '@/utils/retryHandler';
+import { getDatabasePath } from '@/config/environment';
 
 export class OpcuaService {
     private client: OPCUAClient | null = null;
@@ -24,18 +28,24 @@ export class OpcuaService {
         try {
             this.config = config;
 
-            // Set up client with a reasonable connection strategy
+            // Set up client with a robust connection strategy and certificate management
             this.client = OPCUAClient.create({
                 endpointMustExist: false,
                 securityMode: MessageSecurityMode[config.securityMode as keyof typeof MessageSecurityMode] || MessageSecurityMode.None,
                 securityPolicy: SecurityPolicy[config.securityPolicy as keyof typeof SecurityPolicy] || SecurityPolicy.None,
                 connectionStrategy: {
-                    maxRetry: 1, // Only try twice for connection test
-                    initialDelay: 1000,
-                    maxDelay: 2000,
+                    maxRetry: 5, // More retries for stability
+                    initialDelay: 2000,
+                    maxDelay: 10000,
                 },
                 // Add explicit connection timeout (ms)
-                requestedSessionTimeout: 10000,
+                requestedSessionTimeout: 60000, // More generous session timeout
+                keepSessionAlive: true,
+                // Certificate management
+                clientCertificateManager: new OPCUACertificateManager({
+                    rootFolder: getDatabasePath('pki'),
+                    automaticallyAcceptUnknownCertificate: true,
+                } as any),
             });
 
             logger.info(`Attempting to connect to OPC UA server: ${config.endpointUrl}`, {
@@ -44,29 +54,56 @@ export class OpcuaService {
                 authenticationMode: config.authenticationMode
             });
 
-            // Use a promise with timeout for the connection
-            let timeoutId: NodeJS.Timeout;
-            const timeoutPromise = new Promise((_, reject) =>
-                timeoutId = setTimeout(() => reject(new Error('Connection timed out (10s)')), 10000)
+            // Use RetryHandler for the connection and session creation
+            await RetryHandler.executeWithRetry(
+                async () => {
+                    if (!this.client) {
+                        throw new Error('OPC UA client is not initialized');
+                    }
+
+                    // Attempt connection
+                    await this.client.connect(config.endpointUrl);
+                    logger.info(`Connected to OPC UA server: ${config.endpointUrl}`);
+
+                    // Attempt session creation
+                    const isUsernameAuth = config.authenticationMode === 'Username';
+
+                    logger.info(`Creating OPC UA session with mode: ${config.authenticationMode}`, {
+                        hasUsername: !!config.username,
+                        hasPassword: !!config.password,
+                        securityMode: config.securityMode,
+                        securityPolicy: config.securityPolicy
+                    });
+
+                    const userIdentity: any = isUsernameAuth
+                        ? {
+                            type: UserTokenType.UserName,
+                            userName: config.username || '',
+                            password: config.password || ''
+                        }
+                        : { type: UserTokenType.Anonymous };
+
+                    this.session = await this.client.createSession(userIdentity);
+                    logger.info('OPC UA session created');
+                },
+                {
+                    maxAttempts: 3,
+                    baseDelay: 2000,
+                    retryCondition: (error: Error) => {
+                        const message = error.message.toLowerCase();
+                        // Do NOT retry on Access Denied as it's likely a config/auth issue
+                        if (message.includes('accessdenied') || message.includes('denied')) {
+                            return false;
+                        }
+                        return message.includes('premature disconnection') ||
+                            message.includes('timeout') ||
+                            message.includes('connection') ||
+                            message.includes('socket') ||
+                            message.includes('disconnected');
+                    }
+                },
+                'OPC UA Connection'
             );
-
-            try {
-                const connectPromise = this.client.connect(config.endpointUrl);
-                await Promise.race([connectPromise, timeoutPromise]);
-                logger.info(`Connected to OPC UA server: ${config.endpointUrl}`);
-
-                // Similar timeout for session creation
-                const sessionPromise = this.client.createSession(
-                    config.authenticationMode === 'Username'
-                        ? { type: 1, userName: config.username, password: config.password } as any
-                        : undefined
-                );
-
-                this.session = (await Promise.race([sessionPromise, timeoutPromise])) as ClientSession;
-                logger.info('OPC UA session created');
-            } finally {
-                if (timeoutId!) clearTimeout(timeoutId);
-            }
         } catch (error: any) {
             const errorDetails = {
                 message: error.message,
@@ -74,11 +111,15 @@ export class OpcuaService {
                 endpointUrl: config.endpointUrl,
                 stack: error.stack
             };
-            logger.error('Failed to connect to OPC UA server:', errorDetails);
+            logger.error('Failed to connect to OPC UA server after retries:', errorDetails);
 
             // Cleanup on failure
             if (this.client) {
-                await this.client.disconnect();
+                try {
+                    await this.client.disconnect();
+                } catch (e) {
+                    logger.warn('Error during emergency OPC UA disconnect:', e);
+                }
                 this.client = null;
             }
             this.session = null;
