@@ -1,6 +1,6 @@
 {
   "name": "historian-reports",
-  "version": "1.2.19",
+  "version": "1.2.20",
   "description": "Professional reporting application for AVEVA Historian database",
   "main": "electron.js",
   "scripts": {
@@ -26,6 +26,7 @@
     "electron:build": "npm run build:all && electron-builder",
     "electron:build:win": "npm run build:all && electron-builder --win",
     "electron:build:mac": "npm run build:all && electron-builder --mac",
+    "electron:build:mac:signed": "export CSC_LINK=./build-secrets/self-signed.p12 && export CSC_KEY_PASSWORD=password && npm run electron:build:mac",
     "electron:build:all": "npm run build:all && electron-builder -mw"
   },
   "keywords": [
