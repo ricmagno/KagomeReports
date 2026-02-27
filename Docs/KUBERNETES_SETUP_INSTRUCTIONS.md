@@ -1,82 +1,65 @@
-# Adding a Linux/amd64 Server to Your Kubernetes Cluster
+# Kubernetes & Autodeploy Setup Instructions
 
-You now have a working Kubernetes cluster running on your Mac using kind (Kubernetes in Docker). To add a Linux/amd64 server to this cluster, follow these steps:
+This document provides the authoritative instructions for deploying Historian Reports to a production Kubernetes cluster and setting up the automated deployment "Watchdog".
 
-## Prerequisites for the Linux Server
+> [!NOTE]
+> This guide focuses on **how** to deploy. For the **authoritative specification** of the deployment architecture, see [spec/deployment.md](../spec/deployment.md).
 
-1. Install Docker on the Linux/amd64 server:
-   ```bash
-   # For Ubuntu/Debian
-   sudo apt update
-   sudo apt install -y docker.io
-   sudo usermod -aG docker $USER
-   ```
+## 🏗️ Production Cluster Setup
 
-2. Install kubeadm, kubelet, and kubectl on the Linux server:
-   ```bash
-   # Update the apt package index and install packages needed to use the Kubernetes apt repository
-   sudo apt-get update
-   sudo apt-get install -y apt-transport-https ca-certificates curl
+The production environment typically runs on a Linux server (e.g., SCADA server).
 
-   # Download the Google Cloud public signing key
-   sudo curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+### 1. Prerequisite: Cluster Access
+Ensure `kubectl` is installed and configured to point to your production cluster.
 
-   # Add the Kubernetes apt repository
-   echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.32/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+### 2. Manual Deployment
+Follow the steps in [Kubernetes/README.md](../Kubernetes/README.md) to:
+- Create the `historian-reports` namespace.
+- Configure `ghcr-regcred` secret for GitHub Container Registry access.
+- Apply environment secrets and manifests.
 
-   # Update apt package index, install kubelet, kubeadm and kubectl, and pin their versions
-   sudo apt-get update
-   sudo apt-get install -y kubelet kubeadm kubectl
-   sudo apt-mark hold kubelet kubeadm kubectl
-   ```
+---
 
-## Joining the Linux Server to the Cluster
+## 🚀 Automated Deployment (The Watchdog)
 
-Since kind clusters typically don't allow external nodes to join directly (they're meant for local development), you would normally need to set up a proper multi-node cluster using kubeadm on your own infrastructure.
+The system includes a "pull-based" autodeploy mechanism. A systemd timer on the host server polls GitHub for new releases and updates the Kubernetes deployment automatically.
 
-However, if you want to connect your Linux server to work with your kind cluster, you would need to:
+### 1. How it Works
+The script `Kubernetes/autodeploy/autodeploy.sh`:
+1. Checks the current image tag in the Kubernetes deployment.
+2. Queries the GitHub API for the latest release tag.
+3. If a newer tag is found, it runs `kubectl set image` to trigger a rolling update.
 
-1. Expose the kind cluster's API server to external networks (this requires additional configuration)
-2. Extract the join command from the kind cluster
-3. Run the join command on your Linux server
+### 2. Host Installation (SCADA Server)
+To install the watchdog on your server:
 
-## Alternative Approach: Setting Up a Proper Multi-Node Cluster
+```bash
+# 1. Copy autodeploy files to the server
+scp -r Kubernetes/autodeploy user@your-server:~/
 
-For production or more realistic testing, consider setting up a proper Kubernetes cluster on your Linux server:
+# 2. Install the script to system path
+sudo cp ~/autodeploy/autodeploy.sh /usr/local/bin/autodeploy.sh
+sudo chmod +x /usr/local/bin/autodeploy.sh
 
-1. On the Linux server, initialize the master node:
-   ```bash
-   sudo kubeadm init --pod-network-cidr=10.244.0.0/16
-   ```
+# 3. Install systemd service and timer
+sudo cp ~/autodeploy/historian-autodeploy.* /etc/systemd/system/
 
-2. Configure kubectl:
-   ```bash
-   mkdir -p $HOME/.kube
-   sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
-   sudo chown $(id -u):$(id -g) $HOME/.kube/config
-   ```
+# 4. Enable the timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now historian-autodeploy.timer
+```
 
-3. Install a pod network add-on:
-   ```bash
-   kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
-   ```
+### 3. Monitoring
+Check the status of the automated checks:
+```bash
+# View timer status
+systemctl status historian-autodeploy.timer
 
-4. Generate a join token for worker nodes:
-   ```bash
-   kubeadm token create --print-join-command
-   ```
+# View logs of the last check
+journalctl -u historian-autodeploy.service
+```
 
-## Current Status
-
-Your local Kubernetes cluster is running successfully:
-- Cluster name: kind
-- Node: kind-control-plane (Ready)
-- kubectl is configured and working
-- Basic operations tested successfully
-
-For connecting to your Linux server, you would typically either:
-1. Set up a new cluster on the Linux server
-2. Migrate your workloads to the Linux server
-3. Set up a multi-cluster management solution
-
-Would you like me to provide more specific instructions for any of these approaches?
+## 🔄 Release Workflow
+1.  **Tag & Push**: Create a new version tag (e.g., `v1.2.21`) and push to GitHub.
+2.  **GitHub Action**: GitHub builds and pushes the image to `ghcr.io/ricmagno/kagomereports`.
+3.  **Watchdog**: Within 5 minutes, the server identifies the new version and updates the cluster.

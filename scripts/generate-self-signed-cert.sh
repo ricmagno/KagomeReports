@@ -28,7 +28,9 @@ openssl req -new -key "${CERT_DIR}/self-signed.key" -out "${CERT_DIR}/self-signe
 openssl x509 -req -days 365 -in "${CERT_DIR}/self-signed.csr" -signkey "${CERT_DIR}/self-signed.key" -out "${CERT_DIR}/self-signed.crt"
 
 # 4. Package into .p12 format
-openssl pkcs12 -export -out "$P12_FILE" -inkey "${CERT_DIR}/self-signed.key" -in "${CERT_DIR}/self-signed.crt" -password "pass:${P12_PASSWORD}"
+# We add -legacy to ensure compatibility with macOS's 'security' tool which 
+# sometimes fails to import OpenSSL 3.0+ default PBKDF2 encrypted files.
+openssl pkcs12 -export -legacy -out "$P12_FILE" -inkey "${CERT_DIR}/self-signed.key" -in "${CERT_DIR}/self-signed.crt" -password "pass:${P12_PASSWORD}"
 
 echo "--------------------------------------------------"
 echo "Success! Certificate generated at: $P12_FILE"

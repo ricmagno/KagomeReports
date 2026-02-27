@@ -2,6 +2,9 @@
 
 This directory contains the manifests for deploying the Historian Reports application to a Kubernetes cluster.
 
+> [!IMPORTANT]
+> For the authoritative system architecture and deployment requirements, consult the [Deployment Specification](../spec/deployment.md).
+
 ## Setup Instructions
 
 ### 1. Configure Namespace

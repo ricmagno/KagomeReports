@@ -4,6 +4,12 @@
 
 This application is designed to generate printable reports and trends from the AVEVA Historian database. The system will provide a solution for extracting historical data, processing it into meaningful trends, and generating professional printable reports.
 
+### 🤖 AI-First Development
+This repository is optimized for AI coding agents. If you are using an AI assistant, please refer to:
+- [AGENTS.md](./AGENTS.md): Coding conventions and architectural guardrails.
+- [MEMORY.md](./MEMORY.md): Permanent project knowledge and learned technical behaviors.
+- [CONTRIBUTING.md](./CONTRIBUTING.md): Workflow guidelines for the team.
+
 ## Goals
 
 1. **Data Extraction**: Connect to and extract data from the AVEVA Historian database via SQL
@@ -186,6 +192,7 @@ The Electron build follows a 3-step sequence:
 | **Dev Mode** | `npm run electron:dev` | Interactive Window |
 
 > **Note**: For a deep dive into Electron configuration, code signing, and troubleshooting, refer to the [ELECTRON_SETUP_GUIDE.md](./ELECTRON_SETUP_GUIDE.md).
+> For the **authoritative deployment architecture** (Docker & Kubernetes), see [spec/deployment.md](./spec/deployment.md).
 
 ### 3. Docker Deployment
 To build and run the application using Docker:
