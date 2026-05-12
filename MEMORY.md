@@ -26,6 +26,10 @@ This file stores persistent contextual knowledge, technical breakthroughs, and c
 - **JWT**: Used for authentication and authorization across the API.
 - **Environment**: Sensitive configs (Database URLs, JWT Secrets) are validated using `zod` in `src/config/environment.ts`.
 
+### PlantScada/Citect Trend Ingestion (May 2026)
+- **Path Separation**: Internal strings embedded inside `.HST` master headers use Windows backslashes (e.g., `C:\...\file.001`). `path.basename` fails to parse these on macOS/POSIX systems. Always use regex splits (`.split(/[/\\]/).pop()`) to ensure reliable cross-platform filename extraction.
+- **Data Alignment**: Hardcoded file headers across legacy Citect releases (v5/v6) can shift data block start positions. Dynamic reverse-indexing from the end of the byte buffers guarantees foolproof sample extraction.
+
 ## 📁 Repository Structure
 - **`.agents/`**: Contains AI-specific workflows.
 - **`brain/`**: (Conversation-specific) Stores implementation plans, tasks, and walkthroughs.
