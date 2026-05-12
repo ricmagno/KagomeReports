@@ -4,8 +4,12 @@ import { dataManagementService } from '@/services/dataManagementService';
 import { asyncHandler } from '@/middleware/errorHandler';
 import { progressTracker } from '@/middleware/progressTracker';
 import { v4 as uuidv4 } from 'uuid';
+import { authenticateToken, requireAdmin } from '@/middleware/auth';
 
 const router = Router();
+
+// Secure all data-management routes to be accessible only by Administrator role
+router.use(authenticateToken, requireAdmin);
 // Use memory storage for smaller files as in the examples
 const upload = multer({ 
   storage: multer.memoryStorage(),
