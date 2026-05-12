@@ -18,6 +18,7 @@ import { CategorySection } from './CategorySection';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { OpcuaConfiguration } from './OpcuaConfiguration';
 import { HistorianConfiguration } from './HistorianConfiguration';
+import { DataManagement } from './DataManagement';
 import { cn } from '../../utils/cn';
 import './ConfigurationManagement.css';
 
@@ -30,7 +31,7 @@ interface ConfigurationManagementState {
   refreshing: boolean;
   editingConfigs: Set<string>;
   successMessage: string | null;
-  configTab: 'historian' | 'opcua';
+  configTab: 'historian' | 'opcua' | 'data-management';
   confirmationDialog: {
     isOpen: boolean;
     changes: ConfigurationChange[];
@@ -341,6 +342,12 @@ export const ConfigurationManagement: React.FC = () => {
             >
               OPC UA
             </button>
+            <button
+              className={cn("tab-button", state.configTab === 'data-management' && "active")}
+              onClick={() => setState(prev => ({ ...prev, configTab: 'data-management' }))}
+            >
+              Data Management
+            </button>
           </div>
           {state.configTab === 'historian' && (
             <button
@@ -358,9 +365,13 @@ export const ConfigurationManagement: React.FC = () => {
 
       {state.configTab === 'historian' ? (
         <HistorianConfiguration />
-      ) : (
+      ) : state.configTab === 'opcua' ? (
         <div className="mt-6">
           <OpcuaConfiguration />
+        </div>
+      ) : (
+        <div className="mt-6">
+          <DataManagement />
         </div>
       )}
     </div>

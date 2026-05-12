@@ -21,6 +21,11 @@ import { env } from '@/config/environment';
 import { createError } from '@/middleware/errorHandler';
 import { RetryHandler } from '@/utils/retryHandler';
 
+export class DatabaseConfigService {
+  private configurations: Map<string, DatabaseConfiguration> = new Map();
+  private activeConfigId: string | null = null;
+  private activePool: ConnectionPool | null = null;
+  private configChangeListeners: Array<(configId: string) => Promise<void>> = [];
   private initializationPromise: Promise<void>;
 
   constructor() {

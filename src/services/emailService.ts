@@ -80,6 +80,13 @@ export class EmailService {
         }
       };
 
+      // Fix for common misconfiguration: port 587 with secure: true
+      // Port 587 usually requires STARTTLS (which means secure: false in nodemailer)
+      if (env.SMTP_PORT === 587 && env.SMTP_SECURE) {
+        reportLogger.warn('SMTP misconfiguration detected: Port 587 usually requires STARTTLS (secure: false). Overriding secure to false for compatibility.');
+        transportConfig.secure = false;
+      }
+
       // Add authentication if provided
       if (env.SMTP_USER && env.SMTP_PASSWORD) {
         transportConfig.auth = {
