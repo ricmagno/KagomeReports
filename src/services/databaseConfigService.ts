@@ -26,9 +26,17 @@ export class DatabaseConfigService {
   private activeConfigId: string | null = null;
   private activePool: ConnectionPool | null = null;
   private configChangeListeners: Array<(configId: string) => Promise<void>> = [];
+  private initializationPromise: Promise<void>;
 
   constructor() {
-    this.loadConfigurations();
+    this.initializationPromise = this.loadConfigurations();
+  }
+
+  /**
+   * Wait for configurations to be loaded from storage
+   */
+  async waitForInitialization(): Promise<void> {
+    return this.initializationPromise;
   }
 
   /**
@@ -55,6 +63,7 @@ export class DatabaseConfigService {
    * Save database configuration with encrypted credentials
    */
   async saveConfiguration(config: DatabaseConfig, userId: string): Promise<string> {
+    await this.initializationPromise;
     try {
       // Validate configuration
       const validation = this.validateConfiguration(config);
@@ -137,6 +146,7 @@ export class DatabaseConfigService {
    * Load database configuration with decrypted credentials
    */
   async loadConfiguration(configId: string): Promise<DatabaseConfig> {
+    await this.initializationPromise;
     try {
       const dbConfig = this.configurations.get(configId);
       if (!dbConfig) {
@@ -341,6 +351,7 @@ export class DatabaseConfigService {
    * Delete database configuration
    */
   async deleteConfiguration(configId: string, userId?: string): Promise<void> {
+    await this.initializationPromise;
     try {
       const dbConfig = this.configurations.get(configId);
       if (!dbConfig) {
@@ -400,6 +411,7 @@ export class DatabaseConfigService {
    * List all database configurations (summary view)
    */
   async listConfigurations(): Promise<DatabaseConfigSummary[]> {
+    await this.initializationPromise;
     try {
       const summaries: DatabaseConfigSummary[] = Array.from(this.configurations.values()).map(config => ({
         id: config.id,
@@ -431,6 +443,7 @@ export class DatabaseConfigService {
    * Activate a database configuration
    */
   async activateConfiguration(configId: string, userId?: string): Promise<void> {
+    await this.initializationPromise;
     try {
       const dbConfig = this.configurations.get(configId);
       if (!dbConfig) {
@@ -513,7 +526,18 @@ export class DatabaseConfigService {
   }
 
   /**
-   * Get active configuration
+   * Get active configuration (async - waits for initialization)
+   */
+  async getActiveConfigurationAsync(): Promise<DatabaseConfiguration | null> {
+    await this.initializationPromise;
+    if (!this.activeConfigId) {
+      return null;
+    }
+    return this.configurations.get(this.activeConfigId) || null;
+  }
+
+  /**
+   * Get active configuration (synchronous - may return null if not yet loaded)
    */
   getActiveConfiguration(): DatabaseConfiguration | null {
     if (!this.activeConfigId) {
@@ -526,6 +550,7 @@ export class DatabaseConfigService {
    * Get active connection pool
    */
   async getActiveConnectionPool(): Promise<ConnectionPool> {
+    await this.initializationPromise;
     if (!this.activeConfigId) {
       throw createError('No active database configuration', 500);
     }

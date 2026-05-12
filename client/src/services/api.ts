@@ -54,7 +54,9 @@ class ApiError extends Error {
 }
 
 // Request interceptor for authentication
-let authToken: string | null = null;
+let authToken: string | null = (typeof window !== 'undefined') 
+  ? (localStorage.getItem('authToken') || sessionStorage.getItem('authToken'))
+  : null;
 
 export function setAuthToken(token: string | null) {
   authToken = token;
@@ -210,7 +212,7 @@ export const apiService = {
   },
 
   // Authentication endpoints
-  async login(credentials: { username: string; password: string }): Promise<ApiResponse<{ token: string; user: any }>> {
+  async login(credentials: { username: string; password: string; rememberMe?: boolean }): Promise<ApiResponse<{ token: string; user: any }>> {
     const response = await fetchApi<ApiResponse<{ token: string; user: any }>>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
@@ -272,6 +274,7 @@ export const apiService = {
       quality?: string;
       retrievalMode?: string;
       timezone?: string;
+      advancedFilters?: any;
     }
   ): Promise<ApiResponse<TimeSeriesData[]>> {
     const params = new URLSearchParams({
@@ -282,6 +285,7 @@ export const apiService = {
       ...(options?.quality && { quality: options.quality }),
       ...(options?.retrievalMode && { retrievalMode: options.retrievalMode }),
       ...(options?.timezone && { timezone: options.timezone }),
+      ...(options?.advancedFilters && { advancedFilters: JSON.stringify(options.advancedFilters) }),
     });
 
     return fetchWithRetry(`/data/${encodeURIComponent(tagName)}?${params}`);

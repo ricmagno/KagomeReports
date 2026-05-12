@@ -24,6 +24,18 @@ export interface SpecificationLimits {
   usl?: number;  // Upper Specification Limit
 }
 
+export type LogicalOperator = 'AND' | 'OR' | 'NOR' | 'NOT';
+export type ComparisonOperator = 'EQ' | 'GT' | 'LT' | 'GTE' | 'LTE' | 'NEQ';
+
+export interface FilterCondition {
+  logicalOperator?: LogicalOperator;
+  conditions?: FilterCondition[];
+  comparison?: {
+    operator: ComparisonOperator;
+    value: number;
+  };
+}
+
 export interface ReportConfig {
   id?: string;
   name: string;
@@ -35,6 +47,7 @@ export interface ReportConfig {
   format?: 'pdf' | 'docx';
   retrievalMode?: 'Delta' | 'Cyclic' | 'Full' | 'BestFit' | 'Average' | 'Minimum' | 'Maximum' | 'Interpolated' | 'ValueState' | 'AVG' | 'RoundTrip' | 'Live';
   filters?: DataFilter[];
+  advancedFilters?: FilterCondition;
   createdBy?: string;
   createdAt?: Date;
   updatedAt?: Date;
@@ -80,6 +93,7 @@ export interface DataFilter {
   operator: 'equals' | 'greater' | 'less' | 'contains';
   value: string | number;
 }
+
 
 export type ChartType = 'line' | 'bar' | 'trend';
 

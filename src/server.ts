@@ -4,26 +4,44 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 import { env } from '@/config/environment';
-
-// Set global timezone for the process to ensure consistency
-if (env.DEFAULT_TIMEZONE) {
-  process.env.TZ = env.DEFAULT_TIMEZONE;
-}
-
-
-import { logger } from '@/utils/logger';
+import { logger, apiLogger } from '@/utils/logger';
 import { errorHandler } from '@/middleware/errorHandler';
 import { requestLogger } from '@/middleware/requestLogger';
 import { cacheManager } from '@/services/cacheManager';
 import { getHistorianConnection } from '@/services/historianConnection';
 import { schedulerService } from '@/services/schedulerService';
 import { emailService } from '@/services/emailService';
-import { setupDatabaseConfigIntegration } from '@/services/databaseConfigService';
+import { databaseConfigService, setupDatabaseConfigIntegration } from '@/services/databaseConfigService';
 import { updateChecker } from '@/services/updateChecker';
+
+// Set global timezone for the process to ensure consistency
+if (env.DEFAULT_TIMEZONE) {
+  process.env.TZ = env.DEFAULT_TIMEZONE;
+}
 
 // Create Express application
 const app = express();
+
+// Create HTTP server and Socket.io instance
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: [env.CORS_ORIGIN, 'http://localhost:3000', 'http://localhost:3001'],
+    credentials: true,
+  }
+});
+
+// Socket.io connection handling
+io.on('connection', (socket) => {
+  apiLogger.info('New Socket.io client connected', { id: socket.id });
+  
+  socket.on('disconnect', () => {
+    apiLogger.info('Socket.io client disconnected', { id: socket.id });
+  });
+});
 
 // Security middleware
 app.use(helmet({
@@ -73,19 +91,29 @@ app.get('/health', async (req, res) => {
 import apiRoutes from '@/routes';
 app.use('/api', apiRoutes);
 
-// Serve static files from the React app if in production
+// Serve static files from the React app
 const clientBuildPath = path.join(__dirname, '../client/build');
-if (fs.existsSync(clientBuildPath)) {
+const indexHtmlPath = path.join(clientBuildPath, 'index.html');
+
+if (fs.existsSync(indexHtmlPath)) {
   app.use(express.static(clientBuildPath));
 
   // The catch-all handler for any request that doesn't match an API route
-  // This is essential for React Router to work properly
   app.get('*', (req, res, next) => {
     // If it's an API request that wasn't caught by apiRoutes, let it fall through to the 404 handler
     if (req.path.startsWith('/api/')) {
       return next();
     }
-    res.sendFile(path.join(clientBuildPath, 'index.html'));
+    res.sendFile(indexHtmlPath);
+  });
+} else if (env.NODE_ENV === 'development') {
+  // In development, if build is missing, provide a helpful message for port 3001
+  app.get('/', (req, res) => {
+    res.json({
+      message: 'Historian Reports API is running.',
+      frontend: 'Development server is likely on port 3000.',
+      status: 'Ready'
+    });
   });
 }
 
@@ -146,7 +174,8 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
 
   // Setup database configuration integration
   setupDatabaseConfigIntegration();
-  logger.info('✓ Database configuration integration setup completed');
+  await databaseConfigService.waitForInitialization();
+  logger.info('✓ Database configuration integration setup completed and initialized');
 
   // 0. Directory existence validation
   const directoriesStart = Date.now();
@@ -603,7 +632,7 @@ async function startServer(): Promise<void> {
     logger.info('Starting Historian Reports Application...');
 
     // Start HTTP server IMMEDIATELY to respond to health checks
-    const server = app.listen(env.PORT, () => {
+    const server = httpServer.listen(env.PORT, () => {
       logger.info(`✓ HTTP server started on port ${env.PORT} in ${env.NODE_ENV} mode`);
       logger.info('Historian Reports Application is starting up...');
     });

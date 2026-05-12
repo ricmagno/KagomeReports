@@ -10,7 +10,8 @@ import {
   AlertCircle,
   CheckCircle,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Filter
 } from 'lucide-react';
 import { ReportConfig, TimeSeriesData, StatisticsResult } from '../../types/api';
 import { apiService } from '../../services/api';
@@ -175,7 +176,8 @@ export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewPro
             config.timeRange.endTime,
             {
               limit: 1000, // Safe visual maximum
-              retrievalMode: config.retrievalMode || 'Delta'
+              retrievalMode: config.retrievalMode || 'Delta',
+              advancedFilters: config.advancedFilters
             }
           );
           return { tagName, data: response.success ? response.data : [] };
@@ -277,7 +279,8 @@ export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewPro
     config.timeRange,
     config.timeRange?.startTime,
     config.timeRange?.endTime,
-    config.retrievalMode
+    config.retrievalMode,
+    config.advancedFilters
   ]);
 
   // Auto-update preview data when relevant configuration changes
@@ -420,14 +423,23 @@ export const ReportPreview = React.forwardRef<ReportPreviewRef, ReportPreviewPro
 
             {/* Data Quality Indicator */}
             {!loading && dataQuality.totalPoints > 0 && (
-              <div className="flex items-center space-x-2 text-xs sm:text-sm">
-                {getQualityIcon(dataQuality.qualityPercentage)}
-                <span className={getQualityColor(dataQuality.qualityPercentage)}>
-                  {dataQuality.qualityPercentage.toFixed(1)}% quality
-                </span>
-                <span className="text-gray-500">
-                  ({dataQuality.totalPoints} pts)
-                </span>
+              <div className="flex items-center space-x-4 text-xs sm:text-sm">
+                <div className="flex items-center space-x-2">
+                  {getQualityIcon(dataQuality.qualityPercentage)}
+                  <span className={getQualityColor(dataQuality.qualityPercentage)}>
+                    {dataQuality.qualityPercentage.toFixed(1)}% quality
+                  </span>
+                  <span className="text-gray-500">
+                    ({dataQuality.totalPoints} pts)
+                  </span>
+                </div>
+
+                {config.advancedFilters && (
+                  <div className="flex items-center space-x-1.5 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-md animate-pulse">
+                    <Filter className="w-3.5 h-3.5" />
+                    <span className="font-medium text-[10px] uppercase tracking-wider">Filters Active</span>
+                  </div>
+                )}
               </div>
             )}
 

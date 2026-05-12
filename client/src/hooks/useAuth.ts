@@ -70,17 +70,17 @@ export const useAuthState = () => {
   const login = async (username: string, password: string, rememberMe: boolean = false): Promise<void> => {
     try {
       setIsLoading(true);
-      const response = await apiService.login({ username, password });
+      const response = await apiService.login({ username, password, rememberMe });
 
-      if (response.success && response.data?.user) {
-        setUser(response.data.user);
-        // Store token in localStorage or sessionStorage
+      if (response.success && response.data) {
+        const { token, user } = response.data;
         const storage = rememberMe ? localStorage : sessionStorage;
-        const token = response.data.token || '';
-        storage.setItem('authToken', token);
 
-        // Also update apiService immediately
+        storage.setItem('authToken', token);
+        storage.setItem('user', JSON.stringify(user));
+
         setAuthToken(token);
+        setUser(user);
       } else {
         throw new Error(response.message || 'Login failed');
       }

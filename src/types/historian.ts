@@ -49,6 +49,22 @@ export interface TimeRange {
   timezone?: string | undefined; // Timezone name (e.g., 'Australia/Sydney') or offset string (e.g., '+11:00')
 }
 
+// Logical operators for complex filtering
+export type LogicalOperator = 'AND' | 'OR' | 'NOR' | 'NOT';
+
+// Comparison operators for data values
+export type ComparisonOperator = 'EQ' | 'GT' | 'LT' | 'GTE' | 'LTE' | 'NEQ';
+
+// Recursive filter condition structure
+export interface FilterCondition {
+  logicalOperator?: LogicalOperator | undefined;
+  conditions?: FilterCondition[] | undefined;
+  comparison?: {
+    operator: ComparisonOperator;
+    value: number;
+  } | undefined;
+}
+
 // Data filter options
 export interface DataFilter {
   tagNames?: string[] | undefined;
@@ -58,7 +74,9 @@ export interface DataFilter {
     max?: number | undefined;
   } | undefined;
   samplingInterval?: number | undefined;
+  advancedConditions?: FilterCondition | undefined;
 }
+
 
 // Query result with pagination
 export interface QueryResult<T = any> {

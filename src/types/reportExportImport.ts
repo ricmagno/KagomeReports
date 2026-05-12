@@ -152,6 +152,8 @@ export interface ExportedReportConfig {
   description?: string;
   template?: string;
   chartTypes?: string[];
+  /** Advanced recursive logic filters */
+  advancedFilters?: any;
 
   /** Custom settings (extensible) */
   customSettings?: Record<string, any>;

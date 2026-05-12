@@ -44,6 +44,14 @@ jobs:
       - name: Build frontend
         run: npm run build:client
 
+      - name: Decode macOS Certificate
+        if: runner.os == 'macOS' && env.MAC_CSC_BASE64 != ''
+        run: |
+          mkdir -p build-secrets
+          echo "${{ secrets.MAC_CSC_BASE64 }}" | base64 --decode > build-secrets/self-signed.p12
+        env:
+          MAC_CSC_BASE64: ${{ secrets.MAC_CSC_BASE64 }}
+
       - name: Build Electron (Windows)
         if: runner.os == 'Windows'
         run: npm run electron:build:win
@@ -55,6 +63,8 @@ jobs:
         run: npm run electron:build:mac
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: build-secrets/self-signed.p12
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
 
       - name: Upload artifacts (Windows)
         if: runner.os == 'Windows'

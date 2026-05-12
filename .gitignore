@@ -113,3 +113,5 @@ data/*.json
 
 # scadaSMS
 scadaSMS/
+build-secrets
+#.env#

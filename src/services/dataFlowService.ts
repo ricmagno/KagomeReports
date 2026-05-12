@@ -11,6 +11,7 @@ import { reportGenerationService, ReportConfig, ReportData, ReportResult } from 
 import { chartGenerationService } from './chartGeneration';
 import { TimeSeriesData, StatisticsResult, TrendResult, QualityCode, TagInfo } from '@/types/historian';
 import { createError } from '@/middleware/errorHandler';
+import { dataFilteringService } from './dataFiltering';
 import { opcuaService } from './opcuaService';
 
 export interface DataFlowConfig {
@@ -53,7 +54,22 @@ export class DataFlowService {
       });
 
       // Step 1: Retrieve data from multiple sources
-      const data = await this.retrieveMultiSourceData(config.reportConfig);
+      let data = await this.retrieveMultiSourceData(config.reportConfig);
+
+      // Step 1.5: Apply advanced filtering if configured
+      if (config.reportConfig.advancedFilters) {
+        reportLogger.info('Applying advanced data filters', {
+          reportId: config.reportConfig.id
+        });
+
+        const filteredData: Record<string, TimeSeriesData[]> = {};
+        for (const [tagName, tagData] of Object.entries(data)) {
+          filteredData[tagName] = dataFilteringService.applyFilters(tagData, {
+            advancedConditions: config.reportConfig.advancedFilters
+          });
+        }
+        data = filteredData;
+      }
 
       // Count data points and calculate quality metrics
       for (const [tagName, tagData] of Object.entries(data)) {

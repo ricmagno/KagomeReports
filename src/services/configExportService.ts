@@ -488,6 +488,7 @@ in
       reportName: config.name || 'Unnamed Report',
       template: config.template || 'default',
       chartTypes: (config.chartTypes || ['line']) as string[],
+      advancedFilters: config.advancedFilters,
       ...(config.description && { description: config.description }),
     };
 

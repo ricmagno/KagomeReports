@@ -61,6 +61,44 @@ export class OpcuaService {
                         throw new Error('OPC UA client is not initialized');
                     }
 
+                    // Advanced Discovery before connecting
+                    try {
+                        logger.info(`Discovering server endpoints: ${config.endpointUrl}`);
+                        const endpoints = await this.client.getEndpoints({ endpointUrl: config.endpointUrl });
+
+                        logger.info(`Server discovered with ${endpoints.length} endpoints`);
+                        endpoints.forEach((ep, i) => {
+                            const policies = ep.userIdentityTokens?.map(p => `${p.policyId} (${UserTokenType[p.tokenType as any]})`).join(', ');
+                            logger.info(`Endpoint ${i + 1}:`, {
+                                endpointUrl: ep.endpointUrl,
+                                securityMode: MessageSecurityMode[ep.securityMode],
+                                securityPolicy: ep.securityPolicyUri,
+                                userPolicies: policies
+                            });
+                        });
+
+                        // Check if current config matches any discovered endpoint
+                        const targetSecurityMode = (MessageSecurityMode as any)[config.securityMode];
+                        const targetSecurityPolicy = (SecurityPolicy as any)[config.securityPolicy];
+
+                        const matchingEndpoint = endpoints.find(ep =>
+                            ep.securityMode === targetSecurityMode &&
+                            ep.securityPolicyUri === targetSecurityPolicy
+                        );
+
+                        if (!matchingEndpoint) {
+                            logger.warn('WARNING: No exact matching endpoint found for current configuration in server discovery data.');
+                        } else {
+                            logger.info('Matching server endpoint found for current configuration.');
+                            const supportsUsername = matchingEndpoint.userIdentityTokens?.some(p => p.tokenType === UserTokenType.UserName);
+                            if (!supportsUsername) {
+                                logger.error('CRITICAL: The selected endpoint DOES NOT appear to support Username/Password authentication according to server discovery data!');
+                            }
+                        }
+                    } catch (discoveryError: any) {
+                        logger.warn(`Endpoint discovery failed: ${discoveryError.message}. Proceeding with direct connection...`);
+                    }
+
                     // Attempt connection
                     await this.client.connect(config.endpointUrl);
                     logger.info(`Connected to OPC UA server: ${config.endpointUrl}`);
@@ -112,6 +150,16 @@ export class OpcuaService {
                 stack: error.stack
             };
             logger.error('Failed to connect to OPC UA server after retries:', errorDetails);
+
+            // Provide helpful hint for BadUserAccessDenied
+            if (error.message.includes('BadUserAccessDenied')) {
+                logger.error('CRITICAL: ACCESS DENIED. Possible reasons:');
+                logger.error('1. Wrong username/password (double check case sensitivity)');
+                logger.error('2. Username format: try "DOMAIN\\username" or ".\\username" if using Windows-based server');
+                logger.error('3. Account locked or disabled on OPC UA server');
+                logger.error('4. Server requires encryption for username/password login, but current mode is None');
+                logger.error('5. Client certificate is NOT trusted on the server (check server trust list)');
+            }
 
             // Cleanup on failure
             if (this.client) {

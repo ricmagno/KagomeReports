@@ -264,6 +264,7 @@ export class ReportManagementService {
         includeStatsSummary: request.config.includeStatsSummary,
         includeDataTable: request.config.includeDataTable,
         retrievalMode: (request.config as any).retrievalMode,
+        advancedFilters: (request.config as any).advancedFilters,
         createdBy: userId,
         createdAt: new Date(),
         updatedAt: new Date(),

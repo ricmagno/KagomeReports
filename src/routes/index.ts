@@ -24,6 +24,7 @@ import updatesRoutes from './updates';
 import configurationRoutes from './configuration';
 import dashboardRoutes from './dashboards';
 import alertRoutes from './alerts';
+import dataManagementRoutes from './dataManagement';
 
 const router = Router();
 
@@ -47,6 +48,7 @@ router.use('/auth/auto-login', autoLoginRoutes);
 router.use('/version', versionRoutes);
 router.use('/updates', updatesRoutes);
 router.use('/configuration', configurationRoutes);
+router.use('/configuration/data-management', dataManagementRoutes);
 router.use('/alerts', alertRoutes);
 
 // API info endpoint

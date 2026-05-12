@@ -168,26 +168,43 @@ router.get('/:tagName',
         options,
         progressTracker?.operationId
       );
-
+      
+      // Step: Apply Advanced Filters if present
+      let filteredData = data;
+      const advancedFiltersRaw = req.query.advancedFilters;
+      if (advancedFiltersRaw && typeof advancedFiltersRaw === 'string') {
+        try {
+          const advancedFilters = JSON.parse(advancedFiltersRaw);
+          if (advancedFilters && (advancedFilters.logicalOperator || advancedFilters.comparison)) {
+            apiLogger.info('Applying advanced filters to retrieved data', { tagName, filterCount: advancedFilters.conditions?.length });
+            filteredData = data.filter(point => dataFilteringService.evaluateCondition(point, advancedFilters));
+            apiLogger.info('Filtering complete', { tagName, originalCount: data.length, filteredCount: filteredData.length });
+          }
+        } catch (parseError) {
+          apiLogger.warn('Failed to parse advancedFilters from query', { error: parseError });
+          // Continue with unfiltered data or throw? Let's continue for resilience
+        }
+      }
+      
       // Calculate basic statistics if requested
       const includeStats = req.query.includeStats === 'true';
       let statistics;
-      if (includeStats && data.length > 0) {
+      if (includeStats && filteredData.length > 0) {
         progressTracker?.updateProgress('analysis', 90, 'Calculating statistics');
         statistics = await statisticalAnalysisService.calculateStatistics(
           tagName,
           timeRange.startTime,
           timeRange.endTime,
-          data
+          filteredData
         );
       }
 
-      progressTracker?.completeOperation(`Retrieved ${data.length} data points`);
+      progressTracker?.completeOperation(`Retrieved ${filteredData.length} data points`);
 
       res.json({
         success: true,
-        data,
-        count: data.length,
+        data: filteredData,
+        count: filteredData.length,
         tagName,
         timeRange,
         operationId: progressTracker?.operationId,

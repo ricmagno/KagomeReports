@@ -73,6 +73,7 @@ const reportConfigBaseSchema = z.object({
       max: z.number().optional()
     }).optional()
   }).optional(),
+  advancedFilters: z.any().optional(),
   format: z.enum(['pdf', 'docx']).default('pdf'),
   branding: z.object({
     companyName: z.string().optional(),
@@ -186,6 +187,7 @@ router.post('/generate', authenticateToken, requirePermission('reports', 'write'
     includeTrends: config.includeTrends,
     includeAnomalies: config.includeAnomalies,
     includeDataTable: config.includeDataTable,
+    advancedFilters: config.advancedFilters,
   };
 
   apiLogger.info('Starting end-to-end report generation', {

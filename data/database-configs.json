@@ -1,5 +1,60 @@
 {
-  "configurations": [],
-  "activeConfigId": null,
-  "lastUpdated": "2026-02-26T09:18:33.328Z"
+  "configurations": [
+    {
+      "id": "080b9cfd-1b2a-457f-aba2-c7412aca3264",
+      "name": "AVEVA Historian - Primary (192.168.235.17)",
+      "host": "192.168.235.17",
+      "port": 1433,
+      "database": "Runtime",
+      "username": "historian",
+      "encryptedPassword": "{\"data\":\"913e3108f2707795908a1c901b07b9bb77f1dd52faa163afc1ca941829eec60617b623e85457320ecedd741dc364d4df\",\"iv\":\"5ee5718f916ae1e2cfb9c97aefa4ac45\",\"tag\":\"93b87c4b749f7062a65cbc93869fce1838b81344764d89425eaa872819d2b604\",\"algorithm\":\"aes-256-cbc\"}",
+      "encrypt": true,
+      "trustServerCertificate": true,
+      "connectionTimeout": 30000,
+      "requestTimeout": 30000,
+      "isActive": true,
+      "createdBy": "admin",
+      "createdAt": "2026-04-22T10:15:10.583Z",
+      "status": "connected",
+      "lastTested": "2026-04-22T10:16:42.125Z"
+    },
+    {
+      "id": "f55becfd-cfee-47a2-b918-048e5eb09f29",
+      "name": "AVEVA Historian - Secondary (192.168.1.17)",
+      "host": "192.168.1.17",
+      "port": 1433,
+      "database": "Runtime",
+      "username": "historian",
+      "encryptedPassword": "{\"data\":\"316a5cd5bd61b660d75a2acc530f7032312f068fac6113305530c70bae1435f605a388e1fa0169d13424178083f19145\",\"iv\":\"8a47a173ca3617b4b3be2fa9411bcdb6\",\"tag\":\"e6e330628c50cfd3767a11731c7387f407459cc9e0622c621fa9bf66a7f38983\",\"algorithm\":\"aes-256-cbc\"}",
+      "encrypt": true,
+      "trustServerCertificate": true,
+      "connectionTimeout": 30000,
+      "requestTimeout": 30000,
+      "isActive": false,
+      "createdBy": "admin",
+      "createdAt": "2026-04-22T10:15:10.869Z",
+      "status": "error",
+      "lastTested": "2026-04-22T10:17:30.123Z"
+    },
+    {
+      "id": "401cbdd0-99c2-481d-b245-2023eb76560d",
+      "name": "AVEVA Historian - KAGHISTORIAN01",
+      "host": "KAGHISTORIAN01",
+      "port": 1433,
+      "database": "Runtime",
+      "username": "historian",
+      "encryptedPassword": "{\"data\":\"719c3cd2236228853fedc803a7f27f62d334c106a18728d5b082a7524937a91034505774fa355a845d7976e9d48ffbe6\",\"iv\":\"07c152bcad7b4424bfba1afda419d5db\",\"tag\":\"ad65d1f83490a311e4bcc3441cdb5ee72a741453204f116127cc7f48038727fe\",\"algorithm\":\"aes-256-cbc\"}",
+      "encrypt": true,
+      "trustServerCertificate": true,
+      "connectionTimeout": 30000,
+      "requestTimeout": 30000,
+      "isActive": false,
+      "createdBy": "admin",
+      "createdAt": "2026-04-22T10:15:58.702Z",
+      "status": "error",
+      "lastTested": "2026-04-22T10:17:33.245Z"
+    }
+  ],
+  "activeConfigId": "080b9cfd-1b2a-457f-aba2-c7412aca3264",
+  "lastUpdated": "2026-04-22T10:17:33.248Z"
 }

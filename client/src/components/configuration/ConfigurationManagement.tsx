@@ -18,6 +18,7 @@ import { CategorySection } from './CategorySection';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { OpcuaConfiguration } from './OpcuaConfiguration';
 import { HistorianConfiguration } from './HistorianConfiguration';
+import { DataManagement } from './DataManagement';
 import { cn } from '../../utils/cn';
 import './ConfigurationManagement.css';
 
@@ -30,7 +31,7 @@ interface ConfigurationManagementState {
   refreshing: boolean;
   editingConfigs: Set<string>;
   successMessage: string | null;
-  configTab: 'historian' | 'opcua';
+  configTab: 'historian' | 'opcua' | 'data-management';
   confirmationDialog: {
     isOpen: boolean;
     changes: ConfigurationChange[];
@@ -341,6 +342,14 @@ export const ConfigurationManagement: React.FC = () => {
             >
               OPC UA
             </button>
+            {isAdmin && (
+              <button
+                className={cn("tab-button", state.configTab === 'data-management' && "active")}
+                onClick={() => setState(prev => ({ ...prev, configTab: 'data-management' }))}
+              >
+                Data Management
+              </button>
+            )}
           </div>
           {state.configTab === 'historian' && (
             <button
@@ -358,9 +367,19 @@ export const ConfigurationManagement: React.FC = () => {
 
       {state.configTab === 'historian' ? (
         <HistorianConfiguration />
-      ) : (
+      ) : state.configTab === 'opcua' ? (
         <div className="mt-6">
           <OpcuaConfiguration />
+        </div>
+      ) : isAdmin ? (
+        <div className="mt-6">
+          <DataManagement />
+        </div>
+      ) : (
+        <div className="mt-6 p-8 text-center text-gray-500 bg-gray-50 rounded-lg border">
+          <Lock className="mx-auto mb-3 text-gray-400" size={32} />
+          <h3 className="text-lg font-medium text-gray-900">Administrator Access Required</h3>
+          <p className="mt-1">Only users with the Administrator role can access Data Management.</p>
         </div>
       )}
     </div>

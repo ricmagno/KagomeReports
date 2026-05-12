@@ -570,6 +570,7 @@ export class ConfigImportService {
       // Map template and chart types
       template: exported.template || exported.customSettings?.template,
       chartTypes: (exported.chartTypes || exported.customSettings?.chartTypes) as any,
+      advancedFilters: exported.advancedFilters,
 
       // Map analytics options to ReportConfig fields
       includeSPCCharts: exported.analytics?.showSPCMetrics ?? false,
@@ -717,7 +718,7 @@ export class ConfigImportService {
 
       // Specification limits
       ...(config.specificationLimits && { specificationLimits: config.specificationLimits }),
-
+      advancedFilters: config.advancedFilters,
       // Import metadata
       ...(config.importMetadata && { importMetadata: config.importMetadata }),
 

@@ -107,9 +107,10 @@ async function setupDatabaseConfigurations() {
     
     if (primaryConfig && primaryConfig.status === 'connected') {
       console.log('Setting primary configuration as active...');
-      await configService.switchActiveConfiguration(primaryConfig.id);
+      await configService.activateConfiguration(primaryConfig.id);
       console.log('✓ Primary configuration set as active');
     }
+
 
     console.log('\nDatabase configuration setup completed!');
     console.log('You can now use the web interface to manage these configurations.');

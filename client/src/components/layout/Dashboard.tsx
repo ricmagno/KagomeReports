@@ -41,6 +41,7 @@ import { DashboardList } from '../dashboards/DashboardList';
 import { DashboardView } from '../dashboards/DashboardView';
 import { DashboardEditor } from '../dashboards/DashboardEditor';
 import { TagSelector } from '../forms/TagSelector';
+import { DataFilterConfig } from '../forms/DataFilterConfig';
 import { AlertsManagement } from '../alerts/AlertsManagement';
 import { apiService } from '../../services/api';
 import { useAuth } from '../../hooks/useAuth';
@@ -59,7 +60,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [healthStatus, setHealthStatus] = useState<string>('checking...');
   const [serverTime, setServerTime] = useState<{ local: string, timezone: string } | null>(null);
-  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [loginForm, setLoginForm] = useState({ username: '', password: '', rememberMe: true });
   const [loginLoading, setLoginLoading] = useState(false);
   const { success, error: toastError, warning, info } = useToast();
   const [reportConfig, setReportConfig] = useState<Partial<ReportConfig>>({
@@ -83,6 +84,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     includeStatsSummary: true,
     includeDataTable: false,
     specificationLimits: {},
+    advancedFilters: undefined,
   });
   const [savedConfig, setSavedConfig] = useState<Partial<ReportConfig> | null>(null);
   const reportPreviewRef = React.useRef<import('../reports/ReportPreview').ReportPreviewRef>(null);
@@ -104,8 +106,9 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
     if (JSON.stringify(reportConfig.tags?.sort()) !== JSON.stringify(savedConfig.tags?.sort())) return true;
     if (JSON.stringify(reportConfig.chartTypes?.sort()) !== JSON.stringify(savedConfig.chartTypes?.sort())) return true;
 
-    // Nested object comparison (specificationLimits)
+    // Nested object comparison (specificationLimits, advancedFilters)
     if (JSON.stringify(reportConfig.specificationLimits) !== JSON.stringify(savedConfig.specificationLimits)) return true;
+    if (JSON.stringify(reportConfig.advancedFilters) !== JSON.stringify(savedConfig.advancedFilters)) return true;
 
     // Time range comparison
     const tr1 = reportConfig.timeRange;
@@ -207,7 +210,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
 
     try {
       setLoginLoading(true);
-      await authLogin(loginForm.username, loginForm.password);
+      await authLogin(loginForm.username, loginForm.password, loginForm.rememberMe);
     } catch (error) {
       console.error('Login error:', error);
       alert('Login failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
@@ -343,6 +346,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
         includeStatsSummary: reportConfig.includeStatsSummary ?? true,
         includeDataTable: reportConfig.includeDataTable ?? false,
         specificationLimits: reportConfig.specificationLimits || {},
+        advancedFilters: reportConfig.advancedFilters,
         version: reportConfig.version,
         retrievalMode: reportConfig.retrievalMode || 'Delta',
         charts: Object.keys(capturedCharts).length > 0 ? capturedCharts : undefined
@@ -414,7 +418,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           includeStatsSummary: reportConfig.includeStatsSummary ?? true,
           includeDataTable: reportConfig.includeDataTable ?? false,
           specificationLimits: reportConfig.specificationLimits || {},
-          retrievalMode: reportConfig.retrievalMode || 'Delta'
+          retrievalMode: reportConfig.retrievalMode || 'Delta',
+          advancedFilters: reportConfig.advancedFilters
         }
       };
 
@@ -482,7 +487,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
           includeMultiTrend: loadedReport.config.includeMultiTrend ?? true,
           includeSPCCharts: loadedReport.config.includeSPCCharts ?? true,
           includeStatsSummary: loadedReport.config.includeStatsSummary ?? true,
-          specificationLimits: loadedReport.config.specificationLimits || {}
+          specificationLimits: loadedReport.config.specificationLimits || {},
+          advancedFilters: loadedReport.config.advancedFilters
         });
         setSavedConfig(response.data.config);
         setActiveTab('create');
@@ -518,7 +524,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       includeMultiTrend: versionInfo.config.includeMultiTrend ?? true,
       includeSPCCharts: versionInfo.config.includeSPCCharts ?? true,
       includeStatsSummary: versionInfo.config.includeStatsSummary ?? true,
-      specificationLimits: versionInfo.config.specificationLimits || {}
+      specificationLimits: versionInfo.config.specificationLimits || {},
+      advancedFilters: versionInfo.config.advancedFilters
     });
     setSavedConfig(versionInfo.config);
     setSelectedReportForHistory(null);
@@ -550,6 +557,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
       includeSPCCharts: importedConfig.includeSPCCharts ?? true,
       includeStatsSummary: importedConfig.includeStatsSummary ?? true,
       specificationLimits: importedConfig.specificationLimits || {},
+      advancedFilters: importedConfig.advancedFilters,
     });
 
     // Clear saved config since this is a new imported configuration
@@ -792,6 +800,18 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                     autoComplete="new-password"
                   />
                 </div>
+                <div className="flex items-center space-x-2 pb-2">
+                  <input
+                    type="checkbox"
+                    id="rememberMe"
+                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded cursor-pointer"
+                    checked={loginForm.rememberMe}
+                    onChange={e => setLoginForm(prev => ({ ...prev, rememberMe: e.target.checked }))}
+                  />
+                  <label htmlFor="rememberMe" className="text-sm font-medium text-gray-700 cursor-pointer">
+                    Stay logged in
+                  </label>
+                </div>
                 <Button className="w-full" onClick={handleLogin} loading={loginLoading}>
                   <LogIn className="h-4 w-4 mr-2" />
                   Login
@@ -924,6 +944,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           widgetType="report"
                           className="border-none shadow-none p-0"
                         />
+
+                        {/* Advanced Data Filters */}
+                        <div className="pt-4 border-t border-gray-100">
+                          <DataFilterConfig
+                            filters={reportConfig.advancedFilters}
+                            onChange={(filters) => setReportConfig(prev => ({ ...prev, advancedFilters: filters }))}
+                          />
+                        </div>
+
                       </CardContent>
                     </Card>
 
@@ -1054,8 +1083,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ className }) => {
                           includeSPCCharts: reportConfig.includeSPCCharts,
                           includeStatsSummary: reportConfig.includeStatsSummary,
                           includeDataTable: reportConfig.includeDataTable,
-                          specificationLimits: reportConfig.specificationLimits
+                          specificationLimits: reportConfig.specificationLimits,
+                          advancedFilters: reportConfig.advancedFilters
                         }}
+
                       />
                     </div>
                   )

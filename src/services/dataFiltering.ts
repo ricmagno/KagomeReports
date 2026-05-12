@@ -3,7 +3,7 @@
  * Provides advanced filtering capabilities for time-series data
  */
 
-import { TimeSeriesData, DataFilter, QualityCode, QueryResult } from '@/types/historian';
+import { TimeSeriesData, DataFilter, QualityCode, QueryResult, FilterCondition } from '@/types/historian';
 import { dbLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
 
@@ -43,6 +43,13 @@ export class DataFilteringService {
       }
     }
 
+    // Apply advanced recursive filters
+    if (filter.advancedConditions) {
+      filteredData = filteredData.filter(point => 
+        this.evaluateCondition(point, filter.advancedConditions!)
+      );
+    }
+
     dbLogger.debug('Data filtering applied', {
       originalCount: data.length,
       filteredCount: filteredData.length,
@@ -51,6 +58,49 @@ export class DataFilteringService {
 
     return filteredData;
   }
+
+  /**
+   * Evaluate a recursive filter condition against a data point
+   */
+  evaluateCondition(point: TimeSeriesData, condition: FilterCondition): boolean {
+    // If it's a comparison condition
+    if (condition.comparison) {
+      const { operator, value } = condition.comparison;
+      const pointValue = point.value;
+
+      switch (operator) {
+        case 'EQ': return pointValue === value;
+        case 'GT': return pointValue > value;
+        case 'LT': return pointValue < value;
+        case 'GTE': return pointValue >= value;
+        case 'LTE': return pointValue <= value;
+        case 'NEQ': return pointValue !== value;
+        default: return true;
+      }
+    }
+
+    // If it's a logical operator with sub-conditions
+    if (condition.logicalOperator && condition.conditions) {
+      const { logicalOperator, conditions } = condition;
+
+      switch (logicalOperator) {
+        case 'AND':
+          return conditions.every(c => this.evaluateCondition(point, c));
+        case 'OR':
+          return conditions.some(c => this.evaluateCondition(point, c));
+        case 'NOR':
+          return !conditions.some(c => this.evaluateCondition(point, c));
+        case 'NOT':
+          return conditions.length > 0 && conditions[0] ? !this.evaluateCondition(point, conditions[0]) : true;
+
+        default:
+          return true;
+      }
+    }
+
+    return true;
+  }
+
 
   /**
    * Filter data by quality codes with detailed quality analysis
@@ -373,7 +423,40 @@ export class DataFilteringService {
     if (filter.qualityFilter && filter.qualityFilter.length === 0) {
       throw createError('Quality filter array cannot be empty', 400);
     }
+    if (filter.advancedConditions) {
+      this.validateFilterCondition(filter.advancedConditions);
+    }
   }
+
+  /**
+   * Recursively validate a filter condition structure
+   */
+  private validateFilterCondition(condition: FilterCondition, depth: number = 0): void {
+    if (depth > 10) {
+      throw createError('Filter condition nesting too deep (max 10 levels)', 400);
+    }
+
+    if (condition.logicalOperator) {
+      // NOT operator should have exactly one condition, others should have at least one
+      if (!condition.conditions || condition.conditions.length === 0) {
+        throw createError(`Logical operator '${condition.logicalOperator}' must contain at least one condition`, 400);
+      }
+      if (condition.logicalOperator === 'NOT' && condition.conditions.length > 1) {
+        throw createError("Logical operator 'NOT' can only have a single child condition", 400);
+      }
+      condition.conditions.forEach(c => this.validateFilterCondition(c, depth + 1));
+    } else if (condition.comparison) {
+      if (condition.comparison.value === undefined || isNaN(condition.comparison.value)) {
+        throw createError('Comparison condition must have a valid numeric value', 400);
+      }
+      if (!condition.comparison.operator) {
+        throw createError('Comparison condition must specify an operator', 400);
+      }
+    } else {
+      throw createError('Filter condition must specify either a logical operator or a comparison', 400);
+    }
+  }
+
 }
 
 // Export singleton instance

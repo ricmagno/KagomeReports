@@ -11,17 +11,7 @@ import { progressTracker } from '@/middleware/progressTracker';
 import { createHash } from 'crypto';
 import { Readable, Transform } from 'stream';
 import { pipeline } from 'stream/promises';
-import {
-  TimeSeriesData,
-  TagInfo,
-  TimeRange,
-  DataFilter,
-  QueryResult,
-  HistorianQueryOptions,
-  RetrievalMode,
-  QualityCode,
-  StatisticsResult
-} from '@/types/historian';
+import { TimeSeriesData, TagInfo, TimeRange, DataFilter, QueryResult, HistorianQueryOptions, RetrievalMode, QualityCode, StatisticsResult, FilterCondition } from '@/types/historian';
 import { opcuaService } from './opcuaService';
 
 export class DataRetrievalService {
@@ -938,6 +928,15 @@ export class DataRetrievalService {
       }
     }
 
+    // Add advanced recursive filters
+    if (filter.advancedConditions) {
+      const paramCounter = { count: 0 };
+      const advancedSql = this.translateConditionToSql(filter.advancedConditions, paramCounter);
+      if (advancedSql) {
+        query += ` AND (${advancedSql})`;
+      }
+    }
+
     // Add cursor for pagination
     if (cursor) {
       query += ` AND DateTime > @cursorTime`;
@@ -947,6 +946,55 @@ export class DataRetrievalService {
 
     return query;
   }
+
+  /**
+   * Translate recursive filter condition to SQL WHERE clause
+   */
+  private translateConditionToSql(condition: FilterCondition, paramCounter: { count: number }): string {
+    if (condition.comparison) {
+      const { operator, value } = condition.comparison;
+      const paramName = `advParam${paramCounter.count++}`;
+      
+      let sqlOp = '';
+      switch (operator) {
+        case 'EQ': sqlOp = '='; break;
+        case 'GT': sqlOp = '>'; break;
+        case 'LT': sqlOp = '<'; break;
+        case 'GTE': sqlOp = '>='; break;
+        case 'LTE': sqlOp = '<='; break;
+        case 'NEQ': sqlOp = '<>'; break;
+        default: return '';
+      }
+      
+      return `Value ${sqlOp} @${paramName}`;
+    }
+
+    if (condition.logicalOperator && condition.conditions) {
+      const { logicalOperator, conditions } = condition;
+      const subSqls = conditions
+        .map(c => this.translateConditionToSql(c, paramCounter))
+        .filter(s => s !== '');
+
+      if (subSqls.length === 0) return '';
+
+      const joinOp = logicalOperator === 'NOR' ? 'OR' : logicalOperator;
+      const joined = subSqls.join(` ${joinOp} `);
+
+      switch (logicalOperator) {
+        case 'AND':
+        case 'OR':
+          return `(${joined})`;
+        case 'NOR':
+        case 'NOT':
+          return `NOT (${joined})`;
+        default:
+          return '';
+      }
+    }
+
+    return '';
+  }
+
 
   /**
    * Build parameters for filtered query
@@ -990,6 +1038,12 @@ export class DataRetrievalService {
       }
     }
 
+    // Add advanced recursive filter parameters
+    if (filter.advancedConditions) {
+      const paramCounter = { count: 0 };
+      this.addAdvancedQueryParams(filter.advancedConditions, params, paramCounter);
+    }
+
     // Add cursor parameter
     if (cursor) {
       params.cursorTime = new Date(cursor);
@@ -997,6 +1051,21 @@ export class DataRetrievalService {
 
     return params;
   }
+
+  /**
+   * Add parameters for advanced recursive filters
+   */
+  private addAdvancedQueryParams(condition: FilterCondition, params: Record<string, any>, paramCounter: { count: number }): void {
+    if (condition.comparison) {
+      const paramName = `advParam${paramCounter.count++}`;
+      params[paramName] = condition.comparison.value;
+    }
+
+    if (condition.conditions) {
+      condition.conditions.forEach(c => this.addAdvancedQueryParams(c, params, paramCounter));
+    }
+  }
+
 
   /**
    * Build count query for pagination
@@ -1030,8 +1099,18 @@ export class DataRetrievalService {
       }
     }
 
+    // Add advanced recursive filters
+    if (filter.advancedConditions) {
+      const paramCounter = { count: 0 };
+      const advancedSql = this.translateConditionToSql(filter.advancedConditions, paramCounter);
+      if (advancedSql) {
+        query += ` AND (${advancedSql})`;
+      }
+    }
+
     return query;
   }
+
 
   /**
    * Transform raw database row to TimeSeriesData

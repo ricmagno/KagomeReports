@@ -5,7 +5,12 @@ import { OpcuaConfig } from '@/types/opcuaConfig';
 // Mock node-opcua
 jest.mock('node-opcua', () => ({
     OPCUAClient: {
-        create: jest.fn(),
+        create: jest.fn().mockImplementation(() => ({
+            getEndpoints: jest.fn().mockResolvedValue([]),
+            connect: jest.fn(),
+            createSession: jest.fn(),
+            disconnect: jest.fn(),
+        })),
     },
     OPCUACertificateManager: jest.fn().mockImplementation(() => ({})),
     MessageSecurityMode: {

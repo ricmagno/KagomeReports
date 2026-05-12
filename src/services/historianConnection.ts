@@ -59,7 +59,7 @@ export class HistorianConnection {
             dbLogger.info('Attempting to connect to AVEVA Historian database...');
 
             // Try to get active database configuration first
-            const activeConfig = databaseConfigService.getActiveConfiguration();
+            const activeConfig = await databaseConfigService.getActiveConfigurationAsync();
 
             if (activeConfig) {
               dbLogger.info('Using active database configuration', {

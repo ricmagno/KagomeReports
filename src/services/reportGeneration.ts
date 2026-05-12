@@ -57,6 +57,7 @@ export interface ReportConfig {
   includeDataTable?: boolean | undefined;
   version?: number | undefined;
   retrievalMode?: string | undefined;
+  advancedFilters?: any | undefined;
 }
 
 export interface ReportData {
