@@ -245,7 +245,7 @@ export class HistorianConnection {
         const request = this.pool.request();
         
         // Set request timeout from environment or use 30s default
-        request.timeout = env.DB_TIMEOUT_MS || 30000;
+        (request as any).timeout = env.DB_TIMEOUT_MS || 30000;
 
         // Add parameters if provided
         if (params) {
@@ -330,7 +330,7 @@ export class HistorianConnection {
         if (!this.pool) return false;
 
         const request = this.pool.request();
-        request.timeout = 5000; // 5s timeout for the query itself
+        (request as any).timeout = 5000; // 5s timeout for the query itself
         await request.query('SELECT 1 as test');
         return true;
       } catch (error) {

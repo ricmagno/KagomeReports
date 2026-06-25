@@ -12,7 +12,8 @@ import {
   SPCMetrics,
   SpecificationLimits,
   TrendLineCalculator,
-  SPCCalculator
+  SPCCalculator,
+  QualityCode
 } from '@/types/historian';
 import { dbLogger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
@@ -904,13 +905,15 @@ export class StatisticalAnalysisService implements SPCCalculator, TrendLineCalcu
     // Count quality types
     for (const point of data) {
       switch (point.quality) {
-        case 0: // Good
+        case QualityCode.Good:
+        case QualityCode.InitialValue:
+        case QualityCode.OutOfSync:
           goodQuality++;
           break;
-        case 0: // Bad
+        case QualityCode.Bad:
           badQuality++;
           break;
-        case 64: // Uncertain
+        case QualityCode.Uncertain:
           uncertainQuality++;
           break;
         default:

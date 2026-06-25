@@ -174,7 +174,7 @@ router.get('/:tagName',
         relativeRange: timeRangeResult.data.relativeRange,
         timezone: timeRangeResult.data.timezone
       };
-      const options = {
+      const options: HistorianQueryOptions = {
         ...optionsResult.data,
         maxPoints: optionsResult.data.maxPoints || optionsResult.data.limit
       };
