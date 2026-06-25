@@ -254,7 +254,7 @@ export const MultiTrendChart: React.FC<MultiTrendChartProps> = ({
             shared: true,
             intersect: false,
             y: {
-                formatter: (val, { seriesIndex, w }) => {
+                formatter: (val, { seriesIndex, w }: any) => {
                     const seriesName = w.config.series[seriesIndex]?.name;
                     if (seriesName && typeof seriesName === 'string' && seriesName.endsWith('(Trend)')) {
                         const originalTag = seriesName.replace(' (Trend)', '');

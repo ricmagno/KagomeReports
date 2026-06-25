@@ -228,7 +228,7 @@ export const MiniChart: React.FC<MiniChartProps> = ({
         format: 'HH:mm'
       },
       y: {
-        formatter: (val, { seriesIndex }) => {
+        formatter: (val, { seriesIndex }: any) => {
           if (seriesIndex === 1 && trendResult) {
             return `${formatYValue(val as number)} [${trendResult.equation}]`;
           }
