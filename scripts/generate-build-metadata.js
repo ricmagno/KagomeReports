@@ -22,19 +22,23 @@ try {
   const buildDate = new Date().toISOString();
 
   // Get commit hash
-  let commitHash = 'unknown';
-  try {
-    commitHash = execSync('git rev-parse HEAD', { encoding: 'utf-8' }).trim();
-  } catch (error) {
-    console.warn('Could not get commit hash from git');
+  let commitHash = process.env.COMMIT_HASH || 'unknown';
+  if (commitHash === 'unknown') {
+    try {
+      commitHash = execSync('git rev-parse HEAD', { encoding: 'utf-8' }).trim();
+    } catch (error) {
+      console.warn('Could not get commit hash from git');
+    }
   }
 
   // Get branch name
-  let branchName = 'main';
-  try {
-    branchName = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
-  } catch (error) {
-    console.warn('Could not get branch name from git');
+  let branchName = process.env.BRANCH_NAME || 'main';
+  if (branchName === 'main') {
+    try {
+      branchName = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
+    } catch (error) {
+      console.warn('Could not get branch name from git');
+    }
   }
 
   // Create build metadata

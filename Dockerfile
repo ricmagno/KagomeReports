@@ -23,6 +23,10 @@ WORKDIR /app
 
 # --- Stage 1: Build Backend ---
 FROM base AS backend-builder
+ARG COMMIT_HASH=unknown
+ARG BRANCH_NAME=unknown
+ENV COMMIT_HASH=${COMMIT_HASH} \
+    BRANCH_NAME=${BRANCH_NAME}
 COPY package*.json ./
 RUN npm install --legacy-peer-deps
 COPY . .
@@ -72,6 +76,7 @@ COPY --from=backend-builder --chown=historian:nodejs /app/dist ./dist
 COPY --from=backend-builder --chown=historian:nodejs /app/package.json ./package.json
 COPY --from=backend-builder --chown=historian:nodejs /app/templates ./templates
 COPY --from=backend-builder --chown=historian:nodejs /app/scripts/healthcheck.js ./scripts/healthcheck.js
+COPY --from=backend-builder --chown=historian:nodejs /app/.build-metadata.json ./.build-metadata.json
 
 # Copy client build to be served by the backend
 COPY --from=client-builder --chown=historian:nodejs /app/client/build ./client/build
@@ -89,6 +94,8 @@ EXPOSE 3000
 
 # Environment defaults
 ARG VERSION=unknown
+ARG COMMIT_HASH=unknown
+ARG BRANCH_NAME=unknown
 ENV NODE_ENV=production \
     PORT=3000 \
     DATA_DIR=/app/data \
@@ -96,7 +103,9 @@ ENV NODE_ENV=production \
     LOG_FILE=/app/logs/app.log \
     TEMP_DIR=/app/temp \
     IS_DOCKER=true \
-    VERSION=${VERSION}
+    VERSION=${VERSION} \
+    COMMIT_HASH=${COMMIT_HASH} \
+    BRANCH_NAME=${BRANCH_NAME}
 
 # Labels for metadata
 LABEL maintainer="Historian Reports Team" \

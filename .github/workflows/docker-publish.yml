@@ -47,5 +47,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ github.ref_name }}
+            COMMIT_HASH=${{ github.sha }}
+            BRANCH_NAME=${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
