@@ -7,9 +7,9 @@
 import Database from 'better-sqlite3';
 import jwt from 'jsonwebtoken';
 import { apiLogger } from '@/utils/logger';
-import { env, getDatabasePath } from '@/config/environment';
+import { env } from '@/config/environment';
 import { fingerprintService, FingerprintData } from '@/services/fingerprintService';
-import { AuthResult } from '@/services/authService';
+import { AuthResult, authService } from '@/services/authService';
 
 export interface MachineInfo {
   id: string;
@@ -21,18 +21,14 @@ export interface MachineInfo {
 }
 
 export class AutoLoginService {
-  private db!: Database.Database;
+  private get db(): Database.Database {
+    return authService.db;
+  }
   private jwtSecret: string;
   private autoLoginTokenExpiry: string = '30d';
 
   constructor() {
     this.jwtSecret = env.JWT_SECRET;
-    this.initializeDatabase();
-  }
-
-  private initializeDatabase(): void {
-    const dbPath = getDatabasePath('auth.db');
-    this.db = new Database(dbPath);
     apiLogger.info('Auto-login service initialized');
   }
 
