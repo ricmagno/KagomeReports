@@ -115,3 +115,6 @@ data/*.json
 scadaSMS/
 build-secrets
 #.env#
+
+# Local tool caches
+.crush/
