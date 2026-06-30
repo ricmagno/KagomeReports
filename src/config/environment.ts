@@ -65,7 +65,7 @@ const envSchema = z.object({
 
   // Notification Configuration
   SMS_API_TOKEN: z.string().optional(),
-  NOTIFICATIONS_API_URL: z.string().url('Valid notification API URL is required').default('https://notifications.kagome.com.au/api/publish/sms'),
+  NOTIFICATIONS_API_URL: z.string().url().optional(),
 });
 
 // Validate and export environment configuration

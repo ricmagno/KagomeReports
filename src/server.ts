@@ -332,7 +332,7 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
     logger.warn('⚠ Historian database connection failed:', error);
   }
 
-  // 5. Load persisted email config from DB (takes priority over .env vars)
+  // 5. Load persisted delivery configs from DB (takes priority over .env vars)
   try {
     const { alertDeliveryConfigService } = await import('@/services/alertDeliveryConfigService');
     const dbEmailConfig = alertDeliveryConfigService.getEmailConfig();
@@ -348,8 +348,14 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
       });
       logger.info('✓ Email service reconfigured from database settings');
     }
+    const { smsService } = await import('@/services/smsService');
+    const dbSmsConfig = alertDeliveryConfigService.getSmsConfig();
+    if (dbSmsConfig) {
+      smsService.reconfigure({ apiUrl: dbSmsConfig.apiUrl, apiToken: dbSmsConfig.apiToken });
+      logger.info('✓ SMS service reconfigured from database settings');
+    }
   } catch (error) {
-    logger.warn('⚠ Could not load email config from database:', error);
+    logger.warn('⚠ Could not load delivery configs from database:', error);
   }
 
   // 5b. Email Service status (no live SMTP check at startup — use UI "Send Test")

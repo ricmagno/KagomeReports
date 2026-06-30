@@ -6,6 +6,7 @@ import { alertManagementService } from '@/services/alertManagementService';
 import { alertEvalService } from '@/services/alertEvalService';
 import { alertDeliveryConfigService } from '@/services/alertDeliveryConfigService';
 import { emailService } from '@/services/emailService';
+import { smsService } from '@/services/smsService';
 import { logger } from '@/utils/logger';
 
 const requireAdmin = requireRole('admin');
@@ -221,6 +222,40 @@ router.post('/delivery-config/email/test', authenticateToken, requireAdmin, asyn
     const { testRecipient } = z.object({ testRecipient: z.string().email() }).parse(req.body);
     const result = await emailService.testConfiguration(testRecipient);
     res.json({ success: result.success, message: result.success ? 'Test email sent successfully' : result.error });
+}));
+
+// --- SMS Delivery Config ---
+
+const SmsConfigSchema = z.object({
+    enabled: z.boolean(),
+    apiUrl: z.string().url('A valid API URL is required'),
+    apiToken: z.string().optional().default(''),
+});
+
+router.get('/delivery-config/sms', authenticateToken, requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+    const config = alertDeliveryConfigService.getSmsConfigForClient();
+    res.json({ success: true, data: config });
+}));
+
+router.put('/delivery-config/sms', authenticateToken, requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+    const parsed = SmsConfigSchema.safeParse(req.body);
+    if (!parsed.success) throw createError('Invalid SMS configuration', 400);
+
+    alertDeliveryConfigService.saveSmsConfig(parsed.data as any);
+
+    const fullConfig = alertDeliveryConfigService.getSmsConfig();
+    if (fullConfig) {
+        smsService.reconfigure({ apiUrl: fullConfig.apiUrl, apiToken: fullConfig.apiToken });
+    }
+
+    const clientConfig = alertDeliveryConfigService.getSmsConfigForClient();
+    res.json({ success: true, data: clientConfig, message: 'SMS configuration saved' });
+}));
+
+router.post('/delivery-config/sms/test', authenticateToken, requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+    const { testRecipient } = z.object({ testRecipient: z.string().min(1, 'Phone number required') }).parse(req.body);
+    const sent = await smsService.sendSms([testRecipient], 'Historian Reports — SMS configuration test message.');
+    res.json({ success: sent, message: sent ? 'Test SMS sent successfully' : 'Failed to send SMS — check API URL and token' });
 }));
 
 export default router;

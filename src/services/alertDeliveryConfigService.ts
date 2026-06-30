@@ -19,6 +19,17 @@ export interface EmailDeliveryConfigClient extends Omit<EmailDeliveryConfig, 'sm
   hasPassword: boolean;
 }
 
+export interface SmsDeliveryConfig {
+  enabled: boolean;
+  apiUrl: string;
+  apiToken: string;
+  updatedAt?: Date;
+}
+
+export interface SmsDeliveryConfigClient extends Omit<SmsDeliveryConfig, 'apiToken'> {
+  hasToken: boolean;
+}
+
 export class AlertDeliveryConfigService {
   private db: Database.Database;
 
@@ -49,12 +60,26 @@ export class AlertDeliveryConfigService {
       CREATE TABLE IF NOT EXISTS alert_sms_config (
         id TEXT PRIMARY KEY,
         enabled INTEGER NOT NULL DEFAULT 0,
-        api_token TEXT NOT NULL DEFAULT '',
+        api_token_encrypted TEXT NOT NULL DEFAULT '',
         api_url TEXT NOT NULL DEFAULT '',
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Migrate old api_token column → api_token_encrypted if needed
+    try {
+      const cols = this.db.prepare("PRAGMA table_info(alert_sms_config)").all() as any[];
+      const hasOld = cols.some(c => c.name === 'api_token');
+      const hasNew = cols.some(c => c.name === 'api_token_encrypted');
+      if (hasOld && !hasNew) {
+        this.db.exec(`ALTER TABLE alert_sms_config ADD COLUMN api_token_encrypted TEXT NOT NULL DEFAULT ''`);
+      }
+    } catch {
+      // PRAGMA failures are non-fatal
+    }
   }
+
+  // ── Email ────────────────────────────────────────────────────────────────
 
   getEmailConfig(): EmailDeliveryConfig | null {
     const row = this.db.prepare('SELECT * FROM alert_email_config WHERE id = ?').get('email') as any;
@@ -118,6 +143,59 @@ export class AlertDeliveryConfigService {
       encryptedPassword,
       config.fromName,
       config.fromEmail
+    );
+  }
+
+  // ── SMS ─────────────────────────────────────────────────────────────────
+
+  getSmsConfig(): SmsDeliveryConfig | null {
+    const row = this.db.prepare('SELECT * FROM alert_sms_config WHERE id = ?').get('sms') as any;
+    if (!row || !row.api_url) return null;
+
+    let token = '';
+    const encrypted = row.api_token_encrypted ?? row.api_token ?? '';
+    if (encrypted) {
+      try {
+        const parsed = JSON.parse(encrypted);
+        token = encryptionService.decrypt(parsed);
+      } catch {
+        apiLogger.error('Failed to decrypt SMS API token from alert_sms_config');
+      }
+    }
+
+    return {
+      enabled: Boolean(row.enabled),
+      apiUrl: row.api_url,
+      apiToken: token,
+      ...(row.updated_at ? { updatedAt: new Date(row.updated_at) } : {}),
+    };
+  }
+
+  getSmsConfigForClient(): SmsDeliveryConfigClient | null {
+    const config = this.getSmsConfig();
+    if (!config) return null;
+    const { apiToken, ...rest } = config;
+    return { ...rest, hasToken: apiToken.length > 0 };
+  }
+
+  saveSmsConfig(config: SmsDeliveryConfig): void {
+    let encryptedToken = '';
+    if (config.apiToken) {
+      encryptedToken = JSON.stringify(encryptionService.encrypt(config.apiToken));
+    }
+
+    this.db.prepare(`
+      INSERT INTO alert_sms_config (id, enabled, api_url, api_token_encrypted, updated_at)
+      VALUES ('sms', ?, ?, ?, datetime('now'))
+      ON CONFLICT(id) DO UPDATE SET
+        enabled = excluded.enabled,
+        api_url = excluded.api_url,
+        api_token_encrypted = CASE WHEN excluded.api_token_encrypted = '' THEN api_token_encrypted ELSE excluded.api_token_encrypted END,
+        updated_at = excluded.updated_at
+    `).run(
+      config.enabled ? 1 : 0,
+      config.apiUrl,
+      encryptedToken
     );
   }
 }
