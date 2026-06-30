@@ -18,6 +18,8 @@ export class AlertManagementService {
     constructor() {
         const dbPath = getDatabasePath('alerts.db');
         this.db = new Database(dbPath);
+        this.db.pragma('busy_timeout = 10000');
+        this.db.pragma('journal_mode = WAL');
         this.initializeTables();
     }
 

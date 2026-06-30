@@ -4,11 +4,10 @@
  * Requirements: User Management System Phase 2 - Task 3
  */
 
-import Database from 'better-sqlite3';
 import crypto from 'crypto';
 import { apiLogger } from '@/utils/logger';
 import { encryptionService } from '@/services/encryptionService';
-import { getDatabasePath } from '@/config/environment';
+import { authService } from '@/services/authService';
 
 export interface FingerprintData {
   userAgent: string;
@@ -34,15 +33,11 @@ export interface FingerprintInfo {
 }
 
 export class FingerprintService {
-  private db!: Database.Database;
-
-  constructor() {
-    this.initializeDatabase();
+  private get db() {
+    return authService.db;
   }
 
-  private initializeDatabase(): void {
-    const dbPath = getDatabasePath('auth.db');
-    this.db = new Database(dbPath);
+  constructor() {
     apiLogger.info('Fingerprint service initialized');
   }
 

@@ -772,7 +772,6 @@ async function startServer(): Promise<void> {
 }
 
 // Start server if this file is run directly
-// Start server if this file is run directly
 if (require.main === module || process.env.TS_NODE_DEV === 'true' || process.argv[1]?.endsWith('server.ts')) {
   logger.info('Executing startServer check passed');
   startServer().catch(err => {
