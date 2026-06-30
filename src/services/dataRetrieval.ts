@@ -14,6 +14,14 @@ import { pipeline } from 'stream/promises';
 import { TimeSeriesData, TagInfo, TimeRange, DataFilter, QueryResult, HistorianQueryOptions, RetrievalMode, QualityCode, StatisticsResult, FilterCondition } from '@/types/historian';
 import { opcuaService } from './opcuaService';
 
+function historicalTTL(endTime: Date): number {
+  const ageMs = Date.now() - endTime.getTime();
+  if (ageMs < 3_600_000)   return 60;      // < 1 h old
+  if (ageMs < 86_400_000)  return 300;     // < 24 h
+  if (ageMs < 604_800_000) return 3_600;   // < 7 d
+  return 86_400;                            // older → 24 h
+}
+
 export class DataRetrievalService {
   private cacheService: CacheService | undefined;
   private readonly STREAM_BATCH_SIZE = 1000;
@@ -21,6 +29,10 @@ export class DataRetrievalService {
 
   constructor(cacheService?: CacheService) {
     this.cacheService = cacheService;
+  }
+
+  setCacheService(svc: CacheService): void {
+    this.cacheService = svc;
   }
 
   private getConnection() {
@@ -137,7 +149,7 @@ export class DataRetrievalService {
         lastPoint: timeSeriesData[timeSeriesData.length - 1]
       });
 
-      // Cache the result if caching is enabled
+      // Cache the result if caching is enabled (tiered TTL based on data age)
       if (this.cacheService && timeSeriesData.length > 0) {
         if (operationId) {
           progressTracker.updateProgress(operationId, 'caching', 90, 'Caching results');
@@ -147,7 +159,8 @@ export class DataRetrievalService {
           timeRange.startTime,
           timeRange.endTime,
           timeSeriesData,
-          options
+          options,
+          historicalTTL(timeRange.endTime)
         );
       }
 
@@ -260,6 +273,14 @@ export class DataRetrievalService {
       this.validateTimeRange(timeRange);
       this.validateTagName(tagName);
 
+      if (this.cacheService) {
+        const cached = await this.cacheService.getCachedStatistics(tagName, timeRange.startTime, timeRange.endTime);
+        if (cached) {
+          dbLogger.debug(`Cache hit for statistics: ${tagName}`);
+          return cached;
+        }
+      }
+
       dbLogger.info('Retrieving statistics via SQL aggregates', { tagName, timeRange });
 
       // Use a more standard SQL approach that works with History view
@@ -318,6 +339,10 @@ export class DataRetrievalService {
         count: totalCount,
         dataQuality
       };
+
+      if (this.cacheService) {
+        await this.cacheService.cacheStatistics(tagName, timeRange.startTime, timeRange.endTime, stats);
+      }
 
       dbLogger.info('SQL statistics calculated successfully', { tagName, stats });
       return stats;

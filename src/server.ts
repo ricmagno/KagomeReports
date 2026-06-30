@@ -332,22 +332,40 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
     logger.warn('⚠ Historian database connection failed:', error);
   }
 
-  // 5. Email Service Validation
+  // 5. Load persisted email config from DB (takes priority over .env vars)
+  try {
+    const { alertDeliveryConfigService } = await import('@/services/alertDeliveryConfigService');
+    const dbEmailConfig = alertDeliveryConfigService.getEmailConfig();
+    if (dbEmailConfig) {
+      emailService.reconfigure({
+        host: dbEmailConfig.smtpHost,
+        port: dbEmailConfig.smtpPort,
+        secure: dbEmailConfig.smtpSecure,
+        user: dbEmailConfig.smtpUser,
+        password: dbEmailConfig.smtpPassword,
+        fromName: dbEmailConfig.fromName,
+        fromEmail: dbEmailConfig.fromEmail,
+      });
+      logger.info('✓ Email service reconfigured from database settings');
+    }
+  } catch (error) {
+    logger.warn('⚠ Could not load email config from database:', error);
+  }
+
+  // 5b. Email Service status (no live SMTP check at startup — use UI "Send Test")
   try {
     const emailStart = Date.now();
     const emailHealthy = await emailService.validateConfiguration();
-
     components.push({
       name: 'Email Service',
       status: emailHealthy ? 'healthy' : 'degraded',
       required: false,
       duration: Date.now() - emailStart
     });
-
     if (emailHealthy) {
-      logger.info('✓ Email service configuration validated');
+      logger.info('✓ Email service configured');
     } else {
-      logger.warn('⚠ Email service configuration validation failed');
+      logger.info('ℹ Email service not configured — set credentials in Application Configuration → Alerts');
     }
   } catch (error) {
     components.push({
@@ -409,7 +427,7 @@ async function validateStartupDependencies(): Promise<SystemHealth> {
     setupOpcuaConfigIntegration();
 
     const { alertEvalService } = await import('@/services/alertEvalService');
-    alertEvalService.start(5000); // Poll every 5 seconds
+    await alertEvalService.start();
 
     components.push({
       name: 'OPC UA Integration',

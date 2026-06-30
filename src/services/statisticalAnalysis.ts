@@ -29,6 +29,10 @@ export class StatisticalAnalysisService implements SPCCalculator, TrendLineCalcu
     this.cacheService = cacheService;
   }
 
+  setCacheService(svc: CacheService): void {
+    this.cacheService = svc;
+  }
+
   private generateDataHash(data: TimeSeriesData[]): string {
     const dataString = JSON.stringify(data.map(d => ({ timestamp: d.timestamp, value: d.value })));
     return createHash('md5').update(dataString).digest('hex');

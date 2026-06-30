@@ -10,7 +10,12 @@ import {
     ReferenceDescription,
     UserTokenType,
     OPCUACertificateManager,
+    ClientSubscription,
+    ClientMonitoredItem,
+    TimestampsToReturn,
+    DataValue,
 } from 'node-opcua';
+import type { MonitoringParametersOptions } from 'node-opcua';
 import { OpcuaConfig, OpcuaTagInfo } from '@/types/opcuaConfig';
 import { logger } from '@/utils/logger';
 import { createError } from '@/middleware/errorHandler';
@@ -21,8 +26,66 @@ export class OpcuaService {
     private client: OPCUAClient | null = null;
     private session: ClientSession | null = null;
     private config: OpcuaConfig | null = null;
+    private subscription: ClientSubscription | null = null;
+    private connectCallback: (() => void) | null = null;
+    private reconnectCallback: (() => void) | null = null;
 
     constructor() { }
+
+    hasSession(): boolean {
+        return this.session !== null;
+    }
+
+    onConnect(cb: () => void): void {
+        this.connectCallback = cb;
+    }
+
+    onReconnect(cb: () => void): void {
+        this.reconnectCallback = cb;
+    }
+
+    async createSubscription(publishingInterval = 1000): Promise<ClientSubscription> {
+        if (!this.session) {
+            throw new Error('No active OPC UA session');
+        }
+        await this.terminateSubscription();
+        this.subscription = ClientSubscription.create(this.session, {
+            requestedPublishingInterval: publishingInterval,
+            requestedLifetimeCount: 100,
+            requestedMaxKeepAliveCount: 10,
+            maxNotificationsPerPublish: 100,
+            publishingEnabled: true,
+            priority: 1,
+        });
+        await new Promise<void>((resolve) => this.subscription!.on('started', () => resolve()));
+        logger.info(`OPC UA subscription started (publishingInterval=${publishingInterval}ms)`);
+        return this.subscription;
+    }
+
+    monitorNode(nodeId: string, samplingInterval: number, callback: (dv: DataValue) => void): ClientMonitoredItem {
+        if (!this.subscription) {
+            throw new Error('No active OPC UA subscription — call createSubscription() first');
+        }
+        const item = ClientMonitoredItem.create(
+            this.subscription,
+            { nodeId, attributeId: AttributeIds.Value },
+            { samplingInterval, discardOldest: true, queueSize: 10 } as MonitoringParametersOptions,
+            TimestampsToReturn.Both
+        );
+        item.on('changed', callback);
+        return item;
+    }
+
+    async terminateSubscription(): Promise<void> {
+        if (this.subscription) {
+            try {
+                await this.subscription.terminate();
+            } catch (e) {
+                logger.warn('Error terminating OPC UA subscription:', e);
+            }
+            this.subscription = null;
+        }
+    }
 
     async connect(config: OpcuaConfig): Promise<void> {
         try {
@@ -47,6 +110,10 @@ export class OpcuaService {
                     automaticallyAcceptUnknownCertificate: true,
                 } as any),
             });
+
+            if (this.reconnectCallback) {
+                this.client.on('connection_reestablished', () => this.reconnectCallback?.());
+            }
 
             logger.info(`Attempting to connect to OPC UA server: ${config.endpointUrl}`, {
                 securityMode: config.securityMode,
@@ -123,6 +190,7 @@ export class OpcuaService {
 
                     this.session = await this.client.createSession(userIdentity);
                     logger.info('OPC UA session created');
+                    this.connectCallback?.();
                 },
                 {
                     maxAttempts: 3,
@@ -178,6 +246,7 @@ export class OpcuaService {
 
     async disconnect(): Promise<void> {
         try {
+            await this.terminateSubscription();
             if (this.session) {
                 await this.session.close();
                 this.session = null;

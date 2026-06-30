@@ -196,11 +196,12 @@ export class CacheService {
     startTime: Date,
     endTime: Date,
     data: TimeSeriesData[],
-    options?: HistorianQueryOptions
+    options?: HistorianQueryOptions,
+    ttl?: number
   ): Promise<void> {
     const timeKey = `${startTime.getTime()}-${endTime.getTime()}`;
     const key = this.generateKey('timeseries', `${tagName}:${timeKey}`, options);
-    await this.setWithTTL(key, data, this.TTL_CONFIG.timeSeriesData);
+    await this.setWithTTL(key, data, ttl ?? this.TTL_CONFIG.timeSeriesData);
   }
 
   async getCachedTimeSeriesData(
@@ -280,13 +281,23 @@ export class CacheService {
     return this.get<any>(key);
   }
 
+  private async scanKeys(pattern: string): Promise<string[]> {
+    const keys: string[] = [];
+    let cursor = '0';
+    do {
+      const reply = await this.client.scan(cursor, { MATCH: pattern, COUNT: 100 });
+      cursor = reply.cursor;
+      keys.push(...reply.keys);
+    } while (cursor !== '0');
+    return keys;
+  }
+
   // Cache invalidation methods
   async invalidateTagCache(): Promise<void> {
     if (!this.isConnected) return;
 
     try {
-      const pattern = this.generateKey('tags', '*');
-      const keys = await this.client.keys(pattern);
+      const keys = await this.scanKeys(this.generateKey('tags', '*'));
       if (keys.length > 0) {
         await this.client.del(keys);
         this.cacheLogger.info(`Invalidated ${keys.length} tag cache entries`);
@@ -303,8 +314,7 @@ export class CacheService {
       const pattern = tagName
         ? this.generateKey('timeseries', `${tagName}:*`)
         : this.generateKey('timeseries', '*');
-
-      const keys = await this.client.keys(pattern);
+      const keys = await this.scanKeys(pattern);
       if (keys.length > 0) {
         await this.client.del(keys);
         this.cacheLogger.info(`Invalidated ${keys.length} time-series cache entries`);
@@ -321,8 +331,7 @@ export class CacheService {
       const pattern = tagName
         ? this.generateKey('statistics', `${tagName}:*`)
         : this.generateKey('statistics', '*');
-
-      const keys = await this.client.keys(pattern);
+      const keys = await this.scanKeys(pattern);
       if (keys.length > 0) {
         await this.client.del(keys);
         this.cacheLogger.info(`Invalidated ${keys.length} statistics cache entries`);
@@ -336,8 +345,7 @@ export class CacheService {
     if (!this.isConnected) return;
 
     try {
-      const pattern = `${this.config.keyPrefix}:*`;
-      const keys = await this.client.keys(pattern);
+      const keys = await this.scanKeys(`${this.config.keyPrefix}:*`);
       if (keys.length > 0) {
         await this.client.del(keys);
         this.cacheLogger.info(`Invalidated all cache entries (${keys.length} keys)`);

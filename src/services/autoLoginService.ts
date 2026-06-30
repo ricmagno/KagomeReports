@@ -4,9 +4,8 @@
  * Requirements: User Management System Phase 2 - Task 4
  */
 
-import { Database } from 'sqlite3';
+import Database from 'better-sqlite3';
 import jwt from 'jsonwebtoken';
-import path from 'path';
 import { apiLogger } from '@/utils/logger';
 import { env, getDatabasePath } from '@/config/environment';
 import { fingerprintService, FingerprintData } from '@/services/fingerprintService';
@@ -22,39 +21,25 @@ export interface MachineInfo {
 }
 
 export class AutoLoginService {
-  private db!: Database;
+  private db!: Database.Database;
   private jwtSecret: string;
-  private autoLoginTokenExpiry: string = '30d'; // Auto-login tokens last 30 days
+  private autoLoginTokenExpiry: string = '30d';
 
   constructor() {
     this.jwtSecret = env.JWT_SECRET;
     this.initializeDatabase();
   }
 
-  /**
-   * Initialize database connection
-   */
   private initializeDatabase(): void {
     const dbPath = getDatabasePath('auth.db');
-    this.db = new Database(dbPath, (err) => {
-      if (err) {
-        apiLogger.error('Failed to open auto-login database', { error: err });
-        throw err;
-      }
-    });
+    this.db = new Database(dbPath);
     apiLogger.info('Auto-login service initialized');
   }
 
-  /**
-   * Generate fingerprint from browser data
-   */
   async generateFingerprint(data: FingerprintData): Promise<string> {
     try {
       const hash = fingerprintService.generateHash(data);
-
-      // Store fingerprint for tracking
       await fingerprintService.storeFingerprint(hash, data);
-
       return hash;
     } catch (error) {
       apiLogger.error('Failed to generate fingerprint', { error });
@@ -62,116 +47,45 @@ export class AutoLoginService {
     }
   }
 
-  /**
-   * Validate fingerprint matches stored hash
-   */
   async validateFingerprint(fingerprint: string, storedHash: string): Promise<boolean> {
-    try {
-      return fingerprint === storedHash;
-    } catch (error) {
-      apiLogger.error('Failed to validate fingerprint', { error });
-      return false;
-    }
+    return fingerprint === storedHash;
   }
 
-  /**
-   * Enable auto-login for a user on a specific machine
-   */
-  async enableAutoLogin(
-    userId: string,
-    machineFingerprint: string,
-    machineName?: string
-  ): Promise<void> {
+  async enableAutoLogin(userId: string, machineFingerprint: string, machineName?: string): Promise<void> {
     try {
-      // Check if auto-login already exists for this user/machine combination
-      const existing = await this.getMachineByFingerprint(userId, machineFingerprint);
+      const existing = this.getMachineByFingerprint(userId, machineFingerprint);
 
       if (existing) {
-        // Update existing entry
-        await new Promise<void>((resolve, reject) => {
-          this.db.run(
-            `UPDATE auto_login_machines 
-             SET enabled = 1, machine_name = ?, updated_at = datetime('now')
-             WHERE id = ?`,
-            [machineName || existing.machineName, existing.id],
-            (err) => {
-              if (err) reject(err);
-              else resolve();
-            }
-          );
-        });
-
+        this.db.prepare(
+          `UPDATE auto_login_machines SET enabled = 1, machine_name = ?, updated_at = datetime('now') WHERE id = ?`
+        ).run(machineName || existing.machineName, existing.id);
         apiLogger.info('Auto-login updated', { userId, machineId: existing.id });
       } else {
-        // Create new auto-login entry
         const id = `autologin_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
-
-        await new Promise<void>((resolve, reject) => {
-          this.db.run(
-            `INSERT INTO auto_login_machines (id, user_id, machine_fingerprint, machine_name, enabled)
-             VALUES (?, ?, ?, ?, ?)`,
-            [id, userId, machineFingerprint, machineName, 1],
-            (err) => {
-              if (err) reject(err);
-              else resolve();
-            }
-          );
-        });
-
+        this.db.prepare(
+          `INSERT INTO auto_login_machines (id, user_id, machine_fingerprint, machine_name, enabled) VALUES (?, ?, ?, ?, ?)`
+        ).run(id, userId, machineFingerprint, machineName, 1);
         apiLogger.info('Auto-login enabled', { userId, machineId: id, machineName });
       }
 
-      // Update user's auto_login_enabled flag
-      await new Promise<void>((resolve, reject) => {
-        this.db.run(
-          `UPDATE users SET auto_login_enabled = 1, updated_at = datetime('now') WHERE id = ?`,
-          [userId],
-          (err) => {
-            if (err) reject(err);
-            else resolve();
-          }
-        );
-      });
+      this.db.prepare(`UPDATE users SET auto_login_enabled = 1, updated_at = datetime('now') WHERE id = ?`).run(userId);
     } catch (error) {
       apiLogger.error('Failed to enable auto-login', { error, userId });
       throw error;
     }
   }
 
-  /**
-   * Disable auto-login for a user on a specific machine
-   */
   async disableAutoLogin(userId: string, machineFingerprint: string): Promise<void> {
     try {
-      await new Promise<void>((resolve, reject) => {
-        this.db.run(
-          `UPDATE auto_login_machines 
-           SET enabled = 0, updated_at = datetime('now')
-           WHERE user_id = ? AND machine_fingerprint = ?`,
-          [userId, machineFingerprint],
-          (err) => {
-            if (err) reject(err);
-            else resolve();
-          }
-        );
-      });
+      this.db.prepare(
+        `UPDATE auto_login_machines SET enabled = 0, updated_at = datetime('now') WHERE user_id = ? AND machine_fingerprint = ?`
+      ).run(userId, machineFingerprint);
 
-      // Check if user has any other enabled auto-login machines
-      const machines = await this.getUserMachines(userId);
+      const machines = this.getUserMachinesSync(userId);
       const hasEnabledMachines = machines.some(m => m.enabled);
 
       if (!hasEnabledMachines) {
-        // Disable auto_login_enabled flag if no machines are enabled
-        await new Promise<void>((resolve, reject) => {
-          this.db.run(
-            `UPDATE users SET auto_login_enabled = 0, updated_at = datetime('now') WHERE id = ?`,
-            [userId],
-            (err) => {
-              if (err) reject(err);
-              else resolve();
-            }
-          );
-        });
+        this.db.prepare(`UPDATE users SET auto_login_enabled = 0, updated_at = datetime('now') WHERE id = ?`).run(userId);
       }
 
       apiLogger.info('Auto-login disabled', { userId, machineFingerprint: machineFingerprint.substring(0, 12) });
@@ -181,88 +95,41 @@ export class AutoLoginService {
     }
   }
 
-  /**
-   * Check if auto-login is enabled for a user on a specific machine
-   */
   async isAutoLoginEnabled(userId: string, machineFingerprint: string): Promise<boolean> {
-    try {
-      return new Promise((resolve, reject) => {
-        this.db.get(
-          `SELECT enabled FROM auto_login_machines 
-           WHERE user_id = ? AND machine_fingerprint = ? AND enabled = 1`,
-          [userId, machineFingerprint],
-          (err, row: any) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(!!row);
-            }
-          }
-        );
-      });
-    } catch (error) {
-      apiLogger.error('Failed to check auto-login status', { error, userId });
-      return false;
-    }
+    const row = this.db.prepare(
+      `SELECT enabled FROM auto_login_machines WHERE user_id = ? AND machine_fingerprint = ? AND enabled = 1`
+    ).get(userId, machineFingerprint);
+    return !!row;
   }
 
-  /**
-   * Generate auto-login token
-   */
   async generateAutoLoginToken(userId: string, machineFingerprint: string): Promise<string> {
     try {
-      // Verify auto-login is enabled
       const isEnabled = await this.isAutoLoginEnabled(userId, machineFingerprint);
-      if (!isEnabled) {
-        throw new Error('Auto-login not enabled for this user/machine combination');
-      }
+      if (!isEnabled) throw new Error('Auto-login not enabled for this user/machine combination');
 
-      // Get user info
-      const user = await new Promise<any>((resolve, reject) => {
-        this.db.get(
-          'SELECT id, username, email, role FROM users WHERE id = ? AND is_active = 1',
-          [userId],
-          (err, row) => {
-            if (err) reject(err);
-            else resolve(row);
-          }
-        );
-      });
+      const user = this.db.prepare(
+        'SELECT id, username, email, role FROM users WHERE id = ? AND is_active = 1'
+      ).get(userId) as any;
+      if (!user) throw new Error('User not found or inactive');
 
-      if (!user) {
-        throw new Error('User not found or inactive');
-      }
-
-      // Generate JWT token with auto-login flag
       const payload = {
         userId: user.id,
         username: user.username,
         email: user.email,
         role: user.role,
         autoLogin: true,
-        machineFingerprint: machineFingerprint.substring(0, 12), // Only store prefix for security
+        machineFingerprint: machineFingerprint.substring(0, 12),
         iat: Math.floor(Date.now() / 1000),
         jti: `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
       };
 
       const token = jwt.sign(payload, this.jwtSecret, { expiresIn: this.autoLoginTokenExpiry } as jwt.SignOptions);
 
-      // Update last_used timestamp
-      await new Promise<void>((resolve, reject) => {
-        this.db.run(
-          `UPDATE auto_login_machines 
-           SET last_used = datetime('now'), updated_at = datetime('now')
-           WHERE user_id = ? AND machine_fingerprint = ?`,
-          [userId, machineFingerprint],
-          (err) => {
-            if (err) reject(err);
-            else resolve();
-          }
-        );
-      });
+      this.db.prepare(
+        `UPDATE auto_login_machines SET last_used = datetime('now'), updated_at = datetime('now') WHERE user_id = ? AND machine_fingerprint = ?`
+      ).run(userId, machineFingerprint);
 
       apiLogger.info('Auto-login token generated', { userId, username: user.username });
-
       return token;
     } catch (error) {
       apiLogger.error('Failed to generate auto-login token', { error, userId });
@@ -270,85 +137,33 @@ export class AutoLoginService {
     }
   }
 
-  /**
-   * Validate auto-login token
-   */
   async validateAutoLoginToken(token: string, machineFingerprint: string): Promise<AuthResult> {
     try {
-      // Verify JWT token
       const decoded = jwt.verify(token, this.jwtSecret) as any;
 
-      if (!decoded.autoLogin) {
-        return {
-          success: false,
-          error: 'Not an auto-login token'
-        };
-      }
+      if (!decoded.autoLogin) return { success: false, error: 'Not an auto-login token' };
 
-      // Verify machine fingerprint matches (compare prefix)
       const fingerprintPrefix = machineFingerprint.substring(0, 12);
-      if (decoded.machineFingerprint !== fingerprintPrefix) {
-        return {
-          success: false,
-          error: 'Machine fingerprint mismatch'
-        };
-      }
+      if (decoded.machineFingerprint !== fingerprintPrefix) return { success: false, error: 'Machine fingerprint mismatch' };
 
-      // Verify auto-login is still enabled
       const isEnabled = await this.isAutoLoginEnabled(decoded.userId, machineFingerprint);
-      if (!isEnabled) {
-        return {
-          success: false,
-          error: 'Auto-login no longer enabled'
-        };
-      }
+      if (!isEnabled) return { success: false, error: 'Auto-login no longer enabled' };
 
-      // Get current user data
-      const user = await new Promise<any>((resolve, reject) => {
-        this.db.get(
-          'SELECT * FROM users WHERE id = ? AND is_active = 1',
-          [decoded.userId],
-          (err, row) => {
-            if (err) reject(err);
-            else resolve(row);
-          }
-        );
-      });
+      const user = this.db.prepare('SELECT * FROM users WHERE id = ? AND is_active = 1').get(decoded.userId) as any;
+      if (!user) return { success: false, error: 'User not found or inactive' };
 
-      if (!user) {
-        return {
-          success: false,
-          error: 'User not found or inactive'
-        };
-      }
-
-      // Update last_used timestamp
-      await new Promise<void>((resolve, reject) => {
-        this.db.run(
-          `UPDATE auto_login_machines 
-           SET last_used = datetime('now'), updated_at = datetime('now')
-           WHERE user_id = ? AND machine_fingerprint = ?`,
-          [decoded.userId, machineFingerprint],
-          (err) => {
-            if (err) reject(err);
-            else resolve();
-          }
-        );
-      });
+      this.db.prepare(
+        `UPDATE auto_login_machines SET last_used = datetime('now'), updated_at = datetime('now') WHERE user_id = ? AND machine_fingerprint = ?`
+      ).run(decoded.userId, machineFingerprint);
 
       return {
         success: true,
         user: {
-          id: user.id,
-          username: user.username,
-          email: user.email,
-          firstName: user.first_name,
-          lastName: user.last_name,
-          role: user.role,
+          id: user.id, username: user.username, email: user.email,
+          firstName: user.first_name, lastName: user.last_name, role: user.role,
           isActive: Boolean(user.is_active),
           lastLogin: user.last_login ? new Date(user.last_login) : undefined,
-          createdAt: new Date(user.created_at),
-          updatedAt: new Date(user.updated_at),
+          createdAt: new Date(user.created_at), updatedAt: new Date(user.updated_at),
           parentUserId: user.parent_user_id || null,
           isViewOnly: Boolean(user.is_view_only),
           autoLoginEnabled: Boolean(user.auto_login_enabled),
@@ -358,82 +173,37 @@ export class AutoLoginService {
         expiresIn: this.autoLoginTokenExpiry
       };
     } catch (error) {
-      if (error instanceof jwt.JsonWebTokenError) {
-        return {
-          success: false,
-          error: 'Invalid token'
-        };
-      }
+      if (error instanceof jwt.JsonWebTokenError) return { success: false, error: 'Invalid token' };
       apiLogger.error('Failed to validate auto-login token', { error });
-      return {
-        success: false,
-        error: 'Token validation failed'
-      };
+      return { success: false, error: 'Token validation failed' };
     }
   }
 
-  /**
-   * Get all machines for a user
-   */
   async getUserMachines(userId: string): Promise<MachineInfo[]> {
-    try {
-      return new Promise((resolve, reject) => {
-        this.db.all(
-          `SELECT * FROM auto_login_machines WHERE user_id = ? ORDER BY created_at DESC`,
-          [userId],
-          (err, rows: any[]) => {
-            if (err) {
-              reject(err);
-            } else {
-              const machines = rows.map(row => ({
-                id: row.id,
-                machineName: row.machine_name,
-                fingerprint: row.machine_fingerprint,
-                enabled: Boolean(row.enabled),
-                lastUsed: row.last_used ? new Date(row.last_used) : undefined,
-                createdAt: new Date(row.created_at)
-              }));
-              resolve(machines);
-            }
-          }
-        );
-      });
-    } catch (error) {
-      apiLogger.error('Failed to get user machines', { error, userId });
-      throw error;
-    }
+    return this.getUserMachinesSync(userId);
   }
 
-  /**
-   * Remove a machine from auto-login
-   */
+  private getUserMachinesSync(userId: string): MachineInfo[] {
+    const rows = this.db.prepare(
+      'SELECT * FROM auto_login_machines WHERE user_id = ? ORDER BY created_at DESC'
+    ).all(userId) as any[];
+    return rows.map(row => ({
+      id: row.id,
+      machineName: row.machine_name,
+      fingerprint: row.machine_fingerprint,
+      enabled: Boolean(row.enabled),
+      lastUsed: row.last_used ? new Date(row.last_used) : undefined,
+      createdAt: new Date(row.created_at)
+    }));
+  }
+
   async removeMachine(userId: string, machineId: string): Promise<void> {
     try {
-      await new Promise<void>((resolve, reject) => {
-        this.db.run(
-          'DELETE FROM auto_login_machines WHERE id = ? AND user_id = ?',
-          [machineId, userId],
-          (err) => {
-            if (err) reject(err);
-            else resolve();
-          }
-        );
-      });
+      this.db.prepare('DELETE FROM auto_login_machines WHERE id = ? AND user_id = ?').run(machineId, userId);
 
-      // Check if user has any remaining machines
-      const machines = await this.getUserMachines(userId);
+      const machines = this.getUserMachinesSync(userId);
       if (machines.length === 0) {
-        // Disable auto_login_enabled flag
-        await new Promise<void>((resolve, reject) => {
-          this.db.run(
-            `UPDATE users SET auto_login_enabled = 0, updated_at = datetime('now') WHERE id = ?`,
-            [userId],
-            (err) => {
-              if (err) reject(err);
-              else resolve();
-            }
-          );
-        });
+        this.db.prepare(`UPDATE users SET auto_login_enabled = 0, updated_at = datetime('now') WHERE id = ?`).run(userId);
       }
 
       apiLogger.info('Machine removed from auto-login', { userId, machineId });
@@ -443,78 +213,32 @@ export class AutoLoginService {
     }
   }
 
-  /**
-   * Get machine by fingerprint (private helper)
-   */
-  private async getMachineByFingerprint(userId: string, fingerprint: string): Promise<MachineInfo | null> {
-    return new Promise((resolve, reject) => {
-      this.db.get(
-        'SELECT * FROM auto_login_machines WHERE user_id = ? AND machine_fingerprint = ?',
-        [userId, fingerprint],
-        (err, row: any) => {
-          if (err) {
-            reject(err);
-          } else if (row) {
-            resolve({
-              id: row.id,
-              machineName: row.machine_name,
-              fingerprint: row.machine_fingerprint,
-              enabled: Boolean(row.enabled),
-              lastUsed: row.last_used ? new Date(row.last_used) : undefined,
-              createdAt: new Date(row.created_at)
-            });
-          } else {
-            resolve(null);
-          }
-        }
-      );
-    });
+  private getMachineByFingerprint(userId: string, fingerprint: string): MachineInfo | null {
+    const row = this.db.prepare(
+      'SELECT * FROM auto_login_machines WHERE user_id = ? AND machine_fingerprint = ?'
+    ).get(userId, fingerprint) as any;
+    if (!row) return null;
+    return {
+      id: row.id,
+      machineName: row.machine_name,
+      fingerprint: row.machine_fingerprint,
+      enabled: Boolean(row.enabled),
+      lastUsed: row.last_used ? new Date(row.last_used) : undefined,
+      createdAt: new Date(row.created_at)
+    };
   }
 
-  /**
-   * Check if a machine fingerprint has auto-login enabled for any user
-   */
-  async checkAutoLoginAvailability(machineFingerprint: string): Promise<{
-    available: boolean;
-    userId?: string;
-  }> {
-    try {
-      return new Promise((resolve, reject) => {
-        this.db.get(
-          `SELECT user_id FROM auto_login_machines 
-           WHERE machine_fingerprint = ? AND enabled = 1
-           LIMIT 1`,
-          [machineFingerprint],
-          (err, row: any) => {
-            if (err) {
-              reject(err);
-            } else if (row) {
-              resolve({
-                available: true,
-                userId: row.user_id
-              });
-            } else {
-              resolve({
-                available: false
-              });
-            }
-          }
-        );
-      });
-    } catch (error) {
-      apiLogger.error('Failed to check auto-login availability', { error });
-      return { available: false };
-    }
+  async checkAutoLoginAvailability(machineFingerprint: string): Promise<{ available: boolean; userId?: string }> {
+    const row = this.db.prepare(
+      'SELECT user_id FROM auto_login_machines WHERE machine_fingerprint = ? AND enabled = 1 LIMIT 1'
+    ).get(machineFingerprint) as any;
+    return row ? { available: true, userId: row.user_id } : { available: false };
   }
 
-  /**
-   * Shutdown the service
-   */
   shutdown(): void {
     this.db.close();
     apiLogger.info('Auto-login service shutdown');
   }
 }
 
-// Export singleton instance
 export const autoLoginService = new AutoLoginService();

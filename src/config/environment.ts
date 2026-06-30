@@ -12,12 +12,12 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT secret must be at least 32 characters'),
   BCRYPT_ROUNDS: z.coerce.number().int().min(10).max(15).default(12),
 
-  // Email Configuration
-  SMTP_HOST: z.string().min(1, 'SMTP host is required'),
+  // Email Configuration (optional — configurable via the Alerts UI)
+  SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
   SMTP_SECURE: z.coerce.boolean().default(false),
-  SMTP_USER: z.string().email('Valid SMTP user email is required'),
-  SMTP_PASSWORD: z.string().min(1, 'SMTP password is required'),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
 
   // Report Configuration
   REPORTS_DIR: z.string().default('./reports'),

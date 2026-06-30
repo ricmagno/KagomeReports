@@ -5,8 +5,8 @@
  */
 
 import { CacheService, createCacheService, CacheConfig } from './cacheService';
-import { DataRetrievalService } from './dataRetrieval';
-import { StatisticalAnalysisService } from './statisticalAnalysis';
+import { dataRetrievalService } from './dataRetrieval';
+import { statisticalAnalysisService } from './statisticalAnalysis';
 import { env } from '../config/environment';
 import { logger } from '../utils/logger';
 import { opcuaService, OpcuaService } from './opcuaService';
@@ -14,8 +14,6 @@ import { opcuaConfigService, OpcuaConfigService } from './opcuaConfigService';
 
 export class CacheManager {
   private cacheService?: CacheService;
-  private dataRetrievalService?: DataRetrievalService;
-  private statisticalAnalysisService?: StatisticalAnalysisService;
   private opcuaService: OpcuaService = opcuaService;
   private opcuaConfigService: OpcuaConfigService = opcuaConfigService;
   private cacheLogger = logger.child({ service: 'CacheManager' });
@@ -69,17 +67,16 @@ export class CacheManager {
         }
       }
 
-      // Initialize services with cache integration
-      this.dataRetrievalService = new DataRetrievalService(this.cacheService);
-      this.statisticalAnalysisService = new StatisticalAnalysisService(this.cacheService);
+      // Inject cache into existing module singletons so all route imports benefit
+      if (this.cacheService) {
+        dataRetrievalService.setCacheService(this.cacheService);
+        statisticalAnalysisService.setCacheService(this.cacheService);
+      }
 
       this.isInitialized = true;
       this.cacheLogger.info('Cache manager initialized successfully');
     } catch (error) {
       this.cacheLogger.error('Failed to initialize cache manager:', error);
-      // Don't throw error - continue without cache
-      this.dataRetrievalService = new DataRetrievalService();
-      this.statisticalAnalysisService = new StatisticalAnalysisService();
       this.isInitialized = true;
     }
   }
@@ -97,18 +94,12 @@ export class CacheManager {
   }
 
   // Service getters
-  getDataRetrievalService(): DataRetrievalService {
-    if (!this.dataRetrievalService) {
-      throw new Error('Cache manager not initialized. Call initialize() first.');
-    }
-    return this.dataRetrievalService;
+  getDataRetrievalService() {
+    return dataRetrievalService;
   }
 
-  getStatisticalAnalysisService(): StatisticalAnalysisService {
-    if (!this.statisticalAnalysisService) {
-      throw new Error('Cache manager not initialized. Call initialize() first.');
-    }
-    return this.statisticalAnalysisService;
+  getStatisticalAnalysisService() {
+    return statisticalAnalysisService;
   }
 
   getCacheService(): CacheService | undefined {
@@ -192,8 +183,8 @@ export class CacheManager {
 
   // Cache warming methods
   async warmCache(): Promise<void> {
-    if (!this.cacheService || !this.dataRetrievalService) {
-      this.cacheLogger.warn('Cache warming skipped - cache or services not available');
+    if (!this.cacheService) {
+      this.cacheLogger.warn('Cache warming skipped - cache not available');
       return;
     }
 
@@ -201,7 +192,7 @@ export class CacheManager {
       this.cacheLogger.info('Starting cache warming...');
 
       // Warm tag list cache
-      await this.dataRetrievalService.getTagList();
+      await dataRetrievalService.getTagList();
       this.cacheLogger.debug('Tag list cache warmed');
 
       // You can add more cache warming logic here for frequently accessed data

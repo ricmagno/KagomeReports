@@ -1,8 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { asyncHandler, createError } from '@/middleware/errorHandler';
-import { authenticateToken } from '@/middleware/auth';
+import { authenticateToken, requireRole } from '@/middleware/auth';
 import { alertManagementService } from '@/services/alertManagementService';
+import { alertEvalService } from '@/services/alertEvalService';
+import { alertDeliveryConfigService } from '@/services/alertDeliveryConfigService';
+import { emailService } from '@/services/emailService';
+import { logger } from '@/utils/logger';
+
+const requireAdmin = requireRole('admin');
 
 const router = Router();
 
@@ -106,6 +112,7 @@ router.post('/configs', authenticateToken, asyncHandler(async (req: Request, res
     if (!list) throw createError('Alert list not found', 400);
 
     const config = await alertManagementService.createAlertConfig(validatedData as any, userId);
+    alertEvalService.refresh().catch(err => logger.error('Failed to refresh alert subscriptions:', err));
     res.status(201).json({ success: true, data: config });
 }));
 
@@ -118,12 +125,14 @@ router.put('/configs/:id', authenticateToken, asyncHandler(async (req: Request, 
 
     const config = await alertManagementService.updateAlertConfig(req.params.id as string, validatedData as any);
     if (!config) throw createError('Alert config not found', 404);
+    alertEvalService.refresh().catch(err => logger.error('Failed to refresh alert subscriptions:', err));
     res.json({ success: true, data: config });
 }));
 
 router.delete('/configs/:id', authenticateToken, asyncHandler(async (req: Request, res: Response) => {
     const success = await alertManagementService.deleteAlertConfig(req.params.id as string);
     if (!success) throw createError('Alert config not found', 404);
+    alertEvalService.refresh().catch(err => logger.error('Failed to refresh alert subscriptions:', err));
     res.json({ success: true, message: 'Deleted successfully' });
 }));
 
@@ -165,6 +174,53 @@ router.delete('/patterns/:id', authenticateToken, asyncHandler(async (req: Reque
     const success = await alertManagementService.deleteAlertPattern(req.params.id as string);
     if (!success) throw createError('Alert pattern not found', 404);
     res.json({ success: true, message: 'Deleted successfully' });
+}));
+
+// --- Alert Delivery Config ---
+
+const EmailConfigSchema = z.object({
+    enabled: z.boolean(),
+    smtpHost: z.string().min(1, 'SMTP host is required'),
+    smtpPort: z.coerce.number().int().min(1).max(65535),
+    smtpSecure: z.boolean(),
+    smtpUser: z.string().min(1, 'SMTP user is required'),
+    smtpPassword: z.string().optional().default(''),
+    fromName: z.string().default(''),
+    fromEmail: z.string().email().or(z.literal('')).default(''),
+});
+
+router.get('/delivery-config/email', authenticateToken, requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+    const config = alertDeliveryConfigService.getEmailConfigForClient();
+    res.json({ success: true, data: config });
+}));
+
+router.put('/delivery-config/email', authenticateToken, requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+    const parsed = EmailConfigSchema.safeParse(req.body);
+    if (!parsed.success) throw createError('Invalid email configuration', 400);
+
+    alertDeliveryConfigService.saveEmailConfig(parsed.data as any);
+
+    const fullConfig = alertDeliveryConfigService.getEmailConfig();
+    if (fullConfig) {
+        emailService.reconfigure({
+            host: fullConfig.smtpHost,
+            port: fullConfig.smtpPort,
+            secure: fullConfig.smtpSecure,
+            user: fullConfig.smtpUser,
+            password: fullConfig.smtpPassword,
+            fromName: fullConfig.fromName,
+            fromEmail: fullConfig.fromEmail,
+        });
+    }
+
+    const clientConfig = alertDeliveryConfigService.getEmailConfigForClient();
+    res.json({ success: true, data: clientConfig, message: 'Email configuration saved' });
+}));
+
+router.post('/delivery-config/email/test', authenticateToken, requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+    const { testRecipient } = z.object({ testRecipient: z.string().email() }).parse(req.body);
+    const result = await emailService.testConfiguration(testRecipient);
+    res.json({ success: result.success, message: result.success ? 'Test email sent successfully' : result.error });
 }));
 
 export default router;

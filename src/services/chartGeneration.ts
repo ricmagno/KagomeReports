@@ -4,6 +4,8 @@
  * Requirements: 4.2
  */
 
+import path from 'path';
+import { Worker } from 'worker_threads';
 import { createCanvas } from 'canvas';
 import { Chart, ChartConfiguration, registerables, _adapters } from 'chart.js';
 import annotationPlugin from 'chartjs-plugin-annotation';
@@ -20,14 +22,8 @@ if (Chart && !(Chart as any)._adapters) {
 // Register Chart.js components
 Chart.register(...registerables, annotationPlugin);
 
-// Load date adapter using require (works better in CommonJS context)
+// Load date adapter — resolves to CJS via the package exports.require condition
 try {
-  // Ensure Chart is available globally for the adapter to find it in Node environment
-  if (typeof global !== 'undefined') {
-    (global as any).Chart = Chart;
-  }
-
-  // Use the standard require which resolves to the correct entry point
   require('chartjs-adapter-date-fns');
   reportLogger.info('Chart.js date adapter loaded successfully');
 } catch (error) {
@@ -132,6 +128,26 @@ export class ChartGenerationService {
     if (qualityPercentage >= 90) return '#10b981'; // Green
     if (qualityPercentage >= 70) return '#f59e0b'; // Yellow
     return '#ef4444'; // Red
+  }
+
+  private runInWorker<T>(method: string, ...args: unknown[]): Promise<T> {
+    return new Promise((resolve, reject) => {
+      const isDev = process.env.NODE_ENV !== 'production';
+      const workerPath = isDev
+        ? path.join(__dirname, '../workers/chartWorker.ts')
+        : path.join(__dirname, '../workers/chartWorker.js');
+      const workerOpts: Record<string, unknown> = { workerData: { method, args } };
+      if (isDev) workerOpts['execArgv'] = ['--require', 'tsx/cjs'];
+      const worker = new Worker(workerPath, workerOpts as any);
+      worker.on('message', (msg: { ok: boolean; buffer?: T; error?: string }) => {
+        if (msg.ok) resolve(msg.buffer as T);
+        else reject(new Error(msg.error));
+      });
+      worker.on('error', reject);
+      worker.on('exit', (code) => {
+        if (code !== 0) reject(new Error(`Chart worker exited with code ${code}`));
+      });
+    });
   }
 
   /**
@@ -1152,12 +1168,12 @@ export class ChartGenerationService {
         hasTrends: !!trends
       });
 
-      // Import statistical analysis service for trend line calculation
       const { statisticalAnalysisService } = await import('./statisticalAnalysis');
       const { classifyTag } = await import('./tagClassificationService');
 
-      // Primary Data Visualizations (Multi-Trend and Individual Tag Charts)
+      // First pass: compute all chart configs synchronously (fast — no canvas work)
       const analogDatasets: LineChartData[] = [];
+      const lineChartTasks: Array<{ key: string; datasets: LineChartData[]; opts: ChartOptions }> = [];
 
       for (const [tagName, tagData] of Object.entries(data)) {
         if (tagData.length > 0) {
@@ -1168,7 +1184,6 @@ export class ChartGenerationService {
             color: this.getStableTagColor(tagName, options.tags || Object.keys(data))
           };
 
-          // Calculate statistics and trends for analog tags to include in charts (only if requested)
           if (classification.type === 'analog') {
             if (options.includeTrendLines && tagData.length >= 3) {
               try {
@@ -1198,66 +1213,78 @@ export class ChartGenerationService {
             analogDatasets.push(chartData);
           }
 
-          // ALWAYS generate individual chart for EACH tag (Baseline visualization)
-          const chartBuffer = await this.generateLineChart(
-            [chartData],
-            {
+          lineChartTasks.push({
+            key: tagName,
+            datasets: [chartData],
+            opts: {
               timezone: options.timezone,
               includeTrendLines: options.includeTrendLines,
               yUnits: options.tagInfo?.[tagName]?.units,
               tags: options.tags || Object.keys(data)
             }
-          );
-          charts[tagName] = chartBuffer;
+          });
         }
       }
 
-      // ALWAYS generate Multi-Trend Analysis chart if multiple analog tags exist (Baseline visualization)
       if (analogDatasets.length > 1) {
-        try {
-          const multiTrendBuffer = await this.generateLineChart(
-            analogDatasets,
-            {
-              title: 'Multi-Trend Analysis',
-              timezone: options.timezone,
-              includeTrendLines: options.includeTrendLines,
-              tags: options.tags || Object.keys(data),
-              showLegend: true
-            }
-          );
-          charts['Multi-Trend Chart'] = multiTrendBuffer;
-          reportLogger.info('Generated Multi-Trend Chart for all analog tags');
-        } catch (error) {
-          reportLogger.error('Failed to generate Multi-Trend Analysis chart', { error });
-        }
-      }
-
-      // Generate additional specific chart types if requested in chartTypes
-      if (chartTypes.includes('scatter')) {
-        // Scatter chart logic could be added here if needed in the future
-      }
-
-      // Generate trend charts if trend data is available
-      if (chartTypes.includes('trend') && trends) {
-        for (const [tagName, tagData] of Object.entries(data)) {
-          const trendData = trends[tagName];
-          if (tagData.length > 0 && trendData) {
-            const chartBuffer = await this.generateTrendChart(
-              { tagName, data: tagData, trend: trendData },
-              { title: `${tagName} - Trend Analysis` }
-            );
-            charts[`${tagName}_trend`] = chartBuffer;
+        lineChartTasks.push({
+          key: 'Multi-Trend Chart',
+          datasets: analogDatasets,
+          opts: {
+            title: 'Multi-Trend Analysis',
+            timezone: options.timezone,
+            includeTrendLines: options.includeTrendLines,
+            tags: options.tags || Object.keys(data),
+            showLegend: true
           }
+        });
+      }
+
+      // Second pass: render all line charts in parallel via worker threads
+      const lineResults = await Promise.all(
+        lineChartTasks.map(task =>
+          this.runInWorker<Buffer>('generateLineChart', task.datasets, task.opts)
+            .catch(err => {
+              reportLogger.warn(`Worker failed for "${task.key}", falling back to in-process`, { error: String(err) });
+              return this.generateLineChart(task.datasets, task.opts);
+            })
+            .then(buf => [task.key, buf] as const)
+        )
+      );
+      for (const [key, buf] of lineResults) {
+        charts[key] = buf;
+        if (key === 'Multi-Trend Chart') {
+          reportLogger.info('Generated Multi-Trend Chart for all analog tags');
         }
       }
 
-      // Generate statistics chart if statistics are available
-      if (chartTypes.includes('bar') && statistics && Object.keys(statistics).length > 0) {
-        const chartBuffer = await this.generateStatisticsChart(
-          statistics,
-          { title: 'Statistical Summary' }
+      if (chartTypes.includes('trend') && trends) {
+        const trendTasks = Object.entries(data)
+          .filter(([tagName, tagData]) => tagData.length > 0 && !!trends![tagName])
+          .map(([tagName, tagData]) => ({
+            key: `${tagName}_trend`,
+            trendData: { tagName, data: tagData, trend: trends![tagName]! },
+            opts: { title: `${tagName} - Trend Analysis` }
+          }));
+
+        const trendResults = await Promise.all(
+          trendTasks.map(t =>
+            this.runInWorker<Buffer>('generateTrendChart', t.trendData, t.opts)
+              .catch(() => this.generateTrendChart(t.trendData, t.opts))
+              .then(buf => [t.key, buf] as const)
+          )
         );
-        charts['statistics_summary'] = chartBuffer;
+        for (const [key, buf] of trendResults) charts[key] = buf;
+      }
+
+      if (chartTypes.includes('bar') && statistics && Object.keys(statistics).length > 0) {
+        try {
+          charts['statistics_summary'] = await this.runInWorker<Buffer>(
+            'generateStatisticsChart', statistics, { title: 'Statistical Summary' }
+          ).catch(() => this.generateStatisticsChart(statistics!, { title: 'Statistical Summary' }));
+        } catch (error) {
+          reportLogger.error('Failed to generate statistics chart', { error });
+        }
       }
 
       reportLogger.info('Report charts generated successfully with enhancements', {

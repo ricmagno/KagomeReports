@@ -374,7 +374,7 @@ in
     return {
       databaseServer: activeConfig?.host || 'NOT_CONFIGURED',
       databaseName: activeConfig?.database || 'Runtime',
-      smtpServer: env.SMTP_HOST,
+      smtpServer: env.SMTP_HOST ?? '',
       smtpPort: env.SMTP_PORT,
     };
   }

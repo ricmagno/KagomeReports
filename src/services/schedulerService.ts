@@ -5,7 +5,7 @@
  */
 
 import * as cron from 'node-cron';
-import { Database } from 'sqlite3';
+import Database from 'better-sqlite3';
 import path from 'path';
 import { reportLogger } from '@/utils/logger';
 import { env, getDatabasePath } from '@/config/environment';
@@ -60,7 +60,7 @@ export interface ScheduleQueue {
 }
 
 export class SchedulerService {
-  private db!: Database;
+  private db!: Database.Database;
   private scheduledJobs: Map<string, cron.ScheduledTask> = new Map();
   private executionQueue: ScheduleQueue[] = [];
   private isProcessingQueue = false;
@@ -71,7 +71,7 @@ export class SchedulerService {
 
   private get reportMgmtService(): ReportManagementService {
     if (!this._reportMgmtService) {
-      const { Database: Db } = require('sqlite3');
+      const Db = require('better-sqlite3');
       const reportsDb = new Db(getDatabasePath('reports.db'));
       this._reportMgmtService = new ReportManagementService(reportsDb);
     }
@@ -85,118 +85,91 @@ export class SchedulerService {
   /**
    * Initialize SQLite database for schedule storage
    */
-  private async initializeDatabase(): Promise<void> {
+  private initializeDatabase(): void {
     const dbPath = getDatabasePath('scheduler.db');
     this.db = new Database(dbPath);
-    this.db.configure('busyTimeout', 10000); // 10 seconds timeout
+    this.db.pragma('busy_timeout = 10000');
+    this.db.pragma('journal_mode = WAL');
+    this.db.pragma('synchronous = NORMAL');
 
-    return new Promise((resolve, reject) => {
-      this.db.serialize(() => {
-        // Enable WAL mode for better concurrency
-        this.db.run('PRAGMA journal_mode = WAL');
-        this.db.run('PRAGMA synchronous = NORMAL');
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS schedules (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        report_config TEXT NOT NULL,
+        cron_expression TEXT NOT NULL,
+        enabled BOOLEAN DEFAULT 1,
+        next_run DATETIME,
+        last_run DATETIME,
+        last_status TEXT,
+        last_error TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        recipients TEXT,
+        save_to_file BOOLEAN DEFAULT 1,
+        send_email BOOLEAN DEFAULT 0,
+        destination_path TEXT,
+        created_by TEXT,
+        linked_report_id TEXT
+      )
+    `);
 
-        // Create tables
-        this.db.run(`
-          CREATE TABLE IF NOT EXISTS schedules (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            description TEXT,
-            report_config TEXT NOT NULL,
-            cron_expression TEXT NOT NULL,
-            enabled BOOLEAN DEFAULT 1,
-            next_run DATETIME,
-            last_run DATETIME,
-            last_status TEXT,
-            last_error TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            recipients TEXT,
-            save_to_file BOOLEAN DEFAULT 1,
-            send_email BOOLEAN DEFAULT 0,
-            destination_path TEXT,
-            created_by TEXT,
-            linked_report_id TEXT
-          )
-        `);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS schedule_executions (
+        id TEXT PRIMARY KEY,
+        schedule_id TEXT NOT NULL,
+        start_time DATETIME NOT NULL,
+        end_time DATETIME,
+        status TEXT NOT NULL,
+        report_path TEXT,
+        error TEXT,
+        duration INTEGER,
+        FOREIGN KEY (schedule_id) REFERENCES schedules (id)
+      )
+    `);
 
-        // Schedule executions table
-        this.db.run(`
-          CREATE TABLE IF NOT EXISTS schedule_executions (
-            id TEXT PRIMARY KEY,
-            schedule_id TEXT NOT NULL,
-            start_time DATETIME NOT NULL,
-            end_time DATETIME,
-            status TEXT NOT NULL,
-            report_path TEXT,
-            error TEXT,
-            duration INTEGER,
-            FOREIGN KEY (schedule_id) REFERENCES schedules (id)
-          )
-        `);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS execution_queue (
+        schedule_id TEXT NOT NULL,
+        scheduled_time DATETIME NOT NULL,
+        priority INTEGER DEFAULT 0,
+        retry_count INTEGER DEFAULT 0,
+        PRIMARY KEY (schedule_id, scheduled_time)
+      )
+    `);
 
-        // Execution queue table
-        this.db.run(`
-          CREATE TABLE IF NOT EXISTS execution_queue (
-            schedule_id TEXT NOT NULL,
-            scheduled_time DATETIME NOT NULL,
-            priority INTEGER DEFAULT 0,
-            retry_count INTEGER DEFAULT 0,
-            PRIMARY KEY (schedule_id, scheduled_time)
-          )
-        `);
+    // Column migrations
+    const columns = this.db.pragma('table_info(schedules)') as any[];
+    const columnNames = columns.map(col => col.name);
 
-        // Migration: Add new columns if they don't exist
-        this.db.all("PRAGMA table_info(schedules)", (err, columns: any[]) => {
-          if (err) {
-            reportLogger.error('Failed to check table schema', { error: err });
-            reject(err);
-            return;
-          }
+    if (!columnNames.includes('save_to_file')) {
+      this.db.exec('ALTER TABLE schedules ADD COLUMN save_to_file BOOLEAN DEFAULT 1');
+    }
+    if (!columnNames.includes('send_email')) {
+      this.db.exec('ALTER TABLE schedules ADD COLUMN send_email BOOLEAN DEFAULT 0');
+    }
+    if (!columnNames.includes('destination_path')) {
+      this.db.exec('ALTER TABLE schedules ADD COLUMN destination_path TEXT');
+    }
+    if (!columnNames.includes('created_by')) {
+      this.db.exec('ALTER TABLE schedules ADD COLUMN created_by TEXT');
+    }
+    if (!columnNames.includes('linked_report_id')) {
+      this.db.exec('ALTER TABLE schedules ADD COLUMN linked_report_id TEXT');
+    }
 
-          const columnNames = columns.map(col => col.name);
+    // Migrate existing schedules: set send_email=1 if recipients exist
+    this.db.prepare(`
+      UPDATE schedules
+      SET send_email = 1
+      WHERE recipients IS NOT NULL
+        AND recipients != '[]'
+        AND send_email IS NULL
+    `).run();
 
-          if (!columnNames.includes('save_to_file')) {
-            this.db.run('ALTER TABLE schedules ADD COLUMN save_to_file BOOLEAN DEFAULT 1');
-          }
-
-          if (!columnNames.includes('send_email')) {
-            this.db.run('ALTER TABLE schedules ADD COLUMN send_email BOOLEAN DEFAULT 0');
-          }
-
-          if (!columnNames.includes('destination_path')) {
-            this.db.run('ALTER TABLE schedules ADD COLUMN destination_path TEXT');
-          }
-
-          if (!columnNames.includes('created_by')) {
-            this.db.run('ALTER TABLE schedules ADD COLUMN created_by TEXT');
-          }
-
-          // v1.0.3+ — link schedule to versioned report
-          if (!columnNames.includes('linked_report_id')) {
-            this.db.run('ALTER TABLE schedules ADD COLUMN linked_report_id TEXT');
-          }
-
-          // Migrate existing schedules: set send_email=1 if recipients exist
-          this.db.run(`
-            UPDATE schedules 
-            SET send_email = 1 
-            WHERE recipients IS NOT NULL 
-              AND recipients != '[]' 
-              AND send_email IS NULL
-          `, (err) => {
-            if (err) {
-              reportLogger.error('Failed to migrate existing schedules', { error: err });
-              reject(err);
-            } else {
-              reportLogger.info('Migrated existing schedules with recipients');
-              reportLogger.info('Scheduler database initialized');
-              resolve();
-            }
-          });
-        });
-      });
-    });
+    reportLogger.info('Migrated existing schedules with recipients');
+    reportLogger.info('Scheduler database initialized');
   }
 
   /**
@@ -204,15 +177,9 @@ export class SchedulerService {
    */
   async initialize(): Promise<void> {
     try {
-      // Ensure database is initialized before proceeding
-      await this.initializeDatabase();
-
-      // Start queue processor
+      this.initializeDatabase();
       this.startQueueProcessor();
-
       reportLogger.info('Scheduler service initialization validated');
-
-      // Start all enabled schedules
       await this.startAllSchedules();
     } catch (error) {
       reportLogger.error('Scheduler service initialization failed:', error);
@@ -227,185 +194,91 @@ export class SchedulerService {
     const scheduleId = `schedule_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const now = new Date();
 
-    // Validate cron expression
     if (!cron.validate(config.cronExpression)) {
       throw new Error(`Invalid cron expression: ${config.cronExpression}`);
     }
 
     const nextRun = this.getNextRunTime(config.cronExpression);
-
-    // Set defaults for delivery options
     const saveToFile = config.saveToFile !== undefined ? config.saveToFile : true;
     const sendEmail = config.sendEmail !== undefined ? config.sendEmail : (config.recipients && config.recipients.length > 0);
     const destinationPath = config.destinationPath || null;
 
-    return new Promise((resolve, reject) => {
-      this.db.run(
-        `INSERT INTO schedules (
-          id, name, description, report_config, cron_expression, enabled,
-          next_run, created_at, updated_at, recipients, save_to_file, send_email,
-          destination_path, created_by, linked_report_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          scheduleId,
-          config.name,
-          config.description || null,
-          JSON.stringify(config.reportConfig),
-          config.cronExpression,
-          config.enabled ? 1 : 0,
-          nextRun.toISOString(),
-          now.toISOString(),
-          now.toISOString(),
-          config.recipients ? JSON.stringify(config.recipients) : null,
-          saveToFile ? 1 : 0,
-          sendEmail ? 1 : 0,
-          destinationPath,
-          userId || null,
-          config.linkedReportId || null
-        ],
-        (err) => {
-          if (err) {
-            reportLogger.error('Failed to create schedule', { error: err, scheduleId });
-            reject(err);
-          } else {
-            reportLogger.info('Schedule created', { scheduleId, name: config.name });
+    this.db.prepare(`
+      INSERT INTO schedules (
+        id, name, description, report_config, cron_expression, enabled,
+        next_run, created_at, updated_at, recipients, save_to_file, send_email,
+        destination_path, created_by, linked_report_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      scheduleId,
+      config.name,
+      config.description || null,
+      JSON.stringify(config.reportConfig),
+      config.cronExpression,
+      config.enabled ? 1 : 0,
+      nextRun.toISOString(),
+      now.toISOString(),
+      now.toISOString(),
+      config.recipients ? JSON.stringify(config.recipients) : null,
+      saveToFile ? 1 : 0,
+      sendEmail ? 1 : 0,
+      destinationPath,
+      userId || null,
+      config.linkedReportId || null
+    );
 
-            // Start the cron job if enabled
-            if (config.enabled) {
-              const fullConfig: ScheduleConfig = {
-                ...config,
-                id: scheduleId,
-                nextRun,
-                createdAt: now,
-                updatedAt: now
-              };
-              // Start cron job after database operation completes
-              try {
-                this.startCronJob(fullConfig);
-              } catch (error) {
-                reportLogger.warn('Failed to start cron job during creation', { scheduleId, error });
-              }
-            }
+    reportLogger.info('Schedule created', { scheduleId, name: config.name });
 
-            resolve(scheduleId);
-          }
-        }
-      );
-    });
+    if (config.enabled) {
+      const fullConfig: ScheduleConfig = {
+        ...config,
+        id: scheduleId,
+        nextRun,
+        createdAt: now,
+        updatedAt: now
+      };
+      try {
+        this.startCronJob(fullConfig);
+      } catch (error) {
+        reportLogger.warn('Failed to start cron job during creation', { scheduleId, error });
+      }
+    }
+
+    return scheduleId;
   }
 
   /**
    * Get all schedules
    */
   async getSchedules(userId?: string): Promise<ScheduleConfig[]> {
-    return new Promise((resolve, reject) => {
-      let query = 'SELECT * FROM schedules';
-      const params: any[] = [];
+    let query = 'SELECT * FROM schedules';
+    const params: any[] = [];
 
-      if (userId) {
-        query += ' WHERE created_by = ? OR created_by IS NULL';
-        params.push(userId);
-      }
+    if (userId) {
+      query += ' WHERE created_by = ? OR created_by IS NULL';
+      params.push(userId);
+    }
 
-      query += ' ORDER BY created_at DESC';
+    query += ' ORDER BY created_at DESC';
 
-      this.db.all(
-        query,
-        params,
-        (err, rows: any[]) => {
-          if (err) {
-            reject(err);
-          } else {
-            const schedules = rows.map(row => {
-              const reportConfig = JSON.parse(row.report_config);
-              // Convert date strings back to Date objects
-              if (reportConfig.timeRange) {
-                reportConfig.timeRange.startTime = new Date(reportConfig.timeRange.startTime);
-                reportConfig.timeRange.endTime = new Date(reportConfig.timeRange.endTime);
-              }
-
-              return {
-                id: row.id,
-                name: row.name,
-                description: row.description || undefined,
-                reportConfig,
-                cronExpression: row.cron_expression,
-                enabled: Boolean(row.enabled),
-                nextRun: row.next_run ? new Date(row.next_run) : undefined,
-                lastRun: row.last_run ? new Date(row.last_run) : undefined,
-                lastStatus: row.last_status || undefined,
-                lastError: row.last_error || undefined,
-                createdAt: new Date(row.created_at),
-                updatedAt: new Date(row.updated_at),
-                recipients: row.recipients ? JSON.parse(row.recipients) : undefined,
-                saveToFile: row.save_to_file !== undefined ? Boolean(row.save_to_file) : true,
-                sendEmail: row.send_email !== undefined ? Boolean(row.send_email) : false,
-                destinationPath: row.destination_path || undefined,
-                createdByUserId: row.created_by || undefined,
-                linkedReportId: row.linked_report_id || undefined
-              } as ScheduleConfig;
-            });
-            resolve(schedules);
-          }
-        }
-      );
-    });
+    const rows = this.db.prepare(query).all(...params) as any[];
+    return rows.map(row => this.rowToScheduleConfig(row));
   }
 
   /**
    * Get schedule by ID
    */
   async getSchedule(scheduleId: string, userId?: string): Promise<ScheduleConfig | null> {
-    return new Promise((resolve, reject) => {
-      let query = 'SELECT * FROM schedules WHERE id = ?';
-      const params: any[] = [scheduleId];
+    let query = 'SELECT * FROM schedules WHERE id = ?';
+    const params: any[] = [scheduleId];
 
-      if (userId) {
-        query += ' AND (created_by = ? OR created_by IS NULL)';
-        params.push(userId);
-      }
+    if (userId) {
+      query += ' AND (created_by = ? OR created_by IS NULL)';
+      params.push(userId);
+    }
 
-      this.db.get(
-        query,
-        params,
-        (err, row: any) => {
-          if (err) {
-            reject(err);
-          } else if (!row) {
-            resolve(null);
-          } else {
-            const reportConfig = JSON.parse(row.report_config);
-            // Convert date strings back to Date objects
-            if (reportConfig.timeRange) {
-              reportConfig.timeRange.startTime = new Date(reportConfig.timeRange.startTime);
-              reportConfig.timeRange.endTime = new Date(reportConfig.timeRange.endTime);
-              // preserve relativeRange if it exists
-            }
-
-            resolve({
-              id: row.id,
-              name: row.name,
-              description: row.description || undefined,
-              reportConfig,
-              cronExpression: row.cron_expression,
-              enabled: Boolean(row.enabled),
-              nextRun: row.next_run ? new Date(row.next_run) : undefined,
-              lastRun: row.last_run ? new Date(row.last_run) : undefined,
-              lastStatus: row.last_status || undefined,
-              lastError: row.last_error || undefined,
-              createdAt: new Date(row.created_at),
-              updatedAt: new Date(row.updated_at),
-              recipients: row.recipients ? JSON.parse(row.recipients) : undefined,
-              saveToFile: row.save_to_file !== undefined ? Boolean(row.save_to_file) : true,
-              sendEmail: row.send_email !== undefined ? Boolean(row.send_email) : false,
-              destinationPath: row.destination_path || undefined,
-              createdByUserId: row.created_by || undefined,
-              linkedReportId: row.linked_report_id || undefined
-            } as ScheduleConfig);
-          }
-        }
-      );
-    });
+    const row = this.db.prepare(query).get(...params) as any;
+    return row ? this.rowToScheduleConfig(row) : null;
   }
 
   /**
@@ -417,7 +290,6 @@ export class SchedulerService {
       throw new Error(`Schedule not found: ${scheduleId}`);
     }
 
-    // Validate cron expression if being updated
     if (updates.cronExpression && !cron.validate(updates.cronExpression)) {
       throw new Error(`Invalid cron expression: ${updates.cronExpression}`);
     }
@@ -425,95 +297,51 @@ export class SchedulerService {
     const now = new Date();
     const nextRun = updates.cronExpression ? this.getNextRunTime(updates.cronExpression) : schedule.nextRun;
 
-    return new Promise((resolve, reject) => {
-      const fields: string[] = [];
-      const values: any[] = [] as any[];
+    const fields: string[] = [];
+    const values: any[] = [];
 
-      if (updates.name !== undefined) {
-        fields.push('name = ?');
-        values.push(updates.name);
-      }
-      if (updates.description !== undefined) {
-        fields.push('description = ?');
-        values.push(updates.description || null);
-      }
-      if (updates.reportConfig !== undefined) {
-        fields.push('report_config = ?');
-        values.push(JSON.stringify(updates.reportConfig));
-      }
-      if (updates.cronExpression !== undefined) {
-        fields.push('cron_expression = ?');
-        values.push(updates.cronExpression);
-        fields.push('next_run = ?');
-        values.push(nextRun?.toISOString());
-      }
-      if (updates.enabled !== undefined) {
-        fields.push('enabled = ?');
-        values.push(updates.enabled ? 1 : 0);
-      }
-      if (updates.recipients !== undefined) {
-        fields.push('recipients = ?');
-        values.push(updates.recipients && updates.recipients.length > 0 ? JSON.stringify(updates.recipients) : null);
-      }
-      if (updates.saveToFile !== undefined) {
-        fields.push('save_to_file = ?');
-        values.push(updates.saveToFile ? 1 : 0);
-      }
-      if (updates.sendEmail !== undefined) {
-        fields.push('send_email = ?');
-        values.push(updates.sendEmail ? 1 : 0);
-      }
-      if (updates.destinationPath !== undefined) {
-        fields.push('destination_path = ?');
-        values.push(updates.destinationPath || null);
-      }
+    if (updates.name !== undefined) { fields.push('name = ?'); values.push(updates.name); }
+    if (updates.description !== undefined) { fields.push('description = ?'); values.push(updates.description || null); }
+    if (updates.reportConfig !== undefined) { fields.push('report_config = ?'); values.push(JSON.stringify(updates.reportConfig)); }
+    if (updates.cronExpression !== undefined) {
+      fields.push('cron_expression = ?'); values.push(updates.cronExpression);
+      fields.push('next_run = ?'); values.push(nextRun?.toISOString());
+    }
+    if (updates.enabled !== undefined) { fields.push('enabled = ?'); values.push(updates.enabled ? 1 : 0); }
+    if (updates.recipients !== undefined) {
+      fields.push('recipients = ?');
+      values.push(updates.recipients && updates.recipients.length > 0 ? JSON.stringify(updates.recipients) : null);
+    }
+    if (updates.saveToFile !== undefined) { fields.push('save_to_file = ?'); values.push(updates.saveToFile ? 1 : 0); }
+    if (updates.sendEmail !== undefined) { fields.push('send_email = ?'); values.push(updates.sendEmail ? 1 : 0); }
+    if (updates.destinationPath !== undefined) { fields.push('destination_path = ?'); values.push(updates.destinationPath || null); }
 
-      // Always update the updated_at timestamp
-      fields.push('updated_at = ?');
-      values.push(now.toISOString());
+    fields.push('updated_at = ?');
+    values.push(now.toISOString());
+    values.push(scheduleId);
 
-      // Add scheduleId as the last parameter for the WHERE clause
-      values.push(scheduleId);
+    const sql = `UPDATE schedules SET ${fields.join(', ')} WHERE id = ?`;
 
-      const sql = `UPDATE schedules SET ${fields.join(', ')} WHERE id = ?`;
-
-      reportLogger.info('Updating schedule', {
-        scheduleId,
-        fields: fields.map(f => f.split(' = ')[0]),
-        sql
-      });
-
-      this.db.run(sql, values, function (err) {
-        if (err) {
-          reportLogger.error('Failed to update schedule in database', {
-            scheduleId,
-            error: err,
-            sql,
-            values
-          });
-          reject(err);
-        } else {
-          reportLogger.info('Schedule updated in database', {
-            scheduleId,
-            changes: this.changes
-          });
-
-          // Restart cron job if necessary
-          schedulerService.stopCronJob(scheduleId);
-          if (updates.enabled !== false) {
-            schedulerService.getSchedule(scheduleId).then(updatedSchedule => {
-              if (updatedSchedule && updatedSchedule.enabled) {
-                schedulerService.startCronJob(updatedSchedule);
-              }
-            }).catch(err => {
-              reportLogger.error('Failed to restart cron job after update', { scheduleId, error: err });
-            });
-          }
-
-          resolve();
-        }
-      });
+    reportLogger.info('Updating schedule', {
+      scheduleId,
+      fields: fields.map(f => f.split(' = ')[0]),
+      sql
     });
+
+    const result = this.db.prepare(sql).run(...values);
+
+    reportLogger.info('Schedule updated in database', {
+      scheduleId,
+      changes: result.changes
+    });
+
+    schedulerService.stopCronJob(scheduleId);
+    if (updates.enabled !== false) {
+      const updatedSchedule = await schedulerService.getSchedule(scheduleId);
+      if (updatedSchedule && updatedSchedule.enabled) {
+        schedulerService.startCronJob(updatedSchedule);
+      }
+    }
   }
 
   /**
@@ -525,21 +353,9 @@ export class SchedulerService {
       throw new Error(`Schedule not found or unauthorized: ${scheduleId}`);
     }
 
-    return new Promise((resolve, reject) => {
-      this.db.run(
-        'DELETE FROM schedules WHERE id = ?',
-        [scheduleId],
-        (err) => {
-          if (err) {
-            reject(err);
-          } else {
-            this.stopCronJob(scheduleId);
-            reportLogger.info('Schedule deleted', { scheduleId });
-            resolve();
-          }
-        }
-      );
-    });
+    this.db.prepare('DELETE FROM schedules WHERE id = ?').run(scheduleId);
+    this.stopCronJob(scheduleId);
+    reportLogger.info('Schedule deleted', { scheduleId });
   }
 
   /**
@@ -551,10 +367,8 @@ export class SchedulerService {
     const now = new Date();
 
     for (const schedule of enabledSchedules) {
-      // Refresh next run time on startup to ensure it's not in the past
       const nextRun = this.getNextRunTime(schedule.cronExpression);
 
-      // If nextRun is missing or in the past, update it
       if (!schedule.nextRun || schedule.nextRun < now) {
         reportLogger.info('Refreshing stale next run time on startup', {
           scheduleId: schedule.id,
@@ -562,16 +376,9 @@ export class SchedulerService {
           newNextRun: nextRun
         });
 
-        await new Promise<void>((resolve, reject) => {
-          this.db.run(
-            'UPDATE schedules SET next_run = ?, updated_at = ? WHERE id = ?',
-            [nextRun.toISOString(), now.toISOString(), schedule.id],
-            (err) => {
-              if (err) reject(err);
-              else resolve();
-            }
-          );
-        });
+        this.db.prepare(
+          'UPDATE schedules SET next_run = ?, updated_at = ? WHERE id = ?'
+        ).run(nextRun.toISOString(), now.toISOString(), schedule.id);
 
         schedule.nextRun = nextRun;
       }
@@ -595,32 +402,23 @@ export class SchedulerService {
 
   /**
    * Manually execute a schedule immediately
-   * @param scheduleId - The ID of the schedule to execute
-   * @param userId - Optional user ID for authorization check
-   * @returns Execution ID for tracking
    */
   async executeScheduleManually(scheduleId: string, userId?: string): Promise<string> {
-    // Verify schedule exists
     const schedule = await this.getSchedule(scheduleId, userId);
     if (!schedule) {
       throw new Error(`Schedule not found: ${scheduleId}`);
     }
 
-    // Generate execution ID
     const executionId = `manual_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-    // Queue with high priority (10) for manual executions
     this.queueExecution(scheduleId, 10, executionId);
-
     reportLogger.info('Manual execution queued', { scheduleId, executionId, priority: 10 });
-
     return executionId;
   }
 
   /**
    * Start a cron job for a schedule
    */
-  private startCronJob(schedule: ScheduleConfig): void {
+  startCronJob(schedule: ScheduleConfig): void {
     if (this.scheduledJobs.has(schedule.id)) {
       this.stopCronJob(schedule.id);
     }
@@ -645,7 +443,7 @@ export class SchedulerService {
   /**
    * Stop a cron job
    */
-  private stopCronJob(scheduleId: string): void {
+  stopCronJob(scheduleId: string): void {
     const task = this.scheduledJobs.get(scheduleId);
     if (task) {
       task.stop();
@@ -667,8 +465,7 @@ export class SchedulerService {
     };
 
     this.executionQueue.push(queueItem);
-    this.executionQueue.sort((a, b) => b.priority - a.priority); // Higher priority first
-
+    this.executionQueue.sort((a, b) => b.priority - a.priority);
     reportLogger.info('Execution queued', { scheduleId, queueLength: this.executionQueue.length });
   }
 
@@ -680,7 +477,7 @@ export class SchedulerService {
       if (!this.isProcessingQueue && this.executionQueue.length > 0 && this.currentRunningJobs < this.maxConcurrentJobs) {
         this.processQueue();
       }
-    }, 1000); // Check every second
+    }, 1000);
   }
 
   /**
@@ -717,21 +514,16 @@ export class SchedulerService {
     try {
       reportLogger.info('Starting scheduled execution', { scheduleId, executionId });
 
-      // Get schedule configuration
       const schedule = await this.getSchedule(scheduleId);
       if (!schedule || !schedule.enabled) {
         reportLogger.warn('Schedule not found or disabled', { scheduleId });
         return;
       }
 
-      // If this schedule is linked to a saved report, load the LATEST version
-      // so the schedule always executes the most current configuration.
       if (schedule.linkedReportId) {
         try {
           const latestReport = await this.reportMgmtService.loadLatestByName(schedule.linkedReportId);
           if (latestReport) {
-            // Merge latest config into schedule — preserve timeRange.relativeRange from
-            // the schedule so relative time windows still work correctly.
             const relativeRange = schedule.reportConfig.timeRange?.relativeRange;
             schedule.reportConfig = {
               ...latestReport.config,
@@ -741,57 +533,41 @@ export class SchedulerService {
               }
             } as ReportConfig;
             reportLogger.info('Loaded latest report version for scheduled execution', {
-              scheduleId,
-              executionId,
+              scheduleId, executionId,
               linkedReportId: schedule.linkedReportId,
               reportVersion: latestReport.version
             });
           } else {
             reportLogger.warn('Linked report not found; falling back to stored config', {
-              scheduleId,
-              linkedReportId: schedule.linkedReportId
+              scheduleId, linkedReportId: schedule.linkedReportId
             });
           }
         } catch (versionErr) {
           reportLogger.warn('Failed to load latest report version; falling back to stored config', {
-            scheduleId,
-            linkedReportId: schedule.linkedReportId,
+            scheduleId, linkedReportId: schedule.linkedReportId,
             error: versionErr instanceof Error ? versionErr.message : String(versionErr)
           });
         }
       }
 
-      // Recalculate time range if relativeRange is specified
       if (schedule.reportConfig.timeRange.relativeRange) {
         const { startTime: newStart, endTime: newEnd } = this.calculateRelativeTimeRange(schedule.reportConfig.timeRange.relativeRange);
         schedule.reportConfig.timeRange.startTime = newStart;
         schedule.reportConfig.timeRange.endTime = newEnd;
-
         reportLogger.info('Recalculated relative time range for scheduled execution', {
-          scheduleId,
-          executionId,
+          scheduleId, executionId,
           relativeRange: schedule.reportConfig.timeRange.relativeRange,
-          startTime: newStart,
-          endTime: newEnd
+          startTime: newStart, endTime: newEnd
         });
       }
 
-      // Record execution start
-      await this.recordExecution({
-        id: executionId,
-        scheduleId,
-        startTime,
-        status: 'running'
-      });
-
-      // Update schedule status
+      await this.recordExecution({ id: executionId, scheduleId, startTime, status: 'running' });
       await this.updateScheduleStatus(scheduleId, 'running', startTime);
 
-      // Execute end-to-end data flow for the report
       const dataFlowResult = await dataFlowService.executeDataFlow({
         reportConfig: schedule.reportConfig,
-        includeStatistics: true, // Always calculate for Key Findings and summary sections
-        includeTrends: true,     // Always calculate for analytics consistency
+        includeStatistics: true,
+        includeTrends: true,
         includeAnomalies: false,
         includeDataTable: schedule.reportConfig.includeDataTable ?? false
       });
@@ -800,9 +576,7 @@ export class SchedulerService {
         throw new Error(dataFlowResult.error || 'Data flow execution failed');
       }
 
-      // Generate the report (already done in data flow)
       const reportResult = dataFlowResult.reportResult!;
-
       if (!reportResult.success) {
         throw new Error(reportResult.error || 'Report generation failed');
       }
@@ -810,7 +584,6 @@ export class SchedulerService {
       const endTime = new Date();
       const duration = endTime.getTime() - startTime.getTime();
 
-      // Determine delivery methods (with defaults)
       const saveToFile = schedule.saveToFile !== undefined ? schedule.saveToFile : true;
       const sendEmail = schedule.sendEmail !== undefined ? schedule.sendEmail : (schedule.recipients && schedule.recipients.length > 0);
 
@@ -818,57 +591,35 @@ export class SchedulerService {
       let fileSaveError: string | undefined;
       let emailSendError: string | undefined;
 
-      // Handle file saving
       if (saveToFile) {
         try {
-          // If custom destination path is provided, move/copy the file
           if (schedule.destinationPath && reportResult.filePath) {
             const fs = await import('fs/promises');
-            const path = await import('path');
-
-            // Sanitize and validate destination path
+            const pathMod = await import('path');
             const sanitizedPath = schedule.destinationPath.replace(/\.\./g, '');
-            const destDir = path.isAbsolute(sanitizedPath)
+            const destDir = pathMod.isAbsolute(sanitizedPath)
               ? sanitizedPath
-              : path.join(env.REPORTS_DIR, sanitizedPath);
-
-            // Create directory if it doesn't exist
+              : pathMod.join(env.REPORTS_DIR, sanitizedPath);
             await fs.mkdir(destDir, { recursive: true });
-
-            // Copy file to destination
-            const fileName = path.basename(reportResult.filePath);
-            const destPath = path.join(destDir, fileName);
+            const fileName = pathMod.basename(reportResult.filePath);
+            const destPath = pathMod.join(destDir, fileName);
             await fs.copyFile(reportResult.filePath, destPath);
-
             reportPath = destPath;
-            reportLogger.info('Report saved to custom destination', {
-              scheduleId,
-              executionId,
-              destinationPath: destPath
-            });
+            reportLogger.info('Report saved to custom destination', { scheduleId, executionId, destinationPath: destPath });
           } else {
-            reportLogger.info('Report saved to default location', {
-              scheduleId,
-              executionId,
-              reportPath: reportResult.filePath
-            });
+            reportLogger.info('Report saved to default location', { scheduleId, executionId, reportPath: reportResult.filePath });
           }
         } catch (fileError) {
           fileSaveError = fileError instanceof Error ? fileError.message : 'Unknown file save error';
           reportLogger.error('Failed to save report to custom destination', {
-            scheduleId,
-            executionId,
-            error: fileSaveError,
-            destinationPath: schedule.destinationPath
+            scheduleId, executionId, error: fileSaveError, destinationPath: schedule.destinationPath
           });
-          // Rethrow if save to file is required but failed
           throw new Error(`Failed to save report to destination: ${fileSaveError}`);
         }
       } else {
         reportLogger.info('File saving disabled for this schedule', { scheduleId, executionId });
       }
 
-      // Handle email delivery
       if (sendEmail && schedule.recipients && schedule.recipients.length > 0) {
         try {
           const emailResult = await emailService.sendReportEmail(
@@ -890,27 +641,17 @@ export class SchedulerService {
 
           if (emailResult.success) {
             reportLogger.info('Report email sent successfully', {
-              scheduleId,
-              executionId,
-              recipients: schedule.recipients,
-              messageId: emailResult.messageId
+              scheduleId, executionId, recipients: schedule.recipients, messageId: emailResult.messageId
             });
           } else {
             emailSendError = emailResult.error;
             reportLogger.warn('Failed to send report email', {
-              scheduleId,
-              executionId,
-              recipients: schedule.recipients,
-              error: emailResult.error
+              scheduleId, executionId, recipients: schedule.recipients, error: emailResult.error
             });
           }
         } catch (emailError) {
           emailSendError = emailError instanceof Error ? emailError.message : 'Unknown email error';
-          reportLogger.error('Email sending failed with exception', {
-            scheduleId,
-            executionId,
-            error: emailError
-          });
+          reportLogger.error('Email sending failed with exception', { scheduleId, executionId, error: emailError });
         }
       } else if (sendEmail) {
         reportLogger.warn('Email delivery enabled but no recipients configured', { scheduleId, executionId });
@@ -918,32 +659,20 @@ export class SchedulerService {
         reportLogger.info('Email delivery disabled for this schedule', { scheduleId, executionId });
       }
 
-      // Record successful execution
       await this.recordExecution({
-        id: executionId,
-        scheduleId,
-        startTime,
-        endTime,
-        status: 'success',
-        reportPath: reportPath,
-        duration
+        id: executionId, scheduleId, startTime, endTime,
+        status: 'success', reportPath, duration
       } as ScheduleExecution);
 
-      // Update schedule status
       const nextRun = this.getNextRunTime(schedule.cronExpression);
       await this.updateScheduleStatus(scheduleId, 'success', startTime, nextRun);
 
       reportLogger.info('Scheduled execution completed successfully', {
-        scheduleId,
-        executionId,
-        duration,
-        reportPath: reportPath,
-        saveToFile,
-        sendEmail,
+        scheduleId, executionId, duration, reportPath,
+        saveToFile, sendEmail,
         fileSaved: saveToFile && !fileSaveError,
         emailSent: sendEmail && !emailSendError,
-        fileSaveError,
-        emailSendError
+        fileSaveError, emailSendError
       });
 
     } catch (error) {
@@ -951,31 +680,14 @@ export class SchedulerService {
       const duration = endTime.getTime() - startTime.getTime();
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-      // Record failed execution
-      await this.recordExecution({
-        id: executionId,
-        scheduleId,
-        startTime,
-        endTime,
-        status: 'failed',
-        error: errorMessage,
-        duration
-      });
-
-      // Update schedule status
+      await this.recordExecution({ id: executionId, scheduleId, startTime, endTime, status: 'failed', error: errorMessage, duration });
       await this.updateScheduleStatus(scheduleId, 'failed', startTime, undefined, errorMessage);
 
-      reportLogger.error('Scheduled execution failed', {
-        scheduleId,
-        executionId,
-        error: errorMessage,
-        duration
-      });
+      reportLogger.error('Scheduled execution failed', { scheduleId, executionId, error: errorMessage, duration });
 
-      // Retry logic
       if (queueItem.retryCount < 3) {
         queueItem.retryCount++;
-        queueItem.scheduledTime = new Date(Date.now() + (queueItem.retryCount * 60000)); // Retry after 1, 2, 3 minutes
+        queueItem.scheduledTime = new Date(Date.now() + (queueItem.retryCount * 60000));
         this.executionQueue.push(queueItem);
         reportLogger.info('Execution queued for retry', { scheduleId, retryCount: queueItem.retryCount });
       }
@@ -986,30 +698,20 @@ export class SchedulerService {
    * Record schedule execution
    */
   private async recordExecution(execution: ScheduleExecution): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.db.run(
-        `INSERT OR REPLACE INTO schedule_executions 
-         (id, schedule_id, start_time, end_time, status, report_path, error, duration)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          execution.id,
-          execution.scheduleId,
-          execution.startTime.toISOString(),
-          execution.endTime?.toISOString() || null,
-          execution.status,
-          execution.reportPath || null,
-          execution.error || null,
-          execution.duration || null
-        ],
-        (err) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve();
-          }
-        }
-      );
-    });
+    this.db.prepare(`
+      INSERT OR REPLACE INTO schedule_executions
+      (id, schedule_id, start_time, end_time, status, report_path, error, duration)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      execution.id,
+      execution.scheduleId,
+      execution.startTime.toISOString(),
+      execution.endTime?.toISOString() || null,
+      execution.status,
+      execution.reportPath || null,
+      execution.error || null,
+      execution.duration || null
+    );
   }
 
   /**
@@ -1022,34 +724,14 @@ export class SchedulerService {
     nextRun?: Date,
     error?: string
   ): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const fields = ['last_status = ?', 'last_run = ?', 'updated_at = ?'];
-      const values = [status, lastRun.toISOString(), new Date().toISOString()];
+    const fields = ['last_status = ?', 'last_run = ?', 'updated_at = ?'];
+    const values: any[] = [status, lastRun.toISOString(), new Date().toISOString()];
 
-      if (nextRun) {
-        fields.push('next_run = ?');
-        values.push(nextRun.toISOString());
-      }
+    if (nextRun) { fields.push('next_run = ?'); values.push(nextRun.toISOString()); }
+    if (error !== undefined) { fields.push('last_error = ?'); values.push(error); }
+    values.push(scheduleId);
 
-      if (error !== undefined) {
-        fields.push('last_error = ?');
-        values.push(error);
-      }
-
-      values.push(scheduleId);
-
-      this.db.run(
-        `UPDATE schedules SET ${fields.join(', ')} WHERE id = ?`,
-        values,
-        (err) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve();
-          }
-        }
-      );
-    });
+    this.db.prepare(`UPDATE schedules SET ${fields.join(', ')} WHERE id = ?`).run(...values);
   }
 
   /**
@@ -1060,29 +742,14 @@ export class SchedulerService {
     let startTime: Date;
 
     switch (relativeRange) {
-      case 'last1h':
-        startTime = new Date(now.getTime() - 60 * 60 * 1000);
-        break;
-      case 'last2h':
-        startTime = new Date(now.getTime() - 2 * 60 * 60 * 1000);
-        break;
-      case 'last6h':
-        startTime = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-        break;
-      case 'last12h':
-        startTime = new Date(now.getTime() - 12 * 60 * 60 * 1000);
-        break;
-      case 'last24h':
-        startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-        break;
-      case 'last7d':
-        startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case 'last30d':
-        startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
-      default:
-        startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      case 'last1h':  startTime = new Date(now.getTime() - 60 * 60 * 1000); break;
+      case 'last2h':  startTime = new Date(now.getTime() - 2 * 60 * 60 * 1000); break;
+      case 'last6h':  startTime = new Date(now.getTime() - 6 * 60 * 60 * 1000); break;
+      case 'last12h': startTime = new Date(now.getTime() - 12 * 60 * 60 * 1000); break;
+      case 'last24h': startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000); break;
+      case 'last7d':  startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); break;
+      case 'last30d': startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); break;
+      default:        startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     }
 
     return { startTime, endTime: now };
@@ -1099,7 +766,6 @@ export class SchedulerService {
         cronExpression,
         error: error instanceof Error ? error.message : String(error)
       });
-      // Fallback: 1 minute from now
       return new Date(Date.now() + 60000);
     }
   }
@@ -1108,7 +774,6 @@ export class SchedulerService {
    * Get execution history for a schedule
    */
   async getExecutionHistory(scheduleId: string, limit: number = 50, userId?: string): Promise<ScheduleExecution[]> {
-    // Optional ownership check
     if (userId) {
       const schedule = await this.getSchedule(scheduleId, userId);
       if (!schedule) {
@@ -1116,59 +781,42 @@ export class SchedulerService {
       }
     }
 
-    return new Promise((resolve, reject) => {
-      this.db.all(
-        'SELECT * FROM schedule_executions WHERE schedule_id = ? ORDER BY start_time DESC LIMIT ?',
-        [scheduleId, limit],
-        (err, rows: any[]) => {
-          if (err) {
-            reject(err);
-          } else {
-            const executions = rows.map(row => ({
-              id: row.id,
-              scheduleId: row.schedule_id,
-              startTime: new Date(row.start_time),
-              endTime: row.end_time ? new Date(row.end_time) : undefined,
-              status: row.status,
-              reportPath: row.report_path || undefined,
-              error: row.error || undefined,
-              duration: row.duration || undefined
-            } as ScheduleExecution));
-            resolve(executions);
-          }
-        }
-      );
-    });
+    const rows = this.db.prepare(
+      'SELECT * FROM schedule_executions WHERE schedule_id = ? ORDER BY start_time DESC LIMIT ?'
+    ).all(scheduleId, limit) as any[];
+
+    return rows.map(row => ({
+      id: row.id,
+      scheduleId: row.schedule_id,
+      startTime: new Date(row.start_time),
+      endTime: row.end_time ? new Date(row.end_time) : undefined,
+      status: row.status,
+      reportPath: row.report_path || undefined,
+      error: row.error || undefined,
+      duration: row.duration || undefined
+    } as ScheduleExecution));
   }
 
   /**
    * Get a single execution by ID
    */
   async getExecution(executionId: string): Promise<ScheduleExecution | null> {
-    return new Promise((resolve, reject) => {
-      this.db.get(
-        'SELECT * FROM schedule_executions WHERE id = ?',
-        [executionId],
-        (err, row: any) => {
-          if (err) {
-            reject(err);
-          } else if (!row) {
-            resolve(null);
-          } else {
-            resolve({
-              id: row.id,
-              scheduleId: row.schedule_id,
-              startTime: new Date(row.start_time),
-              endTime: row.end_time ? new Date(row.end_time) : undefined,
-              status: row.status,
-              reportPath: row.report_path || undefined,
-              error: row.error || undefined,
-              duration: row.duration || undefined
-            } as ScheduleExecution);
-          }
-        }
-      );
-    });
+    const row = this.db.prepare(
+      'SELECT * FROM schedule_executions WHERE id = ?'
+    ).get(executionId) as any;
+
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      scheduleId: row.schedule_id,
+      startTime: new Date(row.start_time),
+      endTime: row.end_time ? new Date(row.end_time) : undefined,
+      status: row.status,
+      reportPath: row.report_path || undefined,
+      error: row.error || undefined,
+      duration: row.duration || undefined
+    } as ScheduleExecution;
   }
 
   /**
@@ -1182,47 +830,33 @@ export class SchedulerService {
     executionsByStatus: Record<string, number>;
     executionsBySchedule: Record<string, number>;
   }> {
-    return new Promise((resolve, reject) => {
-      let query = 'SELECT * FROM schedule_executions';
-      const params: any[] = [];
+    let query = 'SELECT * FROM schedule_executions';
+    const params: any[] = [];
 
-      if (timeRange) {
-        query += ' WHERE start_time >= ? AND start_time <= ?';
-        params.push(timeRange.startTime.toISOString(), timeRange.endTime.toISOString());
-      }
+    if (timeRange) {
+      query += ' WHERE start_time >= ? AND start_time <= ?';
+      params.push(timeRange.startTime.toISOString(), timeRange.endTime.toISOString());
+    }
 
-      this.db.all(query, params, (err, rows: any[]) => {
-        if (err) {
-          reject(err);
-        } else {
-          const totalExecutions = rows.length;
-          const successfulExecutions = rows.filter(r => r.status === 'success').length;
-          const failedExecutions = rows.filter(r => r.status === 'failed').length;
+    const rows = this.db.prepare(query).all(...params) as any[];
+    const totalExecutions = rows.length;
+    const successfulExecutions = rows.filter(r => r.status === 'success').length;
+    const failedExecutions = rows.filter(r => r.status === 'failed').length;
 
-          const durationsWithValues = rows.filter(r => r.duration !== null).map(r => r.duration);
-          const averageDuration = durationsWithValues.length > 0
-            ? durationsWithValues.reduce((sum, d) => sum + d, 0) / durationsWithValues.length
-            : 0;
+    const durationsWithValues = rows.filter(r => r.duration !== null).map(r => r.duration);
+    const averageDuration = durationsWithValues.length > 0
+      ? durationsWithValues.reduce((sum, d) => sum + d, 0) / durationsWithValues.length
+      : 0;
 
-          const executionsByStatus: Record<string, number> = {};
-          const executionsBySchedule: Record<string, number> = {};
+    const executionsByStatus: Record<string, number> = {};
+    const executionsBySchedule: Record<string, number> = {};
 
-          rows.forEach(row => {
-            executionsByStatus[row.status] = (executionsByStatus[row.status] || 0) + 1;
-            executionsBySchedule[row.schedule_id] = (executionsBySchedule[row.schedule_id] || 0) + 1;
-          });
-
-          resolve({
-            totalExecutions,
-            successfulExecutions,
-            failedExecutions,
-            averageDuration,
-            executionsByStatus,
-            executionsBySchedule
-          });
-        }
-      });
+    rows.forEach(row => {
+      executionsByStatus[row.status] = (executionsByStatus[row.status] || 0) + 1;
+      executionsBySchedule[row.schedule_id] = (executionsBySchedule[row.schedule_id] || 0) + 1;
     });
+
+    return { totalExecutions, successfulExecutions, failedExecutions, averageDuration, executionsByStatus, executionsBySchedule };
   }
 
   /**
@@ -1245,7 +879,6 @@ export class SchedulerService {
       const queueLength = this.executionQueue.length;
       const runningExecutions = this.currentRunningJobs;
 
-      // Check for issues
       if (queueLength > 10) {
         issues.push(`High queue length: ${queueLength} pending executions`);
         status = 'warning';
@@ -1256,9 +889,8 @@ export class SchedulerService {
         status = 'warning';
       }
 
-      // Check for recent failures
       const recentStats = await this.getExecutionStatistics({
-        startTime: new Date(Date.now() - 24 * 60 * 60 * 1000), // Last 24 hours
+        startTime: new Date(Date.now() - 24 * 60 * 60 * 1000),
         endTime: new Date()
       });
 
@@ -1274,38 +906,19 @@ export class SchedulerService {
         if (status === 'healthy') status = 'warning';
       }
 
-      // Find last execution time
       let lastExecutionTime: Date | undefined;
       if (recentStats.totalExecutions > 0) {
-        const lastExecution = await new Promise<any>((resolve, reject) => {
-          this.db.get(
-            'SELECT start_time FROM schedule_executions ORDER BY start_time DESC LIMIT 1',
-            (err, row) => {
-              if (err) reject(err);
-              else resolve(row);
-            }
-          );
-        });
-
+        const lastExecution = this.db.prepare(
+          'SELECT start_time FROM schedule_executions ORDER BY start_time DESC LIMIT 1'
+        ).get() as any;
         if (lastExecution) {
           lastExecutionTime = new Date(lastExecution.start_time);
         }
       }
 
       return {
-        status,
-        activeSchedules,
-        runningExecutions,
-        queueLength,
-        lastExecutionTime,
-        issues
-      } as {
-        status: 'healthy' | 'warning' | 'critical';
-        activeSchedules: number;
-        runningExecutions: number;
-        queueLength: number;
-        lastExecutionTime?: Date;
-        issues: string[];
+        status, activeSchedules, runningExecutions, queueLength, issues,
+        ...(lastExecutionTime !== undefined && { lastExecutionTime })
       };
     } catch (error) {
       return {
@@ -1327,120 +940,76 @@ export class SchedulerService {
     averageDuration: number;
     lastExecution?: Date;
     nextExecution?: Date;
-    recentFailures: Array<{
-      executionId: string;
-      timestamp: Date;
-      error: string;
-      duration?: number;
-    }>;
+    recentFailures: Array<{ executionId: string; timestamp: Date; error: string; duration?: number }>;
   }> {
-    return new Promise((resolve, reject) => {
-      let query = 'SELECT * FROM schedule_executions';
-      const params: any[] = [];
+    let query = 'SELECT * FROM schedule_executions';
+    const params: any[] = [];
 
-      if (scheduleId) {
-        query += ' WHERE schedule_id = ?';
-        params.push(scheduleId);
-      }
+    if (scheduleId) {
+      query += ' WHERE schedule_id = ?';
+      params.push(scheduleId);
+    }
 
-      query += ' ORDER BY start_time DESC';
+    query += ' ORDER BY start_time DESC';
 
-      this.db.all(query, params, async (err, rows: any[]) => {
-        if (err) {
-          reject(err);
-        } else {
-          const executionCount = rows.length;
-          const successfulExecutions = rows.filter(r => r.status === 'success').length;
-          const successRate = executionCount > 0 ? successfulExecutions / executionCount : 0;
+    const rows = this.db.prepare(query).all(...params) as any[];
 
-          const durationsWithValues = rows.filter(r => r.duration !== null).map(r => r.duration);
-          const averageDuration = durationsWithValues.length > 0
-            ? durationsWithValues.reduce((sum, d) => sum + d, 0) / durationsWithValues.length
-            : 0;
+    const executionCount = rows.length;
+    const successfulExecutions = rows.filter(r => r.status === 'success').length;
+    const successRate = executionCount > 0 ? successfulExecutions / executionCount : 0;
 
-          const lastExecution = rows.length > 0 ? new Date(rows[0].start_time) : undefined;
+    const durationsWithValues = rows.filter(r => r.duration !== null).map(r => r.duration);
+    const averageDuration = durationsWithValues.length > 0
+      ? durationsWithValues.reduce((sum, d) => sum + d, 0) / durationsWithValues.length
+      : 0;
 
-          let nextExecution: Date | undefined;
-          if (scheduleId) {
-            const schedule = await this.getSchedule(scheduleId);
-            nextExecution = schedule?.nextRun;
-          }
+    const lastExecution = rows.length > 0 ? new Date(rows[0].start_time) : undefined;
 
-          const recentFailures = rows
-            .filter(r => r.status === 'failed')
-            .slice(0, 5) // Last 5 failures
-            .map(r => ({
-              executionId: r.id,
-              timestamp: new Date(r.start_time),
-              error: r.error || 'Unknown error',
-              duration: r.duration || undefined
-            }));
+    let nextExecution: Date | undefined;
+    if (scheduleId) {
+      const schedule = await this.getSchedule(scheduleId);
+      nextExecution = schedule?.nextRun;
+    }
 
-          resolve({
-            executionCount,
-            successRate,
-            averageDuration,
-            lastExecution,
-            nextExecution,
-            recentFailures
-          } as {
-            executionCount: number;
-            successRate: number;
-            averageDuration: number;
-            lastExecution?: Date;
-            nextExecution?: Date;
-            recentFailures: Array<{
-              executionId: string;
-              timestamp: Date;
-              error: string;
-              duration?: number;
-            }>;
-          });
-        }
-      });
-    });
+    const recentFailures = rows
+      .filter(r => r.status === 'failed')
+      .slice(0, 5)
+      .map(r => ({
+        executionId: r.id as string,
+        timestamp: new Date(r.start_time),
+        error: (r.error || 'Unknown error') as string,
+        ...(r.duration != null && { duration: r.duration as number })
+      }));
+
+    return {
+      executionCount, successRate, averageDuration, recentFailures,
+      ...(lastExecution !== undefined && { lastExecution }),
+      ...(nextExecution !== undefined && { nextExecution })
+    };
   }
 
   /**
    * Retry failed execution
    */
   async retryExecution(executionId: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.db.get(
-        'SELECT schedule_id FROM schedule_executions WHERE id = ? AND status = "failed"',
-        [executionId],
-        (err, row: any) => {
-          if (err) {
-            reject(err);
-          } else if (!row) {
-            reject(new Error('Failed execution not found'));
-          } else {
-            // Queue the schedule for immediate execution with high priority
-            this.queueExecution(row.schedule_id, 10); // High priority
-            reportLogger.info('Execution retry queued', { executionId, scheduleId: row.schedule_id });
-            resolve();
-          }
-        }
-      );
-    });
+    const row = this.db.prepare(
+      'SELECT schedule_id FROM schedule_executions WHERE id = ? AND status = "failed"'
+    ).get(executionId) as any;
+
+    if (!row) {
+      throw new Error('Failed execution not found');
+    }
+
+    this.queueExecution(row.schedule_id, 10);
+    reportLogger.info('Execution retry queued', { executionId, scheduleId: row.schedule_id });
   }
+
   async cleanupExecutions(olderThanDays: number = 30): Promise<void> {
     const cutoffDate = new Date(Date.now() - (olderThanDays * 24 * 60 * 60 * 1000));
-
-    return new Promise((resolve, reject) => {
-      this.db.run(
-        'DELETE FROM schedule_executions WHERE start_time < ?',
-        [cutoffDate.toISOString()],
-        function (err) {
-          if (err) {
-            reject(err);
-          } else {
-            reportLogger.info('Cleaned up old execution records', { deletedCount: this.changes });
-            resolve();
-          }
-        }
-      );
-    });
+    const result = this.db.prepare(
+      'DELETE FROM schedule_executions WHERE start_time < ?'
+    ).run(cutoffDate.toISOString());
+    reportLogger.info('Cleaned up old execution records', { deletedCount: result.changes });
   }
 
   /**
@@ -1448,16 +1017,36 @@ export class SchedulerService {
    */
   async shutdown(): Promise<void> {
     this.stopAllSchedules();
-    return new Promise((resolve) => {
-      this.db.close((err) => {
-        if (err) {
-          reportLogger.error('Error closing scheduler database', { error: err });
-        } else {
-          reportLogger.info('Scheduler database closed');
-        }
-        resolve();
-      });
-    });
+    this.db.close();
+    reportLogger.info('Scheduler database closed');
+  }
+
+  private rowToScheduleConfig(row: any): ScheduleConfig {
+    const reportConfig = JSON.parse(row.report_config);
+    if (reportConfig.timeRange) {
+      reportConfig.timeRange.startTime = new Date(reportConfig.timeRange.startTime);
+      reportConfig.timeRange.endTime = new Date(reportConfig.timeRange.endTime);
+    }
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description || undefined,
+      reportConfig,
+      cronExpression: row.cron_expression,
+      enabled: Boolean(row.enabled),
+      nextRun: row.next_run ? new Date(row.next_run) : undefined,
+      lastRun: row.last_run ? new Date(row.last_run) : undefined,
+      lastStatus: row.last_status || undefined,
+      lastError: row.last_error || undefined,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+      recipients: row.recipients ? JSON.parse(row.recipients) : undefined,
+      saveToFile: row.save_to_file !== undefined ? Boolean(row.save_to_file) : true,
+      sendEmail: row.send_email !== undefined ? Boolean(row.send_email) : false,
+      destinationPath: row.destination_path || undefined,
+      createdByUserId: row.created_by || undefined,
+      linkedReportId: row.linked_report_id || undefined
+    } as ScheduleConfig;
   }
 }
 

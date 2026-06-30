@@ -51,9 +51,20 @@ export interface EmailTemplate {
   variables: string[];
 }
 
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  password: string;
+  fromName?: string;
+  fromEmail?: string;
+}
+
 export class EmailService {
   private transporter!: nodemailer.Transporter;
   private isConfigured: boolean = false;
+  private _fromAddress: string = '';
 
   constructor() {
     this.initializeTransporter();
@@ -97,6 +108,7 @@ export class EmailService {
 
       this.transporter = nodemailer.createTransport(transportConfig);
       this.isConfigured = true;
+      this._fromAddress = env.SMTP_USER || '';
 
       reportLogger.info('Email service initialized', {
         host: env.SMTP_HOST,
@@ -129,6 +141,33 @@ export class EmailService {
   }
 
   /**
+   * Reconfigure the transporter with DB-stored settings (called after UI save or at startup)
+   */
+  reconfigure(config: SmtpConfig): void {
+    try {
+      const secure = config.port === 465 ? true : (config.port === 587 ? false : config.secure);
+      const transportConfig: any = {
+        host: config.host,
+        port: config.port,
+        secure,
+        tls: { rejectUnauthorized: false },
+      };
+      if (config.user && config.password) {
+        transportConfig.auth = { user: config.user, pass: config.password };
+      }
+      this.transporter = nodemailer.createTransport(transportConfig);
+      this.isConfigured = true;
+      this._fromAddress = config.fromName
+        ? `"${config.fromName}" <${config.fromEmail || config.user}>`
+        : (config.fromEmail || config.user);
+      reportLogger.info('Email service reconfigured from database', { host: config.host, port: config.port });
+    } catch (error) {
+      reportLogger.error('Failed to reconfigure email service', { error });
+      this.isConfigured = false;
+    }
+  }
+
+  /**
    * Send email
    */
   async sendEmail(config: EmailConfig): Promise<EmailResult> {
@@ -152,7 +191,7 @@ export class EmailService {
 
       // Prepare email options
       const mailOptions: nodemailer.SendMailOptions = {
-        from: env.SMTP_USER, // Use SMTP_USER as the from address
+        from: this._fromAddress || env.SMTP_USER || '',
         to: config.to.join(', '),
         subject: config.subject,
         text: config.text,
@@ -455,7 +494,7 @@ export class EmailService {
   } {
     return {
       configured: this.isConfigured,
-      host: env.SMTP_HOST,
+      ...(env.SMTP_HOST ? { host: env.SMTP_HOST } : {}),
       port: env.SMTP_PORT,
       secure: env.SMTP_SECURE,
       authenticated: !!(env.SMTP_USER && env.SMTP_PASSWORD)
@@ -466,32 +505,12 @@ export class EmailService {
    * Validate email service configuration without sending test email
    */
   async validateConfiguration(): Promise<boolean> {
-    try {
-      // Check if basic configuration is present
-      if (!env.SMTP_HOST || !env.SMTP_PORT || !env.SMTP_USER) {
-        reportLogger.warn('Email service configuration incomplete', {
-          hasHost: !!env.SMTP_HOST,
-          hasPort: !!env.SMTP_PORT,
-          hasUser: !!env.SMTP_USER
-        });
-        return false;
-      }
-
-      // Initialize if not already done
-      if (!this.isConfigured) {
-        this.initializeTransporter();
-      }
-
-      // Verify connection if configured
-      if (this.isConfigured) {
-        return await this.verifyConnection();
-      }
-
-      return false;
-    } catch (error) {
-      reportLogger.error('Email configuration validation failed', { error });
-      return false;
-    }
+    // Email is now user-configured via UI (DB-backed). At startup we only
+    // confirm the transporter was built — we don't attempt a live SMTP
+    // connection, because credentials may not be set yet or may come from the
+    // DB (loaded after this is called). The UI "Send Test" button does the
+    // live check.
+    return this.isConfigured;
   }
 
   /**

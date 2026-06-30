@@ -12,13 +12,14 @@ import {
   Configuration,
   ConfigurationChange
 } from '../../types/configuration';
-import { AlertCircle, RefreshCw, Lock } from 'lucide-react';
+import { AlertCircle, RefreshCw, Lock, Bell } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { CategorySection } from './CategorySection';
 import { ConfirmationDialog } from './ConfirmationDialog';
 import { OpcuaConfiguration } from './OpcuaConfiguration';
 import { HistorianConfiguration } from './HistorianConfiguration';
 import { DataManagement } from './DataManagement';
+import { AlertDeliveryConfiguration } from './AlertDeliveryConfiguration';
 import { cn } from '../../utils/cn';
 import './ConfigurationManagement.css';
 
@@ -31,7 +32,7 @@ interface ConfigurationManagementState {
   refreshing: boolean;
   editingConfigs: Set<string>;
   successMessage: string | null;
-  configTab: 'historian' | 'opcua' | 'data-management';
+  configTab: 'historian' | 'opcua' | 'alerts' | 'data-management';
   confirmationDialog: {
     isOpen: boolean;
     changes: ConfigurationChange[];
@@ -344,6 +345,14 @@ export const ConfigurationManagement: React.FC = () => {
             </button>
             {isAdmin && (
               <button
+                className={cn("tab-button", state.configTab === 'alerts' && "active")}
+                onClick={() => setState(prev => ({ ...prev, configTab: 'alerts' }))}
+              >
+                Alerts
+              </button>
+            )}
+            {isAdmin && (
+              <button
                 className={cn("tab-button", state.configTab === 'data-management' && "active")}
                 onClick={() => setState(prev => ({ ...prev, configTab: 'data-management' }))}
               >
@@ -371,6 +380,18 @@ export const ConfigurationManagement: React.FC = () => {
         <div className="mt-6">
           <OpcuaConfiguration />
         </div>
+      ) : state.configTab === 'alerts' ? (
+        isAdmin ? (
+          <div className="mt-6">
+            <AlertDeliveryConfiguration />
+          </div>
+        ) : (
+          <div className="mt-6 p-8 text-center text-gray-500 bg-gray-50 rounded-lg border">
+            <Lock className="mx-auto mb-3 text-gray-400" size={32} />
+            <h3 className="text-lg font-medium text-gray-900">Administrator Access Required</h3>
+            <p className="mt-1">Only administrators can configure alert delivery settings.</p>
+          </div>
+        )
       ) : isAdmin ? (
         <div className="mt-6">
           <DataManagement />

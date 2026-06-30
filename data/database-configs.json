@@ -16,7 +16,7 @@
       "createdBy": "admin",
       "createdAt": "2026-04-22T10:15:10.583Z",
       "status": "connected",
-      "lastTested": "2026-05-18T03:54:32.811Z"
+      "lastTested": "2026-06-29T10:58:26.795Z"
     },
     {
       "id": "f55becfd-cfee-47a2-b918-048e5eb09f29",
@@ -34,7 +34,7 @@
       "createdBy": "admin",
       "createdAt": "2026-04-22T10:15:10.869Z",
       "status": "error",
-      "lastTested": "2026-05-18T03:54:35.711Z"
+      "lastTested": "2026-06-29T10:58:20.022Z"
     },
     {
       "id": "401cbdd0-99c2-481d-b245-2023eb76560d",
@@ -52,9 +52,9 @@
       "createdBy": "admin",
       "createdAt": "2026-04-22T10:15:58.702Z",
       "status": "error",
-      "lastTested": "2026-05-18T03:54:39.878Z"
+      "lastTested": "2026-06-29T10:58:23.074Z"
     }
   ],
   "activeConfigId": "080b9cfd-1b2a-457f-aba2-c7412aca3264",
-  "lastUpdated": "2026-05-18T04:32:22.508Z"
+  "lastUpdated": "2026-06-30T02:32:45.807Z"
 }
