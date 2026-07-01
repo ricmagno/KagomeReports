@@ -5,8 +5,7 @@ After=network.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/autodeploy.sh
-User=scada.sa
-Group=scada.sa
+User=root
 
 [Install]
 WantedBy=multi-user.target

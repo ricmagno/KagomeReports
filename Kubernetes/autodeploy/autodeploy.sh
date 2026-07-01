@@ -16,8 +16,9 @@ CURRENT_VERSION=$(echo $CURRENT_IMAGE | cut -d':' -f2)
 
 echo "Current Version: $CURRENT_VERSION"
 
-# 2. Get latest tag from GitHub API
-LATEST_TAG=$(curl -s "https://api.github.com/repos/$REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+# 2. Get latest tag from GitHub API (uses tags endpoint — releases/latest requires a GitHub Release to exist,
+#    but the workflow only pushes git tags, not releases)
+LATEST_TAG=$(curl -s "https://api.github.com/repos/$REPO/tags" | grep '"name":' | head -1 | sed -E 's/.*"name": "([^"]+)".*/\1/')
 
 if [ -z "$LATEST_TAG" ]; then
     echo "❌ Error: Could not fetch latest tag from GitHub"

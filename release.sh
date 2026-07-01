@@ -34,7 +34,7 @@ echo "📝 Updating version in Kubernetes manifest..."
 # Updated path to match current structure
 MANIFEST="Kubernetes/historian-reports-deployment.yaml"
 if [ -f "$MANIFEST" ]; then
-    sed -i '' "s|image: ghcr.io/ricmagno/kagomereports:.*|image: ghcr.io/ricmagno/kagomereports:$VERSION|" "$MANIFEST"
+    sed -i '' "s|image: ghcr.io/ricmagno/kagomereports:.*|image: ghcr.io/ricmagno/kagomereports:v$VERSION|" "$MANIFEST"
 else
     echo "⚠️ Warning: $MANIFEST not found, skipping manifest update."
 fi

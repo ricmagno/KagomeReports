@@ -6,7 +6,7 @@ metadata:
   labels:
     app: historian-reports
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: historian-reports
@@ -19,7 +19,7 @@ spec:
         - name: ghcr-regcred
       containers:
         - name: historian-reports
-          image: ghcr.io/ricmagno/kagomereports:1.2.28
+          image: ghcr.io/ricmagno/kagomereports:v1.2.30
           ports:
             - containerPort: 3000
           imagePullPolicy: IfNotPresent
