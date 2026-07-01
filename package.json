@@ -1,6 +1,6 @@
 {
   "name": "historian-reports",
-  "version": "1.2.31",
+  "version": "1.2.32",
   "description": "Professional reporting application for AVEVA Historian database",
   "main": "electron.js",
   "scripts": {
@@ -41,7 +41,7 @@
   "dependencies": {
     "@types/redis": "^4.0.10",
     "adm-zip": "^0.5.16",
-    "axios": "^1.7.9",
+    "axios": "^1.18.1",
     "bcrypt": "^5.1.1",
     "better-sqlite3": "^12.11.1",
     "call-bind-apply-helpers": "^1.0.1",
