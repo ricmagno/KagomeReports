@@ -19,7 +19,7 @@ spec:
         - name: ghcr-regcred
       containers:
         - name: historian-reports
-          image: ghcr.io/ricmagno/kagomereports:v1.2.32
+          image: ghcr.io/ricmagno/kagomereports:v1.2.33
           ports:
             - containerPort: 3000
           imagePullPolicy: IfNotPresent
